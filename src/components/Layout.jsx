@@ -41,6 +41,10 @@ function Layout() {
     ],
     parent: [
       { path: '/parent', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/parent/children', icon: 'fa-child', title: 'My Children' },
+      { path: '/parent/performance', icon: 'fa-chart-line', title: 'Performance' },
+      { path: '/parent/messages', icon: 'fa-envelope', title: 'Weekly Messages' },
+      { path: '/parent/fees', icon: 'fa-credit-card', title: 'School Fees' },
     ],
     accountant: [
       { path: '/accountant', icon: 'fa-home', title: 'Dashboard' },
