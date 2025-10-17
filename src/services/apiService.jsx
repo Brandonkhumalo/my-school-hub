@@ -123,6 +123,15 @@ const apiService = {
   fetchParentChildren: () => request("/academics/students/", "GET"),
   fetchParentResults: () => request("/academics/results/", "GET"),
   fetchParentFeeSummary: () => request("/finances/student-fees/", "GET"),
+
+  getStudentProfile: () => request("/students/profile/", "GET"),
+  getStudentDashboardStats: () => request("/students/dashboard/stats/", "GET"),
+  getStudentSubmissions: () => request("/students/submissions/", "GET"),
+  getStudentMarks: () => request("/students/marks/", "GET"),
+  getSchoolCalendar: () => request("/students/calendar/", "GET"),
+  getStudentTimetable: () => request("/students/timetable/", "GET"),
+  getStudentTeachers: () => request("/students/teachers/", "GET"),
+  getStudentAnnouncements: () => request("/students/announcements/", "GET"),
 };
 
 export default apiService;

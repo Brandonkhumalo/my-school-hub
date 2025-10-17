@@ -24,6 +24,15 @@ import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 
+// Student Pages
+import StudentProfile from "./pages/student/StudentProfile";
+import StudentSubmissions from "./pages/student/StudentSubmissions";
+import StudentMarks from "./pages/student/StudentMarks";
+import StudentCalendar from "./pages/student/StudentCalendar";
+import StudentTimetable from "./pages/student/StudentTimetable";
+import StudentTeachers from "./pages/student/StudentTeachers";
+import StudentAnnouncements from "./pages/student/StudentAnnouncements";
+
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
 import Logout from "./pages/auth/Logout";
@@ -55,9 +64,20 @@ function App() {
         <Route path="/admin/announcements" element={<AdminAnnouncements />} />
         <Route path="/admin/complaints" element={<AdminComplaints />} />
 
-        {/* Other Role Dashboards */}
+        {/* Teacher Routes */}
         <Route path="/teacher" element={<TeacherDashboard />} />
+
+        {/* Student Routes */}
         <Route path="/student" element={<StudentDashboard />} />
+        <Route path="/student/profile" element={<StudentProfile />} />
+        <Route path="/student/submissions" element={<StudentSubmissions />} />
+        <Route path="/student/marks" element={<StudentMarks />} />
+        <Route path="/student/calendar" element={<StudentCalendar />} />
+        <Route path="/student/timetable" element={<StudentTimetable />} />
+        <Route path="/student/teachers" element={<StudentTeachers />} />
+        <Route path="/student/announcements" element={<StudentAnnouncements />} />
+
+        {/* Parent Routes */}
         <Route path="/parent" element={<ParentDashboard />} />
 
         {/* Catch all */}
