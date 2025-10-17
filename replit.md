@@ -19,6 +19,23 @@ I want to communicate in simple language. I prefer iterative development. Ask be
 - **CORS:** django-cors-headers
 - **Database:** PostgreSQL (via Replit database)
 
+### Frontend Routing Structure
+- **Public Routes:**
+  - `/` - Landing page with hero section and features
+  - `/login` - Login page for students, parents, and teachers
+  - `/admin/login` - Dedicated admin login page
+  - `/register/parent` - Parent self-registration
+  - `/logout` - Logout handler
+
+- **Protected Routes (requires authentication):**
+  - `/admin` - Admin dashboard
+  - `/admin/*` - Admin management pages
+  - `/teacher` - Teacher dashboard
+  - `/student` - Student dashboard
+  - `/student/*` - Student pages
+  - `/parent` - Parent dashboard
+  - `/parent/*` - Parent pages
+
 ### Project Structure
 The frontend follows a component-based architecture with pages organized by user role (`/admin`, `/auth`, `/parent`, `/student`, `/teacher`). Reusable UI components are stored in `/components`, and API interactions are centralized in `/services/apiService.jsx`.
 
