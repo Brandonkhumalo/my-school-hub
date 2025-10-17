@@ -44,12 +44,13 @@ The system provides tailored user experiences for four distinct roles:
 1.  **Admin:** Full system management access.
 2.  **Teacher:** Class and student management.
 3.  **Student:** Access to grades, timetable, fees, and assignments.
-4.  **Parent:** View children's academic records, weekly messages, and fee information with multi-child support and a two-step parent-child linking process.
+4.  **Parent:** View children's academic records, weekly messages, and fee information with multi-child support and a secure admin-approved parent-child linking process.
 
 Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
--   **Parent Portal:** Dashboard with child selector, child management (linking/confirmation), academic performance, weekly teacher messages, and fee tracking with a demo payment interface.
+-   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, and fee tracking with a demo payment interface.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
+-   **Authentication Pages:** All auth pages (Login, AdminLogin, ParentRegister) include back buttons to home page. Login uses "Student Number/Email" label for clarity.
 
 ### Technical Implementations
 -   API communication uses JWT Bearer tokens for authentication, stored in localStorage, with an API service layer handling automatic token injection.
@@ -57,6 +58,16 @@ Key features include:
 -   HMR WebSocket is configured for the Replit environment.
 -   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, and `Attendance` to support core functionalities.
 -   Role-based permissions are enforced across all API endpoints.
+
+### Parent-Child Linking Security Model
+-   **Parent Request Flow:** Parents can browse all students (with name/surname/class filtering) and request links. This creates an unconfirmed `ParentChildLink` record.
+-   **Admin Approval Required:** Only administrators and teachers can approve parent-child link requests. Parents cannot self-approve for security.
+-   **Confirmed Access Only:** Parents can only access student data (grades, fees, messages) for confirmed children.
+-   **API Endpoints:**
+    - `GET /api/parents/students/all/` - Browse all students (parent-only)
+    - `POST /api/parents/children/request/` - Request child link (parent-only)
+    - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin/teacher-only)
+-   **Security Note:** This two-step verification (parent request → admin approval) prevents unauthorized access to student records.
 
 ## External Dependencies
 
