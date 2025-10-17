@@ -31,6 +31,13 @@ function Layout() {
     ],
     student: [
       { path: '/student', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/student/profile', icon: 'fa-user', title: 'Profile' },
+      { path: '/student/submissions', icon: 'fa-tasks', title: 'Submissions' },
+      { path: '/student/marks', icon: 'fa-chart-line', title: 'Marks' },
+      { path: '/student/calendar', icon: 'fa-calendar', title: 'School Calendar' },
+      { path: '/student/timetable', icon: 'fa-clock', title: 'Timetable' },
+      { path: '/student/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },
+      { path: '/student/announcements', icon: 'fa-bullhorn', title: 'Announcements' },
     ],
     parent: [
       { path: '/parent', icon: 'fa-home', title: 'Dashboard' },
