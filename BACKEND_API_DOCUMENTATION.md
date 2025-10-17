@@ -1,10 +1,10 @@
-# Backend API Documentation for Student Portal
+# Backend API Documentation for School Management System
 
 ## Overview
-This document outlines all the expected API endpoints and response formats for the Student Portal system. All endpoints should be accessible at `http://localhost:8000/api` and will be proxied through the frontend.
+This document outlines all the expected API endpoints and response formats for the School Management System. All endpoints should be accessible at `http://localhost:8000/api` and will be proxied through the frontend.
 
 ## Authentication
-All student endpoints require JWT Bearer token authentication.
+All student and parent endpoints require JWT Bearer token authentication.
 - Token should be sent in the `Authorization` header: `Bearer <token>`
 - Token is stored in localStorage after login
 
@@ -378,6 +378,273 @@ All student endpoints require JWT Bearer token authentication.
 
 ---
 
+## Parent API Endpoints
+
+### 1. Parent's Children List
+**Endpoint:** `GET /api/parents/children/`
+
+**Description:** Returns all children linked to the parent (both confirmed and unconfirmed)
+
+**Response Format:**
+```json
+[
+  {
+    "id": 1,
+    "name": "John",
+    "surname": "Doe",
+    "class": "Form 2B",
+    "student_number": "STU2024001",
+    "is_confirmed": true
+  },
+  {
+    "id": 2,
+    "name": "Jane",
+    "surname": "Doe",
+    "class": "Form 1A",
+    "student_number": "STU2024002",
+    "is_confirmed": false
+  }
+]
+```
+
+**Fields per child:**
+- `id` (integer): Child's unique ID
+- `name` (string): Child's first name
+- `surname` (string): Child's last name
+- `class` (string): Child's class
+- `student_number` (string): Student identification number
+- `is_confirmed` (boolean): Whether parent has confirmed this is their child
+
+---
+
+### 2. Available Children to Confirm
+**Endpoint:** `GET /api/parents/children/available/`
+
+**Description:** Returns children that are linked to this parent but not yet confirmed
+
+**Response Format:**
+```json
+[
+  {
+    "id": 2,
+    "name": "Jane",
+    "surname": "Doe",
+    "class": "Form 1A",
+    "student_number": "STU2024002"
+  }
+]
+```
+
+**Fields:** Same as children list, but only unconfirmed children
+
+---
+
+### 3. Confirm Child
+**Endpoint:** `POST /api/parents/children/{child_id}/confirm/`
+
+**Description:** Confirms that a child belongs to the parent
+
+**Request:** No body required
+
+**Response Format:**
+```json
+{
+  "id": 2,
+  "name": "Jane",
+  "surname": "Doe",
+  "class": "Form 1A",
+  "student_number": "STU2024002",
+  "is_confirmed": true
+}
+```
+
+---
+
+### 4. Child Dashboard Statistics
+**Endpoint:** `GET /api/parents/children/{child_id}/stats/`
+
+**Description:** Returns dashboard statistics for a specific child
+
+**Response Format:**
+```json
+{
+  "overall_average": 78.5,
+  "total_subjects": 7,
+  "attendance_percentage": 94.0,
+  "outstanding_fees": 150.00
+}
+```
+
+**Fields:**
+- `overall_average` (float): Child's overall grade average
+- `total_subjects` (integer): Number of subjects child is enrolled in
+- `attendance_percentage` (float): Child's attendance rate
+- `outstanding_fees` (float): Amount of unpaid school fees
+
+---
+
+### 5. Child Performance/Marks
+**Endpoint:** `GET /api/parents/children/{child_id}/performance/`
+
+**Description:** Returns academic performance data for a specific child
+
+**Response Format:**
+```json
+[
+  {
+    "subject_id": 1,
+    "subject_name": "Mathematics",
+    "test_score_percentage": 85.5,
+    "assignment_score_percentage": 78.0,
+    "overall_term_percentage": 82.5,
+    "overall_year_percentage": 80.0,
+    "recent_scores": [
+      {
+        "name": "Quiz 1",
+        "percentage": 88.0,
+        "date": "2025-10-15"
+      }
+    ]
+  }
+]
+```
+
+**Note:** Same format as student marks endpoint
+
+---
+
+### 6. Weekly Messages from Teachers
+**Endpoint:** `GET /api/parents/children/{child_id}/messages/`
+
+**Alternative:** `GET /api/parents/messages/` (for all children)
+
+**Description:** Returns weekly progress messages from teachers about the child
+
+**Response Format:**
+```json
+[
+  {
+    "id": 1,
+    "subject": "Mathematics",
+    "teacher": "Mr. Smith",
+    "message": "John has shown excellent improvement in algebra this week. He actively participates in class and completes all homework on time. Keep up the good work!",
+    "date": "2025-10-17",
+    "week_number": 7,
+    "performance_rating": 4,
+    "areas_of_improvement": [
+      "Needs more practice with geometry problems"
+    ],
+    "strengths": [
+      "Excellent algebra skills",
+      "Active class participation"
+    ]
+  },
+  {
+    "id": 2,
+    "subject": "English",
+    "teacher": "Ms. Johnson",
+    "message": "John's reading comprehension has improved significantly. He contributed well to our Shakespeare discussion this week.",
+    "date": "2025-10-17",
+    "week_number": 7,
+    "performance_rating": 5,
+    "areas_of_improvement": [],
+    "strengths": [
+      "Excellent reading skills",
+      "Good analytical thinking"
+    ]
+  }
+]
+```
+
+**Fields per message:**
+- `id` (integer): Message unique ID
+- `subject` (string): Subject/course name
+- `teacher` (string): Teacher's name
+- `message` (string): Teacher's feedback message
+- `date` (string): Date message was sent (YYYY-MM-DD format, typically Friday)
+- `week_number` (integer): School week number
+- `performance_rating` (integer|null): Rating from 1-5 (optional)
+- `areas_of_improvement` (array): List of areas needing improvement (optional)
+- `strengths` (array): List of child's strengths (optional)
+
+---
+
+### 7. Child School Fees
+**Endpoint:** `GET /api/parents/children/{child_id}/fees/`
+
+**Description:** Returns fee information and payment status for a specific child
+
+**Response Format:**
+```json
+{
+  "total_fees": 5000.00,
+  "total_paid": 3500.00,
+  "outstanding": 1500.00,
+  "fees": [
+    {
+      "id": 1,
+      "type": "Tuition Fee - Term 1",
+      "amount": 3000.00,
+      "due_date": "2025-01-15",
+      "status": "paid"
+    },
+    {
+      "id": 2,
+      "type": "Activity Fee",
+      "amount": 500.00,
+      "due_date": "2025-02-01",
+      "status": "paid"
+    },
+    {
+      "id": 3,
+      "type": "Tuition Fee - Term 2",
+      "amount": 3000.00,
+      "due_date": "2025-04-15",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "type": "Library Fee",
+      "amount": 200.00,
+      "due_date": "2025-03-01",
+      "status": "overdue"
+    }
+  ],
+  "payment_history": [
+    {
+      "id": 1,
+      "description": "Tuition Fee - Term 1",
+      "amount": 3000.00,
+      "date": "2025-01-10"
+    },
+    {
+      "id": 2,
+      "description": "Activity Fee",
+      "amount": 500.00,
+      "date": "2025-01-20"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `total_fees` (float): Total fees for the year
+- `total_paid` (float): Amount already paid
+- `outstanding` (float): Amount still owed
+- `fees` (array): List of fee items
+  - `id` (integer): Fee item ID
+  - `type` (string): Fee description/type
+  - `amount` (float): Fee amount
+  - `due_date` (string): Payment due date (YYYY-MM-DD)
+  - `status` (string): "paid" | "pending" | "overdue"
+- `payment_history` (array): List of completed payments
+  - `id` (integer): Payment ID
+  - `description` (string): Payment description
+  - `amount` (float): Amount paid
+  - `date` (string): Payment date (YYYY-MM-DD)
+
+---
+
 ## API Base Configuration
 
 ### Base URL
@@ -444,8 +711,11 @@ All endpoints should return appropriate HTTP status codes and error messages:
 
 ## Notes for Backend Implementation
 
-1. **Authentication**: All `/api/students/*` endpoints require authenticated student users
-2. **Permissions**: Ensure students can only access their own data
+1. **Authentication**: All `/api/students/*` and `/api/parents/*` endpoints require authenticated users
+2. **Permissions**: 
+   - Students can only access their own data
+   - Parents can only access data for their confirmed children
+   - Parent-child linking must be initiated by admin, then confirmed by parent
 3. **Date Formats**: Use ISO 8601 format for all datetime fields
 4. **CORS**: Configure CORS to allow requests from the frontend
 5. **Pagination**: If implementing pagination, wrap results in:
@@ -458,10 +728,16 @@ All endpoints should return appropriate HTTP status codes and error messages:
    }
    ```
    The frontend will automatically extract the `results` array.
+6. **Weekly Messages**: 
+   - Teachers send weekly messages every Friday
+   - Messages include feedback, performance rating, and areas for improvement
+   - Parents can view messages for their confirmed children only
 
 ---
 
 ## Quick Reference - All Endpoints
+
+### Student Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -473,6 +749,19 @@ All endpoints should return appropriate HTTP status codes and error messages:
 | `/api/students/timetable/` | GET | Weekly class timetable |
 | `/api/students/teachers/` | GET | Student's teachers list |
 | `/api/students/announcements/` | GET | School announcements |
+
+### Parent Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/parents/children/` | GET | List of parent's children |
+| `/api/parents/children/available/` | GET | Unconfirmed children to link |
+| `/api/parents/children/{child_id}/confirm/` | POST | Confirm a child |
+| `/api/parents/children/{child_id}/stats/` | GET | Child's dashboard statistics |
+| `/api/parents/children/{child_id}/performance/` | GET | Child's academic performance |
+| `/api/parents/children/{child_id}/messages/` | GET | Weekly teacher messages |
+| `/api/parents/messages/` | GET | All weekly messages (all children) |
+| `/api/parents/children/{child_id}/fees/` | GET | Child's fee information |
 
 ---
 

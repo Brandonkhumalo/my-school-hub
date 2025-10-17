@@ -167,6 +167,64 @@ All student endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
 - `/api/students/teachers/` - Student's teachers
 - `/api/students/announcements/` - School announcements
 
+### Parent Portal Implementation ✓
+A comprehensive parent portal has been implemented with child linking and monitoring features:
+
+**Parent Dashboard:**
+- Child selector dropdown for parents with multiple children
+- Overview statistics (overall average, total subjects, attendance, outstanding fees)
+- Quick action cards for common tasks
+- Recent weekly messages preview
+- Parent-specific navigation links
+
+**Parent Pages:**
+1. **Dashboard** (`/parent`) - Overview with child selector
+   - Statistics for selected child
+   - Quick actions and recent messages
+   - Child confirmation status indicators
+   
+2. **My Children** (`/parent/children`) - Child management
+   - View confirmed children
+   - Link and confirm new children (admin-initiated)
+   - Two-step verification: Admin links, Parent confirms
+   
+3. **Performance** (`/parent/performance`) - Academic results
+   - View child's marks and grades
+   - Test scores, assignment scores
+   - Term and year percentages per subject
+   - Recent assessment history
+   
+4. **Weekly Messages** (`/parent/messages`) - Teacher feedback
+   - Weekly progress reports from teachers (sent every Friday)
+   - Performance ratings (1-5 stars)
+   - Areas of improvement highlighted
+   - Student strengths recognition
+   - Subject-specific feedback
+   
+5. **School Fees** (`/parent/fees`) - Fee management
+   - Total fees, paid amount, outstanding balance
+   - Fee breakdown by type and status
+   - Payment history
+   - Demo payment interface (proof of concept)
+
+**New API Endpoints:**
+All parent endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
+- `/api/parents/children/` - Parent's children list
+- `/api/parents/children/available/` - Unconfirmed children
+- `/api/parents/children/{id}/confirm/` - Confirm child
+- `/api/parents/children/{id}/stats/` - Child dashboard stats
+- `/api/parents/children/{id}/performance/` - Child performance
+- `/api/parents/children/{id}/messages/` - Weekly teacher messages
+- `/api/parents/messages/` - All messages (all children)
+- `/api/parents/children/{id}/fees/` - Child fee information
+
+**Key Features:**
+- **Parent-Child Linking:** Two-step process (admin links, parent confirms)
+- **Weekly Messages:** Teachers send Friday updates with ratings and feedback
+- **Multi-Child Support:** Parents can manage multiple children from one account
+- **Fee Tracking:** Complete fee breakdown with payment history
+- **Demo Payment:** Placeholder for payment gateway integration
+
 ## Future Improvements
 
 - Install Tailwind CSS properly (PostCSS plugin)
@@ -174,4 +232,6 @@ All student endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
 - Implement offline support
 - Add unit and integration tests
 - Set up proper environment variable management
-- Implement parent and teacher portals
+- Implement teacher portal
+- Integrate payment gateway for school fees (Stripe, PayPal, etc.)
+- Add push notifications for weekly messages
