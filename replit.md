@@ -111,6 +111,62 @@ Without the backend running, the login and data fetching will fail.
 
 3. **HMR Configuration:** WebSocket connection configured for Replit proxy environment
 
+## Recent Updates (October 17, 2025)
+
+### Student Portal Implementation ✓
+A comprehensive student portal has been implemented with the following features:
+
+**Student Dashboard:**
+- Overview statistics (overall average, total subjects, pending submissions, attendance)
+- Quick links to all student pages
+- Upcoming submissions preview
+- Recent announcements
+- Academic performance summary
+
+**Student Pages:**
+1. **Profile** (`/student/profile`) - Student information display
+   - Name, surname, class, phone number, parent ID, student number
+   
+2. **Submissions** (`/student/submissions`) - Assignment deadlines
+   - View all upcoming submission deadlines
+   - Subject name and due dates
+   - Visual indicators for urgency (overdue, due soon)
+   
+3. **Marks** (`/student/marks`) - Academic performance
+   - Test scores, assignment scores
+   - Overall term percentage per subject
+   - Overall year percentage per subject
+   - Recent assessment history
+   
+4. **School Calendar** (`/student/calendar`) - Events and holidays
+   - School activities, holidays, exams
+   - Event types and descriptions
+   
+5. **Timetable** (`/student/timetable`) - Weekly schedule
+   - Time slots (7am-8am format)
+   - Shows week start date from backend
+   - Subject, teacher, and room information
+   
+6. **Teachers** (`/student/teachers`) - Student's teachers
+   - All teachers who teach the student
+   - Subject, contact information, office location
+   
+7. **Announcements** (`/student/announcements`) - School notices
+   - School-wide announcements
+   - Priority levels (urgent, high, normal)
+   - Author and date information
+
+**New API Endpoints:**
+All student endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
+- `/api/students/profile/` - Student profile
+- `/api/students/dashboard/stats/` - Dashboard statistics
+- `/api/students/submissions/` - Upcoming submissions
+- `/api/students/marks/` - Grades and performance
+- `/api/students/calendar/` - School events
+- `/api/students/timetable/` - Weekly timetable
+- `/api/students/teachers/` - Student's teachers
+- `/api/students/announcements/` - School announcements
+
 ## Future Improvements
 
 - Install Tailwind CSS properly (PostCSS plugin)
@@ -118,3 +174,4 @@ Without the backend running, the login and data fetching will fail.
 - Implement offline support
 - Add unit and integration tests
 - Set up proper environment variable management
+- Implement parent and teacher portals
