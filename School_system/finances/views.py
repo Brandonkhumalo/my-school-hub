@@ -1,0 +1,271 @@
+from rest_framework import generics, status, permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from django.db.models import Sum, Q
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport
+from academics.models import Student
+from .serializers import (
+    FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
+    InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
+    StudentFinancialSummarySerializer
+)
+
+
+# Fee Type Views
+class FeeTypeListCreateView(generics.ListCreateAPIView):
+    queryset = FeeType.objects.all()
+    serializer_class = FeeTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = FeeType.objects.all()
+        academic_year = self.request.query_params.get('academic_year')
+        if academic_year:
+            queryset = queryset.filter(academic_year=academic_year)
+        return queryset
+
+
+class FeeTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = FeeType.objects.all()
+    serializer_class = FeeTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# Student Fee Views
+class StudentFeeListCreateView(generics.ListCreateAPIView):
+    queryset = StudentFee.objects.all()
+    serializer_class = StudentFeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = StudentFee.objects.all()
+        
+        # Filter by user role
+        if self.request.user.role == 'student':
+            queryset = queryset.filter(student__user=self.request.user)
+        elif self.request.user.role == 'parent':
+            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+            queryset = queryset.filter(student_id__in=children_ids)
+        
+        # Additional filters
+        student_id = self.request.query_params.get('student')
+        is_paid = self.request.query_params.get('is_paid')
+        academic_year = self.request.query_params.get('academic_year')
+        academic_term = self.request.query_params.get('academic_term')
+        
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        if is_paid is not None:
+            queryset = queryset.filter(is_paid=is_paid.lower() == 'true')
+        if academic_year:
+            queryset = queryset.filter(academic_year=academic_year)
+        if academic_term:
+            queryset = queryset.filter(academic_term=academic_term)
+            
+        return queryset.order_by('-due_date')
+
+
+class StudentFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = StudentFee.objects.all()
+    serializer_class = StudentFeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# Payment Views
+class PaymentListCreateView(generics.ListCreateAPIView):
+    queryset = Payment.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return CreatePaymentSerializer
+        return PaymentSerializer
+
+    def get_queryset(self):
+        queryset = Payment.objects.all()
+        
+        # Filter by user role
+        if self.request.user.role == 'student':
+            queryset = queryset.filter(student_fee__student__user=self.request.user)
+        elif self.request.user.role == 'parent':
+            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+            queryset = queryset.filter(student_fee__student_id__in=children_ids)
+        
+        # Additional filters
+        student_id = self.request.query_params.get('student')
+        payment_status = self.request.query_params.get('status')
+        payment_method = self.request.query_params.get('method')
+        
+        if student_id:
+            queryset = queryset.filter(student_fee__student_id=student_id)
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        if payment_method:
+            queryset = queryset.filter(payment_method=payment_method)
+            
+        return queryset.order_by('-payment_date')
+
+    def perform_create(self, serializer):
+        serializer.save(processed_by=self.request.user)
+
+
+class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Payment.objects.all()
+    serializer_class = PaymentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# Invoice Views
+class InvoiceListCreateView(generics.ListCreateAPIView):
+    queryset = Invoice.objects.all()
+    serializer_class = InvoiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Invoice.objects.all()
+        
+        # Filter by user role
+        if self.request.user.role == 'student':
+            queryset = queryset.filter(student__user=self.request.user)
+        elif self.request.user.role == 'parent':
+            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+            queryset = queryset.filter(student_id__in=children_ids)
+        
+        # Additional filters
+        student_id = self.request.query_params.get('student')
+        is_paid = self.request.query_params.get('is_paid')
+        
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        if is_paid is not None:
+            queryset = queryset.filter(is_paid=is_paid.lower() == 'true')
+            
+        return queryset.order_by('-issue_date')
+
+
+class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Invoice.objects.all()
+    serializer_class = InvoiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# Financial Report Views
+class FinancialReportListCreateView(generics.ListCreateAPIView):
+    queryset = FinancialReport.objects.all()
+    serializer_class = FinancialReportSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only accountants and admins can view financial reports
+        if self.request.user.role not in ['accountant', 'admin']:
+            return FinancialReport.objects.none()
+        
+        queryset = FinancialReport.objects.all()
+        report_type = self.request.query_params.get('type')
+        academic_year = self.request.query_params.get('academic_year')
+        
+        if report_type:
+            queryset = queryset.filter(report_type=report_type)
+        if academic_year:
+            queryset = queryset.filter(academic_year=academic_year)
+            
+        return queryset.order_by('-date_generated')
+
+    def perform_create(self, serializer):
+        serializer.save(generated_by=self.request.user)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_financial_summary(request, student_id):
+    """Get comprehensive financial summary for a student"""
+    try:
+        student = Student.objects.get(id=student_id)
+        
+        # Check permissions
+        if request.user.role == 'student' and request.user.student.id != student_id:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        elif request.user.role == 'parent':
+            if not request.user.parent.children.filter(id=student_id).exists():
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Calculate financial summary
+        fees = StudentFee.objects.filter(student=student)
+        payments = Payment.objects.filter(student_fee__student=student, payment_status='completed')
+        
+        total_fees_due = fees.aggregate(total=Sum('amount_due'))['total'] or 0
+        total_fees_paid = fees.aggregate(total=Sum('amount_paid'))['total'] or 0
+        total_balance = total_fees_due - total_fees_paid
+        unpaid_fees_count = fees.filter(is_paid=False).count()
+        
+        # Get recent payments and pending fees
+        recent_payments = payments.order_by('-payment_date')[:5]
+        pending_fees = fees.filter(is_paid=False).order_by('due_date')
+        
+        summary_data = {
+            'student_id': student.id,
+            'student_name': student.user.full_name,
+            'student_number': student.user.student_number,
+            'total_fees_due': total_fees_due,
+            'total_fees_paid': total_fees_paid,
+            'total_balance': total_balance,
+            'unpaid_fees_count': unpaid_fees_count,
+            'recent_payments': PaymentSerializer(recent_payments, many=True).data,
+            'pending_fees': StudentFeeSerializer(pending_fees, many=True).data
+        }
+        
+        return Response(summary_data)
+        
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def process_whatsapp_payment(request):
+    """Process payment made through WhatsApp"""
+    if request.user.role not in ['student', 'parent']:
+        return Response({'error': 'Only students and parents can make WhatsApp payments'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    student_fee_id = request.data.get('student_fee_id')
+    amount = request.data.get('amount')
+    payment_reference = request.data.get('payment_reference')
+    
+    try:
+        student_fee = StudentFee.objects.get(id=student_fee_id)
+        
+        # Validate permission
+        if request.user.role == 'student':
+            if student_fee.student.user != request.user:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        elif request.user.role == 'parent':
+            if not request.user.parent.children.filter(id=student_fee.student.id).exists():
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Create payment record
+        payment = Payment.objects.create(
+            student_fee=student_fee,
+            amount=amount,
+            payment_method='whatsapp',
+            payment_status='completed',
+            transaction_id=payment_reference,
+            processed_by=request.user,
+            notes=f'WhatsApp payment processed automatically'
+        )
+        
+        # Update student fee
+        student_fee.amount_paid += float(amount)
+        if student_fee.amount_paid >= student_fee.amount_due:
+            student_fee.is_paid = True
+        student_fee.save()
+        
+        return Response({
+            'message': 'Payment processed successfully',
+            'payment': PaymentSerializer(payment).data
+        })
+        
+    except StudentFee.DoesNotExist:
+        return Response({'error': 'Student fee not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
