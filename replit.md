@@ -1,336 +1,48 @@
 # School Management System - Frontend
 
 ## Overview
-This is a React-based School Management System frontend built with Vite. The application provides different dashboards and functionality for administrators, teachers, students, and parents.
+This project is a React-based School Management System frontend, built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. Its primary purpose is to provide a comprehensive and intuitive platform for managing various aspects of school operations and communication. The system aims to streamline administrative tasks, enhance teacher-parent-student interaction, and provide students with access to their academic information.
 
-**Current Status:** Frontend configured and running successfully on Replit ✓
-**Last Updated:** October 17, 2025
+## User Preferences
+I want to communicate in simple language. I prefer iterative development. Ask before making major changes.
 
-### Import Setup Completed
-- ✓ Dependencies installed via npm
-- ✓ Vite server configured for Replit (port 5000, host 0.0.0.0)
-- ✓ Allowed hosts configured for Replit proxy
-- ✓ HMR WebSocket configured for Replit environment
-- ✓ Workflow configured and running
-- ✓ Deployment configuration set up (autoscale)
-- ✓ Frontend accessible and functional
-
-## Project Architecture
+## System Architecture
 
 ### Technology Stack
-- **Framework:** React 19.1.1
+- **Frontend Framework:** React 19.1.1
 - **Build Tool:** Vite 7.1.7
 - **Routing:** React Router DOM 7.9.1
-- **Styling:** Tailwind CSS (loaded via CDN)
-- **Package Manager:** npm
-
-### Project Structure
-```
-/src
-  /assets          - Static assets (images, icons)
-  /components      - Reusable UI components
-  /context         - React context providers (AuthContext)
-  /pages           - Page components organized by user role
-    /admin         - Admin dashboard and management pages
-    /auth          - Login/Logout pages
-    /parent        - Parent dashboard and views
-    /student       - Student dashboard and views
-    /teacher       - Teacher dashboard and views
-    /profile       - User profile pages
-    /notfound      - 404 and error pages
-  /services        - API service layer (apiService.jsx)
-  App.jsx          - Main app component with routing
-  main.jsx         - Application entry point
-  index.css        - Global styles
-```
-
-### Backend Integration
-- The frontend expects a backend API running on `localhost:8000`
-- API calls are proxied through `/api` endpoint
-- Authentication uses JWT Bearer tokens stored in localStorage
-- API service handles all HTTP requests with automatic token injection
-
-### User Roles
-The system supports four user roles:
-1. **Admin** - Full system management access
-2. **Teacher** - Class and student management
-3. **Student** - View grades, timetable, fees
-4. **Parent** - View children's academic records
-
-## Configuration
-
-### Vite Configuration (vite.config.js)
-- **Host:** 0.0.0.0 (allows Replit proxy access)
-- **Port:** 5000 (frontend server)
-- **HMR:** Configured for Replit WebSocket proxy
-- **API Proxy:** `/api` → `http://localhost:8000`
-
-### Workflow
-- **Name:** Server
-- **Command:** `npm run dev`
-- **Port:** 5000
-- **Output:** Webview (frontend preview)
-
-## Development
-
-### Running the Application
-The frontend is configured to run automatically via Replit workflow:
-```bash
-npm run dev
-```
-
-### Available Scripts
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-
-### Dependencies Installation
-```bash
-npm install
-```
-
-## Backend Requirements
-
-**Important:** This frontend requires a backend API to function properly. The backend should:
-- Run on `localhost:8000`
-- Provide authentication endpoints at `/api/auth/`
-- Provide academic management endpoints at `/api/academics/`
-- Provide financial management endpoints at `/api/finances/`
-- Support JWT authentication
-
-Without the backend running, the login and data fetching will fail.
-
-## Known Issues & Notes
-
-1. **Tailwind CSS:** Currently loaded via CDN (not recommended for production)
-   - Should be installed as PostCSS plugin for production deployment
-   
-2. **Backend Dependency:** Frontend is fully dependent on backend API
-   - All pages except login will show loading/error states without backend
-
-3. **HMR Configuration:** WebSocket connection configured for Replit proxy environment
-
-## Backend Implementation ✓
-
-**Current Status:** Django backend configured and running successfully on port 8000 ✓
-
-### Technology Stack
-- **Framework:** Django 5.2.7
+- **Styling:** Tailwind CSS (via CDN)
+- **Backend Framework:** Django 5.2.7
 - **API:** Django REST Framework
 - **Authentication:** JWT (djangorestframework-simplejwt)
 - **CORS:** django-cors-headers
 - **Database:** PostgreSQL (via Replit database)
-- **Configuration:** python-decouple
 
-### Backend Workflows
-- **Name:** Django Backend
-- **Command:** `cd School_system && python manage.py runserver 0.0.0.0:8000`
-- **Port:** 8000
-- **Output:** Console
+### Project Structure
+The frontend follows a component-based architecture with pages organized by user role (`/admin`, `/auth`, `/parent`, `/student`, `/teacher`). Reusable UI components are stored in `/components`, and API interactions are centralized in `/services/apiService.jsx`.
 
-### New Database Models Created
-1. **ParentChildLink** - Tracks confirmed/unconfirmed parent-child relationships
-   - Two-step verification: Admin links, Parent confirms
-   - Tracks linked_date and confirmed_date
-   
-2. **WeeklyMessage** - Teacher feedback messages sent to parents
-   - Weekly progress reports with performance ratings (1-5)
-   - Areas of improvement and student strengths
-   - Subject-specific feedback
-   
-3. **SchoolEvent** - School calendar events
-   - Holidays, exams, school activities
-   - Event types and descriptions
-   
-4. **Assignment** - Student assignments with deadlines
-   - Subject-specific submissions
-   - Due dates for tracking
-   
-5. **Attendance** - Student attendance tracking
-   - Present, absent, late statuses
-   - Date-based records
+### UI/UX Decisions
+The system provides tailored user experiences for four distinct roles:
+1.  **Admin:** Full system management access.
+2.  **Teacher:** Class and student management.
+3.  **Student:** Access to grades, timetable, fees, and assignments.
+4.  **Parent:** View children's academic records, weekly messages, and fee information with multi-child support and a two-step parent-child linking process.
 
-### API Implementation Status
-All endpoints implemented and tested successfully:
-- ✓ 8 Student endpoints operational
-- ✓ 8 Parent endpoints operational
-- ✓ Role-based permissions enforced
-- ✓ JWT authentication required
-- ✓ Database migrations completed
+Key features include:
+-   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
+-   **Parent Portal:** Dashboard with child selector, child management (linking/confirmation), academic performance, weekly teacher messages, and fee tracking with a demo payment interface.
+-   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
 
-## Recent Updates (October 17, 2025)
+### Technical Implementations
+-   API communication uses JWT Bearer tokens for authentication, stored in localStorage, with an API service layer handling automatic token injection.
+-   Frontend expects a backend API running on `localhost:8000`, with API calls proxied through the `/api` endpoint.
+-   HMR WebSocket is configured for the Replit environment.
+-   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, and `Attendance` to support core functionalities.
+-   Role-based permissions are enforced across all API endpoints.
 
-### Student Portal Implementation ✓
-A comprehensive student portal has been implemented with the following features:
+## External Dependencies
 
-**Student Dashboard:**
-- Overview statistics (overall average, total subjects, pending submissions, attendance)
-- Quick links to all student pages
-- Upcoming submissions preview
-- Recent announcements
-- Academic performance summary
-
-**Student Pages:**
-1. **Profile** (`/student/profile`) - Student information display
-   - Name, surname, class, phone number, parent ID, student number
-   
-2. **Submissions** (`/student/submissions`) - Assignment deadlines
-   - View all upcoming submission deadlines
-   - Subject name and due dates
-   - Visual indicators for urgency (overdue, due soon)
-   
-3. **Marks** (`/student/marks`) - Academic performance
-   - Test scores, assignment scores
-   - Overall term percentage per subject
-   - Overall year percentage per subject
-   - Recent assessment history
-   
-4. **School Calendar** (`/student/calendar`) - Events and holidays
-   - School activities, holidays, exams
-   - Event types and descriptions
-   
-5. **Timetable** (`/student/timetable`) - Weekly schedule
-   - Time slots (7am-8am format)
-   - Shows week start date from backend
-   - Subject, teacher, and room information
-   
-6. **Teachers** (`/student/teachers`) - Student's teachers
-   - All teachers who teach the student
-   - Subject, contact information, office location
-   
-7. **Announcements** (`/student/announcements`) - School notices
-   - School-wide announcements
-   - Priority levels (urgent, high, normal)
-   - Author and date information
-
-**New API Endpoints:**
-All student endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
-- `/api/students/profile/` - Student profile
-- `/api/students/dashboard/stats/` - Dashboard statistics
-- `/api/students/submissions/` - Upcoming submissions
-- `/api/students/marks/` - Grades and performance
-- `/api/students/calendar/` - School events
-- `/api/students/timetable/` - Weekly timetable
-- `/api/students/teachers/` - Student's teachers
-- `/api/students/announcements/` - School announcements
-
-### Parent Portal Implementation ✓
-A comprehensive parent portal has been implemented with child linking and monitoring features:
-
-**Parent Dashboard:**
-- Child selector dropdown for parents with multiple children
-- Overview statistics (overall average, total subjects, attendance, outstanding fees)
-- Quick action cards for common tasks
-- Recent weekly messages preview
-- Parent-specific navigation links
-
-**Parent Pages:**
-1. **Dashboard** (`/parent`) - Overview with child selector
-   - Statistics for selected child
-   - Quick actions and recent messages
-   - Child confirmation status indicators
-   
-2. **My Children** (`/parent/children`) - Child management
-   - View confirmed children
-   - Link and confirm new children (admin-initiated)
-   - Two-step verification: Admin links, Parent confirms
-   
-3. **Performance** (`/parent/performance`) - Academic results
-   - View child's marks and grades
-   - Test scores, assignment scores
-   - Term and year percentages per subject
-   - Recent assessment history
-   
-4. **Weekly Messages** (`/parent/messages`) - Teacher feedback
-   - Weekly progress reports from teachers (sent every Friday)
-   - Performance ratings (1-5 stars)
-   - Areas of improvement highlighted
-   - Student strengths recognition
-   - Subject-specific feedback
-   
-5. **School Fees** (`/parent/fees`) - Fee management
-   - Total fees, paid amount, outstanding balance
-   - Fee breakdown by type and status
-   - Payment history
-   - Demo payment interface (proof of concept)
-
-**New API Endpoints:**
-All parent endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
-- `/api/parents/children/` - Parent's children list
-- `/api/parents/children/available/` - Unconfirmed children
-- `/api/parents/children/{id}/confirm/` - Confirm child
-- `/api/parents/children/{id}/stats/` - Child dashboard stats
-- `/api/parents/children/{id}/performance/` - Child performance
-- `/api/parents/children/{id}/messages/` - Weekly teacher messages
-- `/api/parents/messages/` - All messages (all children)
-- `/api/parents/children/{id}/fees/` - Child fee information
-
-**Key Features:**
-- **Parent-Child Linking:** Two-step process (admin links, parent confirms)
-- **Weekly Messages:** Teachers send Friday updates with ratings and feedback
-- **Multi-Child Support:** Parents can manage multiple children from one account
-- **Fee Tracking:** Complete fee breakdown with payment history
-- **Demo Payment:** Placeholder for payment gateway integration
-
-## Demo Data Population ✓
-
-**Current Status:** Database populated with comprehensive demo data for testing ✓
-
-### Populated Data (October 17, 2025)
-
-**Teachers:**
-- 72 teachers created (6 per secondary form class)
-- Each teacher assigned to 2-3 subjects
-- All teachers have login credentials: `username: firstname.lastname.classid.number` / `password: teacher123`
-
-**Student Marks:**
-- All students have 3-5 assessment results per subject
-- Subjects: Term 3, 2025
-- Mix of test scores, assignments, and exams (45-95% range)
-
-**Assignments/Submissions:**
-- Demo assignments for all secondary forms
-- Deadlines from November 15, 2025 onwards
-- Various submission types: Research Essay, Lab Report, Project Presentation, etc.
-
-**School Calendar Events:**
-1. **Parent-Teacher Meetings** - November 8-9, 2025
-2. **Sports Day** - November 10, 2025 (School Sports Field)
-3. **Final Examinations Start** - November 15-29, 2025
-4. **Prize Giving Ceremony** - December 12, 2025 (School Hall)
-5. **School Closes for December Holiday** - December 13, 2025 - January 10, 2026
-
-**Announcements:**
-- 6 school announcements with different target audiences (all, students, parents)
-- Topics: Exams, Sports Day, Library Hours, Fees, COVID protocols, Career Workshop
-
-**Timetable:**
-- 360 timetable entries covering all secondary forms
-- Monday to Friday schedule (6 time slots per day: 7:30 AM - 3:00 PM)
-- Subjects assigned with teachers and rooms
-
-### Data Population Command
-To repopulate or update demo data:
-```bash
-cd School_system
-python manage.py populate_demo_data
-```
-
-## Bug Fixes (October 17, 2025)
-
-**Student Profile API:**
-- ✓ Fixed `parent_id` field to show actual parent ID from ParentChildLink database
-- Previously showed phone number, now correctly displays parent.id from confirmed relationships
-
-## Future Improvements
-
-- Install Tailwind CSS properly (PostCSS plugin)
-- Add loading states and error boundaries
-- Implement offline support
-- Add unit and integration tests
-- Set up proper environment variable management
-- Implement teacher portal
-- Integrate payment gateway for school fees (Stripe, PayPal, etc.)
-- Add push notifications for weekly messages
-- Make populate_demo_data command idempotent with --reset flag
+-   **Backend API:** A Django-based API running on `localhost:8000` is required for all data operations and authentication.
+-   **PostgreSQL:** Used as the database for the Django backend (via Replit database).
+-   **Tailwind CSS CDN:** Currently used for styling (future plan to integrate as a PostCSS plugin).
