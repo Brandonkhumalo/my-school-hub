@@ -1,6 +1,9 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 
+// Landing Page
+import Index from "./pages/Index";
+
 // Layout
 import Layout from "./components/Layout";
 
@@ -41,6 +44,7 @@ import ParentFees from "./pages/parent/ParentFees";
 
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
+import AdminLogin from "./pages/auth/AdminLogin";
 import ParentRegister from "./pages/auth/ParentRegister";
 import Logout from "./pages/auth/Logout";
 
@@ -50,9 +54,12 @@ import NotFound from "./pages/notfound/NotFound";
 function App() {
   return (
     <Routes>
+      {/* Landing page */}
+      <Route path="/" element={<Index />} />
+      
       {/* Auth pages */}
-      <Route path="/" element={<LoginPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/register/parent" element={<ParentRegister />} />
       <Route path="/logout" element={<Logout />} />
 
