@@ -135,6 +135,8 @@ const apiService = {
 
   getParentChildren: () => request("/parents/children/", "GET"),
   getAvailableChildren: () => request("/parents/children/available/", "GET"),
+  getAllStudents: () => request("/parents/students/all/", "GET"),
+  requestChildLink: (studentId) => request("/parents/children/request/", "POST", { student_id: studentId }),
   confirmChild: (childId) => request(`/parents/children/${childId}/confirm/`, "POST"),
   getParentDashboardStats: (childId) => request(`/parents/children/${childId}/stats/`, "GET"),
   getChildPerformance: (childId) => request(`/parents/children/${childId}/performance/`, "GET"),

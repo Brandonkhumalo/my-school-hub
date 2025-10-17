@@ -75,20 +75,114 @@ def available_children_to_confirm(request):
                        status=status.HTTP_404_NOT_FOUND)
 
 
-@api_view(['POST'])
+@api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def confirm_child(request, child_id):
-    """Confirm a child belongs to the parent"""
+def all_students_list(request):
+    """Get all students in the system for parents to browse and link"""
     if request.user.role != 'parent':
         return Response({'error': 'Only parents can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     try:
         parent = request.user.parent
-        link = ParentChildLink.objects.get(parent=parent, student_id=child_id)
+        # Get all students
+        students = Student.objects.all().select_related('user', 'student_class')
+        
+        # Get already linked student IDs (both confirmed and unconfirmed)
+        linked_student_ids = ParentChildLink.objects.filter(
+            parent=parent
+        ).values_list('student_id', flat=True)
+        
+        data = []
+        for student in students:
+            is_linked = student.id in linked_student_ids
+            data.append({
+                'id': student.id,
+                'name': student.user.first_name,
+                'surname': student.user.last_name,
+                'class': student.student_class.name if student.student_class else 'Not Assigned',
+                'student_number': student.user.student_number or '',
+                'is_linked': is_linked
+            })
+        
+        return Response(data)
+    except Parent.DoesNotExist:
+        return Response({'error': 'Parent profile not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def request_child_link(request):
+    """Request to link a child to the parent - requires ADMIN approval"""
+    if request.user.role != 'parent':
+        return Response({'error': 'Only parents can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        parent = request.user.parent
+        student_id = request.data.get('student_id')
+        
+        if not student_id:
+            return Response({'error': 'student_id is required'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, 
+                           status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if link already exists
+        existing_link = ParentChildLink.objects.filter(
+            parent=parent, 
+            student=student
+        ).first()
+        
+        if existing_link:
+            return Response({
+                'error': 'Link request already exists. Waiting for admin approval.',
+                'is_confirmed': existing_link.is_confirmed
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create new link request (unconfirmed, requires admin approval)
+        # Note: Parents CANNOT confirm these themselves for security
+        link = ParentChildLink.objects.create(
+            parent=parent,
+            student=student,
+            is_confirmed=False  # Only admins can set to True
+        )
+        
+        return Response({
+            'id': student.id,
+            'name': student.user.first_name,
+            'surname': student.user.last_name,
+            'class': student.student_class.name if student.student_class else 'Not Assigned',
+            'student_number': student.user.student_number or '',
+            'is_confirmed': False,
+            'message': 'Link request submitted successfully. Waiting for administrator approval.'
+        }, status=status.HTTP_201_CREATED)
+    except Parent.DoesNotExist:
+        return Response({'error': 'Parent profile not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def confirm_child(request, child_id):
+    """ADMIN ONLY: Approve parent-child link requests"""
+    # Only admins can confirm links for security
+    if request.user.role not in ['admin', 'teacher']:
+        return Response({
+            'error': 'Only administrators can approve parent-child links. Your request is pending admin approval.'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Admin confirms any parent-child link
+        link = ParentChildLink.objects.get(student_id=child_id)
         
         if link.is_confirmed:
-            return Response({'message': 'Child already confirmed'}, 
+            return Response({'message': 'Link already confirmed'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
         link.is_confirmed = True
@@ -101,13 +195,12 @@ def confirm_child(request, child_id):
             'surname': link.student.user.last_name,
             'class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
             'student_number': link.student.user.student_number or '',
-            'is_confirmed': True
+            'parent_name': f"{link.parent.user.first_name} {link.parent.user.last_name}",
+            'is_confirmed': True,
+            'message': 'Parent-child link approved successfully'
         })
     except ParentChildLink.DoesNotExist:
-        return Response({'error': 'Child link not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-    except Parent.DoesNotExist:
-        return Response({'error': 'Parent profile not found'}, 
+        return Response({'error': 'Link request not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
 
 
