@@ -132,6 +132,19 @@ const apiService = {
   getStudentTimetable: () => request("/students/timetable/", "GET"),
   getStudentTeachers: () => request("/students/teachers/", "GET"),
   getStudentAnnouncements: () => request("/students/announcements/", "GET"),
+
+  getParentChildren: () => request("/parents/children/", "GET"),
+  getAvailableChildren: () => request("/parents/children/available/", "GET"),
+  confirmChild: (childId) => request(`/parents/children/${childId}/confirm/`, "POST"),
+  getParentDashboardStats: (childId) => request(`/parents/children/${childId}/stats/`, "GET"),
+  getChildPerformance: (childId) => request(`/parents/children/${childId}/performance/`, "GET"),
+  getParentWeeklyMessages: (childId = null) => {
+    if (childId) {
+      return request(`/parents/children/${childId}/messages/`, "GET");
+    }
+    return request("/parents/messages/", "GET");
+  },
+  getChildFees: (childId) => request(`/parents/children/${childId}/fees/`, "GET"),
 };
 
 export default apiService;
