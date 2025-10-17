@@ -273,6 +273,56 @@ All parent endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
 - **Fee Tracking:** Complete fee breakdown with payment history
 - **Demo Payment:** Placeholder for payment gateway integration
 
+## Demo Data Population ✓
+
+**Current Status:** Database populated with comprehensive demo data for testing ✓
+
+### Populated Data (October 17, 2025)
+
+**Teachers:**
+- 72 teachers created (6 per secondary form class)
+- Each teacher assigned to 2-3 subjects
+- All teachers have login credentials: `username: firstname.lastname.classid.number` / `password: teacher123`
+
+**Student Marks:**
+- All students have 3-5 assessment results per subject
+- Subjects: Term 3, 2025
+- Mix of test scores, assignments, and exams (45-95% range)
+
+**Assignments/Submissions:**
+- Demo assignments for all secondary forms
+- Deadlines from November 15, 2025 onwards
+- Various submission types: Research Essay, Lab Report, Project Presentation, etc.
+
+**School Calendar Events:**
+1. **Parent-Teacher Meetings** - November 8-9, 2025
+2. **Sports Day** - November 10, 2025 (School Sports Field)
+3. **Final Examinations Start** - November 15-29, 2025
+4. **Prize Giving Ceremony** - December 12, 2025 (School Hall)
+5. **School Closes for December Holiday** - December 13, 2025 - January 10, 2026
+
+**Announcements:**
+- 6 school announcements with different target audiences (all, students, parents)
+- Topics: Exams, Sports Day, Library Hours, Fees, COVID protocols, Career Workshop
+
+**Timetable:**
+- 360 timetable entries covering all secondary forms
+- Monday to Friday schedule (6 time slots per day: 7:30 AM - 3:00 PM)
+- Subjects assigned with teachers and rooms
+
+### Data Population Command
+To repopulate or update demo data:
+```bash
+cd School_system
+python manage.py populate_demo_data
+```
+
+## Bug Fixes (October 17, 2025)
+
+**Student Profile API:**
+- ✓ Fixed `parent_id` field to show actual parent ID from ParentChildLink database
+- Previously showed phone number, now correctly displays parent.id from confirmed relationships
+
 ## Future Improvements
 
 - Install Tailwind CSS properly (PostCSS plugin)
@@ -283,3 +333,4 @@ All parent endpoints are documented in `BACKEND_API_DOCUMENTATION.md`
 - Implement teacher portal
 - Integrate payment gateway for school fees (Stripe, PayPal, etc.)
 - Add push notifications for weekly messages
+- Make populate_demo_data command idempotent with --reset flag
