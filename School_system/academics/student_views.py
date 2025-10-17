@@ -24,13 +24,21 @@ def student_profile(request):
     
     try:
         student = request.user.student
+        
+        # Get parent ID from ParentChildLink if exists
+        from .models import ParentChildLink
+        parent_id = ''
+        parent_link = ParentChildLink.objects.filter(student=student, is_confirmed=True).first()
+        if parent_link:
+            parent_id = parent_link.parent.id
+        
         data = {
             'id': student.id,
             'name': request.user.first_name,
             'surname': request.user.last_name,
             'class': student.student_class.name if student.student_class else 'Not Assigned',
             'phone_number': request.user.phone_number or '',
-            'parent_id': student.parent_contact or '',
+            'parent_id': parent_id,
             'student_number': request.user.student_number or ''
         }
         return Response(data)
