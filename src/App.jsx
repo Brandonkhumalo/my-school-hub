@@ -33,6 +33,12 @@ import StudentTimetable from "./pages/student/StudentTimetable";
 import StudentTeachers from "./pages/student/StudentTeachers";
 import StudentAnnouncements from "./pages/student/StudentAnnouncements";
 
+// Parent Pages
+import ParentChildren from "./pages/parent/ParentChildren";
+import ParentPerformance from "./pages/parent/ParentPerformance";
+import ParentWeeklyMessages from "./pages/parent/ParentWeeklyMessages";
+import ParentFees from "./pages/parent/ParentFees";
+
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
 import Logout from "./pages/auth/Logout";
@@ -79,6 +85,10 @@ function App() {
 
         {/* Parent Routes */}
         <Route path="/parent" element={<ParentDashboard />} />
+        <Route path="/parent/children" element={<ParentChildren />} />
+        <Route path="/parent/performance" element={<ParentPerformance />} />
+        <Route path="/parent/messages" element={<ParentWeeklyMessages />} />
+        <Route path="/parent/fees" element={<ParentFees />} />
 
         {/* Catch all */}
         <Route path="*" element={<NotFound />} />
