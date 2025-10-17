@@ -41,6 +41,7 @@ import ParentFees from "./pages/parent/ParentFees";
 
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
+import ParentRegister from "./pages/auth/ParentRegister";
 import Logout from "./pages/auth/Logout";
 
 // 404
@@ -51,6 +52,8 @@ function App() {
     <Routes>
       {/* Auth pages */}
       <Route path="/" element={<LoginPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register/parent" element={<ParentRegister />} />
       <Route path="/logout" element={<Logout />} />
 
       {/* Protected pages */}

@@ -112,7 +112,10 @@ function Login() {
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account? Contact your administrator
+            Are you a parent? <a href="/register/parent" className="text-blue-600 hover:text-blue-700 font-semibold">Register here</a>
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            Staff and students: Contact your administrator
           </p>
         </div>
       </div>

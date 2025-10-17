@@ -34,6 +34,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError("Passwords don't match.")
+        
+        # Security: Only allow parent role for self-registration
+        # Other roles (admin, teacher, student) must be created by admin
+        role = attrs.get('role', 'parent')
+        if role != 'parent':
+            raise serializers.ValidationError("Only parent registration is allowed. Contact administrator for other roles.")
+        
+        # Ensure role is set to parent
+        attrs['role'] = 'parent'
+        
         return attrs
 
     def generate_student_number(self):
