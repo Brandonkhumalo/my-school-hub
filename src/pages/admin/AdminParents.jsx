@@ -6,9 +6,11 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 export default function AdminParents() {
   const [parents, setParents] = useState([]);
   const [students, setStudents] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showCredentials, setShowCredentials] = useState(null);
+  const [processingRequest, setProcessingRequest] = useState(null);
   const [formData, setFormData] = useState({
     full_name: '',
     contact_number: '',
@@ -26,12 +28,14 @@ export default function AdminParents() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [parentsData, studentsData] = await Promise.all([
+      const [parentsData, studentsData, pendingData] = await Promise.all([
         apiService.fetchParents(),
-        apiService.fetchStudents()
+        apiService.fetchStudents(),
+        apiService.getPendingParentLinkRequests()
       ]);
       setParents(parentsData);
       setStudents(studentsData);
+      setPendingRequests(pendingData);
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -77,6 +81,42 @@ export default function AdminParents() {
     }
   };
 
+  const handleApproveRequest = async (linkId) => {
+    if (!confirm("Are you sure you want to approve this parent-child link request?")) {
+      return;
+    }
+    
+    try {
+      setProcessingRequest(linkId);
+      await apiService.approveParentLinkRequest(linkId);
+      alert("Parent-child link approved successfully!");
+      fetchData();
+    } catch (error) {
+      console.error("Error approving request:", error);
+      alert("Failed to approve request: " + (error.message || "Unknown error"));
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
+
+  const handleDeclineRequest = async (linkId) => {
+    if (!confirm("Are you sure you want to decline this parent-child link request? This action cannot be undone.")) {
+      return;
+    }
+    
+    try {
+      setProcessingRequest(linkId);
+      await apiService.declineParentLinkRequest(linkId);
+      alert("Parent-child link request declined.");
+      fetchData();
+    } catch (error) {
+      console.error("Error declining request:", error);
+      alert("Failed to decline request: " + (error.message || "Unknown error"));
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
+
   if (isLoading) return (
     <div>
       <Header title="Parents" />
@@ -88,6 +128,96 @@ export default function AdminParents() {
     <div>
       <Header title="Parents" />
       <div className="p-6">
+        {/* Pending Parent-Child Link Requests */}
+        {pendingRequests.length > 0 && (
+          <div className="mb-8 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
+            <div className="flex items-center mb-4">
+              <i className="fas fa-exclamation-triangle text-yellow-600 text-2xl mr-3"></i>
+              <h3 className="text-xl font-semibold text-gray-800">
+                Pending Parent-Child Link Requests ({pendingRequests.length})
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-4">
+              The following parents have requested to link their accounts to students. Please review and approve or decline each request.
+            </p>
+            
+            <div className="space-y-3">
+              {pendingRequests.map((request) => (
+                <div 
+                  key={request.id} 
+                  className="bg-white rounded-lg border border-yellow-300 p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="font-semibold text-gray-800 mb-1">
+                            <i className="fas fa-user-circle text-purple-500 mr-2"></i>
+                            Parent
+                          </h4>
+                          <p className="text-sm text-gray-700">{request.parent_name}</p>
+                          <p className="text-sm text-gray-500">{request.parent_email}</p>
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-800 mb-1">
+                            <i className="fas fa-graduation-cap text-blue-500 mr-2"></i>
+                            Student
+                          </h4>
+                          <p className="text-sm text-gray-700">{request.student_name}</p>
+                          <p className="text-sm text-gray-500">
+                            {request.student_class} | {request.student_number}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">
+                        <i className="fas fa-clock mr-1"></i>
+                        Requested: {new Date(request.requested_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2 ml-4">
+                      <button
+                        onClick={() => handleApproveRequest(request.id)}
+                        disabled={processingRequest === request.id}
+                        className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {processingRequest === request.id ? (
+                          <span>
+                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                            Processing...
+                          </span>
+                        ) : (
+                          <span>
+                            <i className="fas fa-check mr-2"></i>
+                            Approve
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDeclineRequest(request.id)}
+                        disabled={processingRequest === request.id}
+                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {processingRequest === request.id ? (
+                          <span>
+                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                            Processing...
+                          </span>
+                        ) : (
+                          <span>
+                            <i className="fas fa-times mr-2"></i>
+                            Decline
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">All Parents ({parents.length})</h2>
           <button
