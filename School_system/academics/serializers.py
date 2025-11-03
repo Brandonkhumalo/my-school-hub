@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
     Timetable, Announcement, Complaint, Suspension,
-    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, Attendance
+    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, Attendance, ParentTeacherMessage
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
@@ -401,3 +401,26 @@ class AttendanceSerializer(serializers.ModelSerializer):
         model = Attendance
         fields = ['id', 'student', 'student_name', 'student_surname', 'date', 'status', 
                   'remarks', 'recorded_by', 'recorded_by_name', 'date_recorded']
+
+class ParentTeacherMessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    recipient_name = serializers.SerializerMethodField()
+    student_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ParentTeacherMessage
+        fields = ['id', 'sender', 'sender_name', 'recipient', 'recipient_name', 
+                  'subject', 'message', 'student', 'student_name', 'parent_message', 
+                  'is_read', 'date_sent']
+        read_only_fields = ['sender', 'date_sent']
+    
+    def get_sender_name(self, obj):
+        return f"{obj.sender.first_name} {obj.sender.last_name}"
+    
+    def get_recipient_name(self, obj):
+        return f"{obj.recipient.first_name} {obj.recipient.last_name}"
+    
+    def get_student_name(self, obj):
+        if obj.student:
+            return f"{obj.student.user.first_name} {obj.student.user.last_name}"
+        return None

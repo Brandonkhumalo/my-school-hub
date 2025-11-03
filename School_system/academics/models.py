@@ -213,3 +213,21 @@ class Attendance(models.Model):
     
     def __str__(self):
         return f"{self.student.user.first_name} {self.student.user.last_name} - {self.date} ({self.status})"
+
+
+class ParentTeacherMessage(models.Model):
+    """Messages between parents and teachers"""
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_messages')
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_messages')
+    subject = models.CharField(max_length=200, blank=True)
+    message = models.TextField()
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, null=True, blank=True, related_name='related_messages')
+    parent_message = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    is_read = models.BooleanField(default=False)
+    date_sent = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date_sent']
+    
+    def __str__(self):
+        return f"From {self.sender.first_name} to {self.recipient.first_name} - {self.date_sent.strftime('%Y-%m-%d %H:%M')}"

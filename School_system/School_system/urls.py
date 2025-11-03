@@ -51,4 +51,7 @@ urlpatterns = [
     
     # Teacher Portal
     path('api/teachers/', include('academics.teacher_urls')),
+    
+    # Messaging System (Parent-Teacher Communication)
+    path('api/', include('academics.messaging_urls')),
 ]
