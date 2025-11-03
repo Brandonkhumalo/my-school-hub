@@ -16,8 +16,10 @@ from finances.models import StudentFee, Payment
 def parent_children_list(request):
     """Get all CONFIRMED children linked to the logged-in parent"""
     if request.user.role != 'parent':
-        return Response({'error': 'Only parents can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
+        return Response({
+            'error': 'Only parents can access this endpoint',
+            'current_role': getattr(request.user, 'role', 'No role set')
+        }, status=status.HTTP_403_FORBIDDEN)
     
     try:
         parent = request.user.parent
@@ -40,8 +42,10 @@ def parent_children_list(request):
         
         return Response(data)
     except Parent.DoesNotExist:
-        return Response({'error': 'Parent profile not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'error': 'Parent profile not found. Please contact administrator.',
+            'message': 'Your account exists but no parent profile is linked to it.'
+        }, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
