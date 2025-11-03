@@ -53,7 +53,7 @@ The system provides tailored user experiences for four distinct roles:
 
 Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
--   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality.
+-   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality. Complete sidebar with links to Dashboard, My Children, Performance, Weekly Messages, School Fees, and Chat with Teachers.
 -   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, subject performance analytics, and parent messaging. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), view subject statistics including averages, pass rates, top performers, and exam type breakdowns, and communicate with parents through a two-way messaging system.
 -   **Parent-Teacher Messaging:** Bidirectional communication platform where parents can search for and message teachers, and teachers can view and reply to parent messages. Features conversation history, read/unread status, and subject lines for organized communication.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
@@ -78,13 +78,14 @@ Key features include:
 -   **Security Note:** This two-step verification (parent request → admin approval) prevents unauthorized access to student records.
 
 ### Teacher Platform Features
--   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam).
+-   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam). Student list is intelligently filtered to show only: (1) students who have existing marks for that subject with the teacher, or (2) students in classes taught by that teacher.
 -   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
 -   **Subject Performance Analytics:** View comprehensive statistics including class average, pass rate (≥50%), top 5 performers, and exam type breakdowns.
 -   **Parent-Teacher Messaging:** Two-way communication system allowing teachers to view messages from parents and reply to them. Messages are organized by conversation with message history.
+-   **Navigation:** Complete sidebar with links to Dashboard, Add Marks, Attendance, Performance, and Messages.
 -   **API Endpoints:**
     - `GET /api/teachers/subjects/` - List subjects taught by teacher
-    - `GET /api/teachers/subjects/<id>/students/` - List students for a subject
+    - `GET /api/teachers/subjects/<id>/students/` - List students for a subject (filtered by class or existing results)
     - `POST /api/teachers/subjects/<id>/marks/` - Add student marks
     - `GET /api/teachers/subjects/<id>/performance/` - View subject analytics
     - `GET /api/teachers/attendance/` - Get attendance register for a date
@@ -93,7 +94,6 @@ Key features include:
     - `GET /api/messages/conversation/<user_id>/` - Get conversation with specific parent
     - `POST /api/messages/send/` - Send message to parent
     - `GET /api/students/<id>/parents/` - Get parents for a specific student
--   **Current Limitation:** Without a SubjectEnrollment model, teachers currently see all active students when adding marks. This is a known limitation that should be addressed by implementing a proper student-subject enrollment system in the future.
 
 ## External Dependencies
 
