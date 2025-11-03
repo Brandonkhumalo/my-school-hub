@@ -174,6 +174,7 @@ const apiService = {
   markMessageAsRead: (messageId) => request(`/messages/${messageId}/read/`, "POST"),
   getUnreadCount: () => request("/messages/unread-count/", "GET"),
   searchTeachers: (query = '') => request(`/teachers/search/?q=${query}`, "GET"),
+  searchParents: (query = '') => request(`/parents/search/?q=${query}`, "GET"),
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
 };
 
