@@ -20,6 +20,9 @@ urlpatterns = [
     # Teacher search (for parents)
     path('teachers/search/', messaging_views.search_teachers, name='search-teachers'),
     
+    # Parent search (for teachers)
+    path('parents/search/', messaging_views.search_parents, name='search-parents'),
+    
     # Get student's parents (for teachers)
     path('students/<int:student_id>/parents/', messaging_views.get_student_parents, name='get-student-parents'),
 ]

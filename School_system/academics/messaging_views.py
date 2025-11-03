@@ -125,6 +125,42 @@ def search_teachers(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def search_parents(request):
+    """Search for parents by name (for teachers to initiate conversations)"""
+    user = request.user
+    
+    if user.role != 'teacher':
+        return Response({'error': 'Only teachers can search for parents'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    query = request.GET.get('q', '')
+    
+    if not query:
+        parents = Parent.objects.all().select_related('user')[:50]
+    else:
+        parents = Parent.objects.filter(
+            Q(user__first_name__icontains=query) | 
+            Q(user__last_name__icontains=query) |
+            Q(user__email__icontains=query)
+        ).select_related('user')[:50]
+    
+    parent_data = [{
+        'id': parent.id,
+        'user': {
+            'id': parent.user.id,
+            'first_name': parent.user.first_name,
+            'last_name': parent.user.last_name,
+            'email': parent.user.email,
+        },
+        'occupation': parent.occupation or '',
+        'phone': parent.user.phone_number or ''
+    } for parent in parents]
+    
+    return Response(parent_data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def get_student_parents(request, student_id):
     """Get parents of a specific student (for teachers)"""
     user = request.user
