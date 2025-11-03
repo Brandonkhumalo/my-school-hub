@@ -412,3 +412,59 @@ def decline_parent_link_request(request, link_id):
     except ParentChildLink.DoesNotExist:
         return Response({'error': 'Link request not found or already confirmed'}, 
                        status=status.HTTP_404_NOT_FOUND)
+
+# Class Average Results View
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def class_averages_view(request):
+    """Get class averages grouped by class and subject"""
+    from django.db.models import Avg, Count, F
+    
+    # Get all results and calculate averages by class and subject
+    averages = Result.objects.values(
+        'student__student_class__name',
+        'student__student_class__id',
+        'subject__name',
+        'subject__id',
+        'exam_type'
+    ).annotate(
+        class_name=F('student__student_class__name'),
+        subject_name=F('subject__name'),
+        average_score=Avg('score'),
+        average_max_score=Avg('max_score'),
+        student_count=Count('student', distinct=True)
+    ).order_by('class_name', 'subject_name')
+    
+    # Calculate percentages and grades
+    results = []
+    for avg in averages:
+        if avg['average_max_score'] and avg['average_max_score'] > 0:
+            percentage = round((avg['average_score'] / avg['average_max_score']) * 100, 2)
+        else:
+            percentage = 0
+            
+        # Calculate grade
+        if percentage >= 90: grade = 'A+'
+        elif percentage >= 85: grade = 'A'
+        elif percentage >= 80: grade = 'A-'
+        elif percentage >= 75: grade = 'B+'
+        elif percentage >= 70: grade = 'B'
+        elif percentage >= 65: grade = 'B-'
+        elif percentage >= 60: grade = 'C+'
+        elif percentage >= 55: grade = 'C'
+        elif percentage >= 50: grade = 'C-'
+        elif percentage >= 45: grade = 'D'
+        else: grade = 'F'
+        
+        results.append({
+            'class_name': avg['class_name'],
+            'subject_name': avg['subject_name'],
+            'exam_type': avg['exam_type'],
+            'average_score': round(avg['average_score'], 2),
+            'average_max_score': round(avg['average_max_score'], 2),
+            'percentage': percentage,
+            'grade': grade,
+            'student_count': avg['student_count']
+        })
+    
+    return Response(results)

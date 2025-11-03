@@ -24,6 +24,7 @@ urlpatterns = [
     # Result endpoints
     path('results/', views.ResultListCreateView.as_view(), name='result-list-create'),
     path('results/<int:pk>/', views.ResultDetailView.as_view(), name='result-detail'),
+    path('results/class-averages/', views.class_averages_view, name='class-averages'),
     
     # Timetable endpoints
     path('timetables/', views.TimetableListView.as_view(), name='timetable-list'),

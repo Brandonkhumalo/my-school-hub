@@ -85,6 +85,7 @@ const apiService = {
   createParent: (data) => request("/academics/parents/", "POST", data),
   
   fetchResults: () => request("/academics/results/", "GET"),
+  fetchClassAverages: () => request("/academics/results/class-averages/", "GET"),
   createResult: (data) => request("/academics/results/", "POST", data),
   
   fetchTimetable: () => request("/academics/timetables/", "GET"),
