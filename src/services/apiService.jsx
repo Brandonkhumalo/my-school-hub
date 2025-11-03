@@ -165,6 +165,15 @@ const apiService = {
   getPendingParentLinkRequests: () => request("/academics/parent-link-requests/", "GET"),
   approveParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/approve/`, "POST"),
   declineParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/decline/`, "DELETE"),
+  
+  // Messaging endpoints
+  getMessages: () => request("/messages/", "GET"),
+  getConversation: (userId) => request(`/messages/conversation/${userId}/`, "GET"),
+  sendMessage: (data) => request("/messages/send/", "POST", data),
+  markMessageAsRead: (messageId) => request(`/messages/${messageId}/read/`, "POST"),
+  getUnreadCount: () => request("/messages/unread-count/", "GET"),
+  searchTeachers: (query = '') => request(`/teachers/search/?q=${query}`, "GET"),
+  getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
 };
 
 export default apiService;

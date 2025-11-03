@@ -17,6 +17,7 @@ import ParentDashboard from "./pages/parent/ParentDashboard";
 import TeacherMarks from "./pages/teacher/TeacherMarks";
 import TeacherAttendance from "./pages/teacher/TeacherAttendance";
 import TeacherPerformance from "./pages/teacher/TeacherPerformance";
+import TeacherMessages from "./pages/teacher/TeacherMessages";
 
 // Admin Pages
 import AdminStudents from "./pages/admin/AdminStudents";
@@ -46,6 +47,7 @@ import ParentChildren from "./pages/parent/ParentChildren";
 import ParentPerformance from "./pages/parent/ParentPerformance";
 import ParentWeeklyMessages from "./pages/parent/ParentWeeklyMessages";
 import ParentFees from "./pages/parent/ParentFees";
+import ParentMessages from "./pages/parent/ParentMessages";
 
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
@@ -90,6 +92,7 @@ function App() {
         <Route path="/teacher/marks" element={<TeacherMarks />} />
         <Route path="/teacher/attendance" element={<TeacherAttendance />} />
         <Route path="/teacher/performance" element={<TeacherPerformance />} />
+        <Route path="/teacher/messages" element={<TeacherMessages />} />
 
         {/* Student Routes */}
         <Route path="/student" element={<StudentDashboard />} />
@@ -107,6 +110,7 @@ function App() {
         <Route path="/parent/performance" element={<ParentPerformance />} />
         <Route path="/parent/messages" element={<ParentWeeklyMessages />} />
         <Route path="/parent/fees" element={<ParentFees />} />
+        <Route path="/parent/chat" element={<ParentMessages />} />
 
         {/* Catch all */}
         <Route path="*" element={<NotFound />} />
