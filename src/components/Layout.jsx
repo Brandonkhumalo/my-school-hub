@@ -28,6 +28,10 @@ function Layout() {
     ],
     teacher: [
       { path: '/teacher', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/teacher/marks', icon: 'fa-pen-square', title: 'Add Marks' },
+      { path: '/teacher/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
+      { path: '/teacher/performance', icon: 'fa-chart-line', title: 'Performance' },
+      { path: '/teacher/messages', icon: 'fa-comments', title: 'Messages' },
     ],
     student: [
       { path: '/student', icon: 'fa-home', title: 'Dashboard' },
@@ -45,6 +49,7 @@ function Layout() {
       { path: '/parent/performance', icon: 'fa-chart-line', title: 'Performance' },
       { path: '/parent/messages', icon: 'fa-envelope', title: 'Weekly Messages' },
       { path: '/parent/fees', icon: 'fa-credit-card', title: 'School Fees' },
+      { path: '/parent/chat', icon: 'fa-comments', title: 'Chat with Teachers' },
     ],
     accountant: [
       { path: '/accountant', icon: 'fa-home', title: 'Dashboard' },
