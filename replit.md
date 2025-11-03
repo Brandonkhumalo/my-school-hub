@@ -31,6 +31,9 @@ I want to communicate in simple language. I prefer iterative development. Ask be
   - `/admin` - Admin dashboard
   - `/admin/*` - Admin management pages
   - `/teacher` - Teacher dashboard
+  - `/teacher/marks` - Add/update student marks
+  - `/teacher/attendance` - Daily attendance register
+  - `/teacher/performance` - Subject performance analytics
   - `/student` - Student dashboard
   - `/student/*` - Student pages
   - `/parent` - Parent dashboard
@@ -42,13 +45,14 @@ The frontend follows a component-based architecture with pages organized by user
 ### UI/UX Decisions
 The system provides tailored user experiences for four distinct roles:
 1.  **Admin:** Full system management access.
-2.  **Teacher:** Class and student management.
+2.  **Teacher:** Marks entry, attendance tracking, subject performance analytics, and class management.
 3.  **Student:** Access to grades, timetable, fees, and assignments.
 4.  **Parent:** View children's academic records, weekly messages, and fee information with multi-child support and a secure admin-approved parent-child linking process.
 
 Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
 -   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, and fee tracking with a demo payment interface.
+-   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, and subject performance analytics. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), and view subject statistics including averages, pass rates, top performers, and exam type breakdowns.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
 -   **Authentication Pages:** All auth pages (Login, AdminLogin, ParentRegister) include back buttons to home page. Login uses "Student Number/Email" label for clarity.
 
@@ -68,6 +72,19 @@ Key features include:
     - `POST /api/parents/children/request/` - Request child link (parent-only)
     - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin/teacher-only)
 -   **Security Note:** This two-step verification (parent request → admin approval) prevents unauthorized access to student records.
+
+### Teacher Platform Features
+-   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam).
+-   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
+-   **Subject Performance Analytics:** View comprehensive statistics including class average, pass rate (≥50%), top 5 performers, and exam type breakdowns.
+-   **API Endpoints:**
+    - `GET /api/teachers/subjects/` - List subjects taught by teacher
+    - `GET /api/teachers/subjects/<id>/students/` - List students for a subject
+    - `POST /api/teachers/subjects/<id>/marks/` - Add student marks
+    - `GET /api/teachers/subjects/<id>/performance/` - View subject analytics
+    - `GET /api/teachers/attendance/` - Get attendance register for a date
+    - `POST /api/teachers/attendance/` - Mark student attendance
+-   **Current Limitation:** Without a SubjectEnrollment model, teachers currently see all active students when adding marks. This is a known limitation that should be addressed by implementing a proper student-subject enrollment system in the future.
 
 ## External Dependencies
 
