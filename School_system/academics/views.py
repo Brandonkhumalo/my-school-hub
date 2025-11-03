@@ -2,6 +2,7 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Avg, Count, Q
+from django.utils import timezone
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
     Timetable, Announcement, Complaint, Suspension
@@ -323,3 +324,91 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
         else:
             return Response({'error': 'Only teachers can create suspensions'}, 
                           status=status.HTTP_403_FORBIDDEN)
+
+
+# Admin Parent-Child Link Management Views
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def pending_parent_link_requests(request):
+    """Get all pending parent-child link requests (Admin/Teacher only)"""
+    if request.user.role not in ['admin', 'teacher']:
+        return Response({'error': 'Only administrators and teachers can view pending requests'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import ParentChildLink
+    
+    pending_links = ParentChildLink.objects.filter(
+        is_confirmed=False
+    ).select_related('parent__user', 'student__user', 'student__student_class')
+    
+    data = []
+    for link in pending_links:
+        data.append({
+            'id': link.id,
+            'parent_id': link.parent.id,
+            'parent_name': f"{link.parent.user.first_name} {link.parent.user.last_name}",
+            'parent_email': link.parent.user.email,
+            'student_id': link.student.id,
+            'student_name': f"{link.student.user.first_name} {link.student.user.last_name}",
+            'student_number': link.student.user.student_number or '',
+            'student_class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
+            'requested_date': link.created_at,
+        })
+    
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def approve_parent_link_request(request, link_id):
+    """Approve a parent-child link request (Admin/Teacher only)"""
+    if request.user.role not in ['admin', 'teacher']:
+        return Response({'error': 'Only administrators and teachers can approve requests'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import ParentChildLink
+    
+    try:
+        link = ParentChildLink.objects.select_related(
+            'parent__user', 'student__user'
+        ).get(id=link_id, is_confirmed=False)
+        
+        link.is_confirmed = True
+        link.confirmed_by = request.user
+        link.confirmed_at = timezone.now()
+        link.save()
+        
+        return Response({
+            'message': 'Parent-child link approved successfully',
+            'parent_name': f"{link.parent.user.first_name} {link.parent.user.last_name}",
+            'student_name': f"{link.student.user.first_name} {link.student.user.last_name}",
+        })
+    except ParentChildLink.DoesNotExist:
+        return Response({'error': 'Link request not found or already confirmed'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def decline_parent_link_request(request, link_id):
+    """Decline/delete a parent-child link request (Admin/Teacher only)"""
+    if request.user.role not in ['admin', 'teacher']:
+        return Response({'error': 'Only administrators and teachers can decline requests'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import ParentChildLink
+    
+    try:
+        link = ParentChildLink.objects.get(id=link_id, is_confirmed=False)
+        parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}"
+        student_name = f"{link.student.user.first_name} {link.student.user.last_name}"
+        link.delete()
+        
+        return Response({
+            'message': 'Parent-child link request declined',
+            'parent_name': parent_name,
+            'student_name': student_name,
+        })
+    except ParentChildLink.DoesNotExist:
+        return Response({'error': 'Link request not found or already confirmed'}, 
+                       status=status.HTTP_404_NOT_FOUND)

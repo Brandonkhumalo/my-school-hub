@@ -37,4 +37,9 @@ urlpatterns = [
     
     # Suspension endpoints
     path('suspensions/', views.SuspensionListCreateView.as_view(), name='suspension-list-create'),
+    
+    # Admin Parent-Child Link Management endpoints
+    path('parent-link-requests/', views.pending_parent_link_requests, name='pending-parent-link-requests'),
+    path('parent-link-requests/<int:link_id>/approve/', views.approve_parent_link_request, name='approve-parent-link-request'),
+    path('parent-link-requests/<int:link_id>/decline/', views.decline_parent_link_request, name='decline-parent-link-request'),
 ]
