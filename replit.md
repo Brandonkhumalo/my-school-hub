@@ -55,7 +55,7 @@ Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
 -   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality. Complete sidebar with links to Dashboard, My Children, Performance, Weekly Messages, School Fees, and Chat with Teachers.
 -   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, subject performance analytics, and parent messaging. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), view subject statistics including averages, pass rates, top performers, and exam type breakdowns, and communicate with parents through a two-way messaging system.
--   **Parent-Teacher Messaging:** Bidirectional communication platform where parents can search for and message teachers, and teachers can view and reply to parent messages. Features conversation history, read/unread status, and subject lines for organized communication.
+-   **Parent-Teacher Messaging:** Bidirectional communication platform where both parents and teachers can initiate conversations. Parents can search for and message teachers, teachers can search for and message parents. Both roles can view conversation history, manage existing conversations, and see read/unread status with subject lines for organized communication.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
 -   **Authentication Pages:** All auth pages (Login, AdminLogin, ParentRegister) include back buttons to home page. Login uses "Student Number/Email" label for clarity.
 
@@ -81,7 +81,7 @@ Key features include:
 -   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam). Student list is intelligently filtered to show only: (1) students who have existing marks for that subject with the teacher, or (2) students in classes taught by that teacher.
 -   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
 -   **Subject Performance Analytics:** View comprehensive statistics including class average, pass rate (≥50%), top 5 performers, and exam type breakdowns.
--   **Parent-Teacher Messaging:** Two-way communication system allowing teachers to view messages from parents and reply to them. Messages are organized by conversation with message history.
+-   **Parent-Teacher Messaging:** Two-way communication system allowing teachers to both view/reply to messages from parents AND initiate new conversations with parents. Teachers can toggle between viewing existing conversations and searching for parents to start new conversations. Messages are organized by conversation with message history.
 -   **Navigation:** Complete sidebar with links to Dashboard, Add Marks, Attendance, Performance, and Messages.
 -   **API Endpoints:**
     - `GET /api/teachers/subjects/` - List subjects taught by teacher
@@ -93,6 +93,7 @@ Key features include:
     - `GET /api/messages/` - Get all messages for teacher
     - `GET /api/messages/conversation/<user_id>/` - Get conversation with specific parent
     - `POST /api/messages/send/` - Send message to parent
+    - `GET /api/parents/search/` - Search for parents to initiate conversation (teacher-only)
     - `GET /api/students/<id>/parents/` - Get parents for a specific student
 
 ## External Dependencies
