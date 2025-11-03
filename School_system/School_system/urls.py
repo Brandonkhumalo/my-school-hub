@@ -48,4 +48,7 @@ urlpatterns = [
     
     # Parent Portal
     path('api/parents/', include('academics.parent_urls')),
+    
+    # Teacher Portal
+    path('api/teachers/', include('academics.teacher_urls')),
 ]

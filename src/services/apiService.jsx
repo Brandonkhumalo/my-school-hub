@@ -147,6 +147,19 @@ const apiService = {
     return request("/parents/messages/", "GET");
   },
   getChildFees: (childId) => request(`/parents/children/${childId}/fees/`, "GET"),
+
+  // Teacher endpoints
+  getTeacherSubjects: () => request("/teachers/subjects/", "GET"),
+  getSubjectStudents: (subjectId) => request(`/teachers/subjects/${subjectId}/students/`, "GET"),
+  getSubjectPerformance: (subjectId) => request(`/teachers/subjects/${subjectId}/performance/`, "GET"),
+  addStudentMark: (data) => request("/teachers/marks/add/", "POST", data),
+  getAttendanceRegister: (date, classId) => {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    if (classId) params.append('class_id', classId);
+    return request(`/teachers/attendance/register/?${params.toString()}`, "GET");
+  },
+  markAttendance: (data) => request("/teachers/attendance/mark/", "POST", data),
 };
 
 export default apiService;

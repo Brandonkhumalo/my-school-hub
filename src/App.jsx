@@ -13,6 +13,11 @@ import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import ParentDashboard from "./pages/parent/ParentDashboard";
 
+// Teacher Pages
+import TeacherMarks from "./pages/teacher/TeacherMarks";
+import TeacherAttendance from "./pages/teacher/TeacherAttendance";
+import TeacherPerformance from "./pages/teacher/TeacherPerformance";
+
 // Admin Pages
 import AdminStudents from "./pages/admin/AdminStudents";
 import AdminTeachers from "./pages/admin/AdminTeachers";
@@ -82,6 +87,9 @@ function App() {
 
         {/* Teacher Routes */}
         <Route path="/teacher" element={<TeacherDashboard />} />
+        <Route path="/teacher/marks" element={<TeacherMarks />} />
+        <Route path="/teacher/attendance" element={<TeacherAttendance />} />
+        <Route path="/teacher/performance" element={<TeacherPerformance />} />
 
         {/* Student Routes */}
         <Route path="/student" element={<StudentDashboard />} />
