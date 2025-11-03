@@ -11,9 +11,22 @@ from django.db import transaction
 from django.utils import timezone
 
 class SubjectSerializer(serializers.ModelSerializer):
+    teachers = serializers.SerializerMethodField()
+    teacher_names = serializers.SerializerMethodField()
+    
     class Meta:
         model = Subject
-        fields = '__all__'
+        fields = ['id', 'name', 'code', 'description', 'teachers', 'teacher_names']
+    
+    def get_teachers(self, obj):
+        teachers = obj.teachers.all()
+        return [{'id': t.id, 'name': t.user.get_full_name()} for t in teachers]
+    
+    def get_teacher_names(self, obj):
+        teachers = obj.teachers.all()
+        if teachers:
+            return ', '.join([t.user.get_full_name() for t in teachers])
+        return 'No teacher assigned'
 
 
 class ClassSerializer(serializers.ModelSerializer):

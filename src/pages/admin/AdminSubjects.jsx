@@ -32,17 +32,19 @@ export default function AdminSubjects() {
           <table className="w-full text-left">
             <thead className="bg-gray-100">
               <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Teacher</th>
+                <th className="p-3">Code</th>
+                <th className="p-3">Name</th>
+                <th className="p-3">Description</th>
+                <th className="p-3">Teacher(s)</th>
               </tr>
             </thead>
             <tbody>
               {subjects.map((subject, idx) => (
-                <tr key={idx}>
-                  <td>{subject.id}</td>
-                  <td>{subject.name}</td>
-                  <td>{subject.teacher_name}</td>
+                <tr key={idx} className="border-b hover:bg-gray-50">
+                  <td className="p-3 font-semibold">{subject.code}</td>
+                  <td className="p-3">{subject.name}</td>
+                  <td className="p-3 text-gray-600">{subject.description || '-'}</td>
+                  <td className="p-3 text-blue-600">{subject.teacher_names}</td>
                 </tr>
               ))}
             </tbody>
