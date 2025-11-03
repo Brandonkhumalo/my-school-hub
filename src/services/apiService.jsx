@@ -160,6 +160,11 @@ const apiService = {
     return request(`/teachers/attendance/register/?${params.toString()}`, "GET");
   },
   markAttendance: (data) => request("/teachers/attendance/mark/", "POST", data),
+  
+  // Admin Parent-Child Link Management endpoints
+  getPendingParentLinkRequests: () => request("/academics/parent-link-requests/", "GET"),
+  approveParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/approve/`, "POST"),
+  declineParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/decline/`, "DELETE"),
 };
 
 export default apiService;
