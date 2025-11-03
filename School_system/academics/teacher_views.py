@@ -63,18 +63,25 @@ def subject_students(request, subject_id):
             return Response({'error': 'You do not teach this subject'}, 
                            status=status.HTTP_403_FORBIDDEN)
         
-        # NOTE: Current limitation - Without a SubjectEnrollment or Class-Subject mapping,
-        # we show all active students to allow teachers to enter marks.
-        # This is acceptable because:
-        # 1. Teacher is verified to teach this subject
-        # 2. Teacher can only add marks (non-sensitive operation)
-        # 3. No sensitive student data is exposed (just names and classes)
-        # FUTURE IMPROVEMENT: Add SubjectEnrollment model to properly track which students
-        # are enrolled in which subjects, allowing for proper access control.
+        # Filter students more intelligently:
+        # 1. Students who already have results for this subject with this teacher (enrolled)
+        # 2. Students from classes that this teacher teaches (class teacher)
+        # This provides a better filtering approach than showing all students
         
+        # Get students who have existing results for this subject
+        students_with_results = Student.objects.filter(
+            results__subject=subject,
+            results__teacher=teacher
+        ).distinct().values_list('id', flat=True)
+        
+        # Get classes taught by this teacher
+        classes_taught = Class.objects.filter(class_teacher=teacher.user)
+        
+        # Combine both filters
         students = Student.objects.filter(
+            Q(id__in=students_with_results) | Q(student_class__in=classes_taught),
             user__is_active=True
-        ).select_related('user', 'student_class')
+        ).distinct().select_related('user', 'student_class')
         
         data = []
         for student in students:
