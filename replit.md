@@ -34,9 +34,11 @@ I want to communicate in simple language. I prefer iterative development. Ask be
   - `/teacher/marks` - Add/update student marks
   - `/teacher/attendance` - Daily attendance register
   - `/teacher/performance` - Subject performance analytics
+  - `/teacher/messages` - Parent-teacher messaging interface
   - `/student` - Student dashboard
   - `/student/*` - Student pages
   - `/parent` - Parent dashboard
+  - `/parent/chat` - Parent-teacher messaging interface
   - `/parent/*` - Parent pages
 
 ### Project Structure
@@ -51,8 +53,9 @@ The system provides tailored user experiences for four distinct roles:
 
 Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
--   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, and fee tracking with a demo payment interface.
--   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, and subject performance analytics. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), and view subject statistics including averages, pass rates, top performers, and exam type breakdowns.
+-   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality.
+-   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, subject performance analytics, and parent messaging. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), view subject statistics including averages, pass rates, top performers, and exam type breakdowns, and communicate with parents through a two-way messaging system.
+-   **Parent-Teacher Messaging:** Bidirectional communication platform where parents can search for and message teachers, and teachers can view and reply to parent messages. Features conversation history, read/unread status, and subject lines for organized communication.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
 -   **Authentication Pages:** All auth pages (Login, AdminLogin, ParentRegister) include back buttons to home page. Login uses "Student Number/Email" label for clarity.
 
@@ -60,8 +63,9 @@ Key features include:
 -   API communication uses JWT Bearer tokens for authentication, stored in localStorage, with an API service layer handling automatic token injection.
 -   Frontend expects a backend API running on `localhost:8000`, with API calls proxied through the `/api` endpoint.
 -   HMR WebSocket is configured for the Replit environment.
--   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, and `Attendance` to support core functionalities.
+-   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, `Attendance`, and `ParentTeacherMessage` to support core functionalities.
 -   Role-based permissions are enforced across all API endpoints.
+-   Parent-Teacher messaging system uses a dedicated `ParentTeacherMessage` model tracking sender, recipient, message content, subject, timestamps, and read status.
 
 ### Parent-Child Linking Security Model
 -   **Parent Request Flow:** Parents can browse all students (with name/surname/class filtering) and request links. This creates an unconfirmed `ParentChildLink` record.
@@ -77,6 +81,7 @@ Key features include:
 -   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam).
 -   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
 -   **Subject Performance Analytics:** View comprehensive statistics including class average, pass rate (≥50%), top 5 performers, and exam type breakdowns.
+-   **Parent-Teacher Messaging:** Two-way communication system allowing teachers to view messages from parents and reply to them. Messages are organized by conversation with message history.
 -   **API Endpoints:**
     - `GET /api/teachers/subjects/` - List subjects taught by teacher
     - `GET /api/teachers/subjects/<id>/students/` - List students for a subject
@@ -84,6 +89,10 @@ Key features include:
     - `GET /api/teachers/subjects/<id>/performance/` - View subject analytics
     - `GET /api/teachers/attendance/` - Get attendance register for a date
     - `POST /api/teachers/attendance/` - Mark student attendance
+    - `GET /api/messages/` - Get all messages for teacher
+    - `GET /api/messages/conversation/<user_id>/` - Get conversation with specific parent
+    - `POST /api/messages/send/` - Send message to parent
+    - `GET /api/students/<id>/parents/` - Get parents for a specific student
 -   **Current Limitation:** Without a SubjectEnrollment model, teachers currently see all active students when adding marks. This is a known limitation that should be addressed by implementing a proper student-subject enrollment system in the future.
 
 ## External Dependencies

@@ -19,7 +19,7 @@ def get_messages(request):
     
     messages = ParentTeacherMessage.objects.filter(
         Q(sender=user) | Q(recipient=user)
-    ).select_related('sender', 'recipient', 'student__user')
+    ).select_related('sender', 'recipient', 'student__user').order_by('-date_sent')
     
     serializer = ParentTeacherMessageSerializer(messages, many=True)
     return Response(serializer.data)

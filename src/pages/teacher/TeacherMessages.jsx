@@ -27,15 +27,18 @@ export default function TeacherMessages() {
       data.forEach(msg => {
         const otherUserId = msg.sender === user.id ? msg.recipient : msg.sender;
         const otherUserName = msg.sender === user.id ? msg.recipient_name : msg.sender_name;
+        const isUnread = msg.recipient === user.id && !msg.is_read;
         
-        if (!conversationMap[otherUserId]) {
+        if (!conversationMap[otherUserId] || new Date(msg.date_sent) > new Date(conversationMap[otherUserId].lastMessageDate)) {
           conversationMap[otherUserId] = {
             userId: otherUserId,
             userName: otherUserName,
             lastMessage: msg.message,
             lastMessageDate: msg.date_sent,
-            unread: msg.recipient === user.id && !msg.is_read
+            unread: conversationMap[otherUserId]?.unread || isUnread
           };
+        } else if (isUnread) {
+          conversationMap[otherUserId].unread = true;
         }
       });
       
