@@ -6,9 +6,9 @@ function Layout() {
   const { user } = useAuth();
   const location = useLocation();
   
-  // Determine user role from current path or user object
-  const currentPath = location.pathname;
-  const role = currentPath.split('/')[1] || user?.role || 'admin';
+  // Determine user role - ALWAYS use the authenticated user's role, not the path
+  // This prevents showing admin menu when users visit 404 pages
+  const role = user?.role || 'student';
 
   // Define role-based menu items
   const menuItems = {
@@ -54,7 +54,8 @@ function Layout() {
     ],
   };
 
-  const items = menuItems[role] || menuItems.admin;
+  // Use the user's role menu items, never default to admin for security
+  const items = menuItems[role] || menuItems.student;
 
   return (
     <div className="flex min-h-screen bg-gray-100">
