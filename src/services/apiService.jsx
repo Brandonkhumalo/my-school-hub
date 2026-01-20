@@ -206,6 +206,9 @@ const apiService = {
   
   getParentHomework: () => request("/parents/homework/", "GET"),
   downloadParentHomework: (homeworkId) => `${API_BASE_URL}/parents/homework/${homeworkId}/download/`,
+  
+  getStudentHomework: () => request("/students/homework/", "GET"),
+  downloadStudentHomework: (homeworkId) => `${API_BASE_URL}/students/homework/${homeworkId}/download/`,
 };
 
 export default apiService;

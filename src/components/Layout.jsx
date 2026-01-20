@@ -40,6 +40,7 @@ function Layout() {
       { path: '/student/profile', icon: 'fa-user', title: 'Profile' },
       { path: '/student/submissions', icon: 'fa-tasks', title: 'Submissions' },
       { path: '/student/marks', icon: 'fa-chart-line', title: 'Marks' },
+      { path: '/student/homework', icon: 'fa-book-open', title: 'Homework' },
       { path: '/student/calendar', icon: 'fa-calendar', title: 'School Calendar' },
       { path: '/student/timetable', icon: 'fa-clock', title: 'Timetable' },
       { path: '/student/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },

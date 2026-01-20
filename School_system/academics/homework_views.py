@@ -295,3 +295,82 @@ def teacher_classes_for_homework(request):
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_homework_list(request):
+    """Get all homework for the student's class"""
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        student = request.user.student
+        student_class = student.student_class
+        
+        if not student_class:
+            return Response([])
+        
+        homework_items = Homework.objects.filter(
+            assigned_class=student_class
+        ).select_related('subject', 'assigned_class', 'teacher__user').order_by('-date_created')
+        
+        data = []
+        for hw in homework_items:
+            data.append({
+                'id': hw.id,
+                'title': f"{hw.subject.name} Homework",
+                'homework_title': hw.title,
+                'subject': {
+                    'id': hw.subject.id,
+                    'name': hw.subject.name,
+                    'code': hw.subject.code
+                },
+                'class_name': hw.assigned_class.name,
+                'teacher_name': f"{hw.teacher.user.first_name} {hw.teacher.user.last_name}",
+                'description': hw.description,
+                'has_file': bool(hw.file),
+                'file_name': os.path.basename(hw.file.name) if hw.file else None,
+                'due_date': hw.due_date.isoformat() if hw.due_date else None,
+                'date_created': hw.date_created.isoformat()
+            })
+        
+        return Response(data)
+        
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_download_homework_file(request, homework_id):
+    """Download homework file for student"""
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        student = request.user.student
+        homework = get_object_or_404(Homework, id=homework_id)
+        
+        if homework.assigned_class != student.student_class:
+            return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        if not homework.file:
+            return Response({'error': 'No file attached to this homework'}, 
+                           status=status.HTTP_404_NOT_FOUND)
+        
+        file_path = homework.file.path
+        file_name = os.path.basename(homework.file.name)
+        response = FileResponse(open(file_path, 'rb'))
+        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+        return response
+        
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': f'Error downloading file: {str(e)}'}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -41,6 +41,7 @@ import AdminParentLinkRequests from "./pages/admin/AdminParentLinkRequests";
 import StudentProfile from "./pages/student/StudentProfile";
 import StudentSubmissions from "./pages/student/StudentSubmissions";
 import StudentMarks from "./pages/student/StudentMarks";
+import StudentHomework from "./pages/student/StudentHomework";
 import StudentCalendar from "./pages/student/StudentCalendar";
 import StudentTimetable from "./pages/student/StudentTimetable";
 import StudentTeachers from "./pages/student/StudentTeachers";
@@ -108,6 +109,7 @@ function App() {
         <Route path="/student/profile" element={<StudentProfile />} />
         <Route path="/student/submissions" element={<StudentSubmissions />} />
         <Route path="/student/marks" element={<StudentMarks />} />
+        <Route path="/student/homework" element={<StudentHomework />} />
         <Route path="/student/calendar" element={<StudentCalendar />} />
         <Route path="/student/timetable" element={<StudentTimetable />} />
         <Route path="/student/teachers" element={<StudentTeachers />} />
