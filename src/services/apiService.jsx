@@ -136,7 +136,13 @@ const apiService = {
 
   getParentChildren: () => request("/parents/children/", "GET"),
   getAvailableChildren: () => request("/parents/children/available/", "GET"),
-  getAllStudents: () => request("/parents/students/all/", "GET"),
+  searchStudents: (params) => {
+    const queryParams = new URLSearchParams();
+    if (params.student_number) queryParams.append('student_number', params.student_number);
+    if (params.first_name) queryParams.append('first_name', params.first_name);
+    if (params.last_name) queryParams.append('last_name', params.last_name);
+    return request(`/parents/students/search/?${queryParams.toString()}`, "GET");
+  },
   requestChildLink: (studentId) => request("/parents/children/request/", "POST", { student_id: studentId }),
   confirmChild: (childId) => request(`/parents/children/${childId}/confirm/`, "POST"),
   getParentDashboardStats: (childId) => request(`/parents/children/${childId}/stats/`, "GET"),

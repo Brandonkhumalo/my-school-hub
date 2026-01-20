@@ -10,6 +10,6 @@ urlpatterns = [
     path('children/<int:child_id>/performance/', parent_views.child_performance, name='child-performance'),
     path('children/<int:child_id>/messages/', parent_views.child_weekly_messages, name='child-weekly-messages'),
     path('children/<int:child_id>/fees/', parent_views.child_fees, name='child-fees'),
-    path('students/all/', parent_views.all_students_list, name='all-students-list'),
+    path('students/search/', parent_views.search_students, name='search-students'),
     path('messages/', parent_views.all_weekly_messages, name='all-weekly-messages'),
 ]

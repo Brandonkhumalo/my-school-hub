@@ -81,21 +81,55 @@ def available_children_to_confirm(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def all_students_list(request):
-    """Get all students in the system for parents to browse and link"""
+def search_students(request):
+    """Search for students by name+surname OR student number - privacy-focused endpoint"""
     if request.user.role != 'parent':
         return Response({'error': 'Only parents can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     try:
         parent = request.user.parent
-        # Get all students
-        students = Student.objects.all().select_related('user', 'student_class')
+        
+        # Get search parameters
+        student_number = request.query_params.get('student_number', '').strip()
+        first_name = request.query_params.get('first_name', '').strip()
+        last_name = request.query_params.get('last_name', '').strip()
+        
+        # Validate: must have either student_number OR (first_name AND last_name)
+        if student_number:
+            # Search by student number - must be at least 3 characters
+            if len(student_number) < 3:
+                return Response({
+                    'error': 'Student number must be at least 3 characters'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            students = Student.objects.filter(
+                user__student_number__icontains=student_number
+            ).select_related('user', 'student_class')[:10]
+            
+        elif first_name and last_name:
+            # Search by name AND surname - both required, at least 2 chars each
+            if len(first_name) < 2 or len(last_name) < 2:
+                return Response({
+                    'error': 'First name and last name must each be at least 2 characters'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            students = Student.objects.filter(
+                user__first_name__icontains=first_name,
+                user__last_name__icontains=last_name
+            ).select_related('user', 'student_class')[:10]
+            
+        else:
+            # No valid search criteria provided
+            return Response({
+                'error': 'Please provide either a student number OR both first name and last name',
+                'hint': 'For privacy, you cannot browse all students. Search for your specific child.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Get already linked student IDs (both confirmed and unconfirmed)
-        linked_student_ids = ParentChildLink.objects.filter(
+        linked_student_ids = list(ParentChildLink.objects.filter(
             parent=parent
-        ).values_list('student_id', flat=True)
+        ).values_list('student_id', flat=True))
         
         data = []
         for student in students:
