@@ -48,18 +48,19 @@ const AboutUs = () => {
             <div>
               <h2 className="text-3xl font-bold text-gray-900 mb-6">Our History</h2>
               <p className="text-gray-600 mb-4">
-                Willovale Secondary School was established in 1985 in the rural community of Willowvale, 
-                Eastern Cape, South Africa. What began as a small school with just 150 students and 8 
-                teachers has grown into one of the most respected educational institutions in the region.
+                Willovale Secondary School was established in 1985 in Harare, Zimbabwe. What began as a 
+                small school with just 150 students and 8 teachers has grown into one of the most 
+                respected educational institutions in the country.
               </p>
               <p className="text-gray-600 mb-4">
-                Over the past 39 years, we have consistently produced exceptional matric results, with many 
-                of our students going on to study at prestigious universities across South Africa and abroad.
+                Over the past 39 years, we have consistently produced exceptional O-Level and A-Level results 
+                in both ZIMSEC and Cambridge examinations. Many of our students have gone on to study at 
+                prestigious universities in Zimbabwe, South Africa, the UK, and beyond.
               </p>
               <p className="text-gray-600">
-                Our school has been recognized multiple times by the Department of Education for academic 
-                excellence and community involvement. We take pride in our rich history of developing not 
-                just scholars, but well-rounded individuals who contribute positively to society.
+                Our school has been recognized multiple times by the Ministry of Primary and Secondary Education 
+                for academic excellence and community involvement. We take pride in our rich history of developing 
+                not just scholars, but well-rounded individuals who contribute positively to society.
               </p>
             </div>
             <div className="bg-gray-100 rounded-2xl p-8">
@@ -80,7 +81,7 @@ const AboutUs = () => {
                   </div>
                   <div>
                     <div className="font-semibold text-gray-900">First 100% Pass Rate</div>
-                    <div className="text-sm text-gray-600">Achieved first 100% matric pass rate</div>
+                    <div className="text-sm text-gray-600">Achieved first 100% O-Level pass rate</div>
                   </div>
                 </div>
                 <div className="flex items-start">
@@ -90,6 +91,15 @@ const AboutUs = () => {
                   <div>
                     <div className="font-semibold text-gray-900">New Science Block</div>
                     <div className="text-sm text-gray-600">Modern science laboratories opened</div>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <div className="w-16 h-8 bg-blue-900 text-white rounded flex items-center justify-center text-sm font-bold mr-4 flex-shrink-0">
+                    2010
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">Cambridge Centre</div>
+                    <div className="text-sm text-gray-600">Became registered Cambridge examination centre</div>
                   </div>
                 </div>
                 <div className="flex items-start">

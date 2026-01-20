@@ -80,9 +80,9 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-900">Physical Address</h3>
-                    <p className="text-gray-600">123 School Street</p>
-                    <p className="text-gray-600">Willowvale, Eastern Cape</p>
-                    <p className="text-gray-600">South Africa, 5070</p>
+                    <p className="text-gray-600">45 Enterprise Road</p>
+                    <p className="text-gray-600">Highlands, Harare</p>
+                    <p className="text-gray-600">Zimbabwe</p>
                   </div>
                 </div>
 
@@ -94,9 +94,9 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-900">Phone Numbers</h3>
-                    <p className="text-gray-600">Main Office: +27 (0) 39 727 1234</p>
-                    <p className="text-gray-600">Admissions: +27 (0) 39 727 1235</p>
-                    <p className="text-gray-600">Fax: +27 (0) 39 727 1236</p>
+                    <p className="text-gray-600">Main Office: +263 (0) 24 270 1234</p>
+                    <p className="text-gray-600">Admissions: +263 (0) 24 270 1235</p>
+                    <p className="text-gray-600">WhatsApp: +263 (0) 77 123 4567</p>
                   </div>
                 </div>
 
@@ -108,9 +108,9 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-900">Email Addresses</h3>
-                    <p className="text-gray-600">General Enquiries: info@willovale.edu.za</p>
-                    <p className="text-gray-600">Admissions: admissions@willovale.edu.za</p>
-                    <p className="text-gray-600">Principal: principal@willovale.edu.za</p>
+                    <p className="text-gray-600">General Enquiries: info@willovale.co.zw</p>
+                    <p className="text-gray-600">Admissions: admissions@willovale.co.zw</p>
+                    <p className="text-gray-600">Principal: principal@willovale.co.zw</p>
                   </div>
                 </div>
 
@@ -276,7 +276,7 @@ const ContactUs = () => {
         <div className="container px-4 mx-auto max-w-6xl">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-gray-900">Find Us</h2>
-            <p className="text-gray-600">Located in the heart of Willowvale, Eastern Cape</p>
+            <p className="text-gray-600">Located in the Highlands suburb of Harare, Zimbabwe</p>
           </div>
           <div className="bg-gray-300 rounded-2xl h-64 flex items-center justify-center">
             <div className="text-center text-gray-600">
@@ -284,8 +284,8 @@ const ContactUs = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              <p className="font-semibold">123 School Street, Willowvale</p>
-              <p>Eastern Cape, South Africa, 5070</p>
+              <p className="font-semibold">45 Enterprise Road, Highlands</p>
+              <p>Harare, Zimbabwe</p>
             </div>
           </div>
         </div>
@@ -305,7 +305,7 @@ const ContactUs = () => {
               </div>
             </div>
             <div className="text-center md:text-right">
-              <p className="text-2xl font-bold">+27 (0) 82 123 4567</p>
+              <p className="text-2xl font-bold">+263 (0) 77 999 1234</p>
               <p className="text-red-100">Available 24/7 for emergencies</p>
             </div>
           </div>

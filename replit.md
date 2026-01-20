@@ -6,10 +6,11 @@ This project is a React-based School Management System for **Willovale Secondary
 ## School Branding
 - **School Name:** Willovale Secondary School
 - **Established:** 1985
-- **Location:** Willowvale, Eastern Cape, South Africa
+- **Location:** Highlands, Harare, Zimbabwe
 - **Motto:** "Knowledge is Power"
 - **Colors:** Blue (#1e3a8a) and Yellow (#eab308)
 - **Logo:** Yellow "W" on blue background
+- **Curricula:** ZIMSEC and Cambridge International
 
 ## User Preferences
 I want to communicate in simple language. I prefer iterative development. Ask before making major changes.
