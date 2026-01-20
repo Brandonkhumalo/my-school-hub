@@ -20,6 +20,7 @@ import TeacherMarks from "./pages/teacher/TeacherMarks";
 import TeacherAttendance from "./pages/teacher/TeacherAttendance";
 import TeacherPerformance from "./pages/teacher/TeacherPerformance";
 import TeacherMessages from "./pages/teacher/TeacherMessages";
+import TeacherHomework from "./pages/teacher/TeacherHomework";
 
 // Admin Pages
 import AdminStudents from "./pages/admin/AdminStudents";
@@ -51,6 +52,7 @@ import ParentPerformance from "./pages/parent/ParentPerformance";
 import ParentWeeklyMessages from "./pages/parent/ParentWeeklyMessages";
 import ParentFees from "./pages/parent/ParentFees";
 import ParentMessages from "./pages/parent/ParentMessages";
+import ParentHomework from "./pages/parent/ParentHomework";
 
 // Auth Pages
 import LoginPage from "./pages/auth/Login";
@@ -98,6 +100,7 @@ function App() {
         <Route path="/teacher/marks" element={<TeacherMarks />} />
         <Route path="/teacher/attendance" element={<TeacherAttendance />} />
         <Route path="/teacher/performance" element={<TeacherPerformance />} />
+        <Route path="/teacher/homework" element={<TeacherHomework />} />
         <Route path="/teacher/messages" element={<TeacherMessages />} />
 
         {/* Student Routes */}
@@ -114,6 +117,7 @@ function App() {
         <Route path="/parent" element={<ParentDashboard />} />
         <Route path="/parent/children" element={<ParentChildren />} />
         <Route path="/parent/performance" element={<ParentPerformance />} />
+        <Route path="/parent/homework" element={<ParentHomework />} />
         <Route path="/parent/messages" element={<ParentWeeklyMessages />} />
         <Route path="/parent/fees" element={<ParentFees />} />
         <Route path="/parent/chat" element={<ParentMessages />} />

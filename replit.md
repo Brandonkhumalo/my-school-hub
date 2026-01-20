@@ -51,10 +51,12 @@ I want to communicate in simple language. I prefer iterative development. Ask be
   - `/teacher/marks` - Add/update student marks
   - `/teacher/attendance` - Daily attendance register
   - `/teacher/performance` - Subject performance analytics
+  - `/teacher/homework` - Homework creation and management
   - `/teacher/messages` - Parent-teacher messaging interface
   - `/student` - Student dashboard
   - `/student/*` - Student pages
   - `/parent` - Parent dashboard
+  - `/parent/homework` - View and download children's homework
   - `/parent/chat` - Parent-teacher messaging interface
   - `/parent/*` - Parent pages
 
@@ -70,7 +72,13 @@ The system provides tailored user experiences for four distinct roles:
 
 Key features include:
 -   **Student Portal:** Dashboard with overview statistics, submission deadlines, marks, school calendar, timetable, teacher directory, and announcements.
--   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality. Complete sidebar with links to Dashboard, My Children, Performance, Weekly Messages, School Fees, and Chat with Teachers.
+-   **Parent Portal:** Dashboard with child selector, child management (browse/request/view), academic performance, homework viewer, weekly teacher messages, fee tracking with a demo payment interface, and direct parent-teacher messaging system with teacher search functionality. Complete sidebar with links to Dashboard, My Children, Performance, Homework, Weekly Messages, School Fees, and Chat with Teachers.
+-   **Parent Homework View:** Parents can view all homework assigned to their confirmed children's classes, with:
+    - Subject-based titles (e.g., "Maths Homework")
+    - Due date status indicators (Past Due, Due Today, Due in X days)
+    - Expandable homework descriptions
+    - File download capability for attached PDF/Word documents
+    - Display of which children the homework applies to
 -   **Teacher Portal:** Dashboard with navigation to marks entry, attendance register, subject performance analytics, and parent messaging. Teachers can add/update student marks, mark daily attendance (Present/Absent/Late/Excused), view subject statistics including averages, pass rates, top performers, and exam type breakdowns, and communicate with parents through a two-way messaging system.
 -   **Parent-Teacher Messaging:** Bidirectional communication platform where both parents and teachers can initiate conversations. Parents can search for and message teachers, teachers can search for and message parents. Both roles can view conversation history, manage existing conversations, and see read/unread status with subject lines for organized communication.
 -   **Parent Self-Registration:** Secure self-service registration for parents with automatic role assignment and cryptographically secure password generation.
@@ -80,7 +88,7 @@ Key features include:
 -   API communication uses JWT Bearer tokens for authentication, stored in localStorage, with an API service layer handling automatic token injection.
 -   Frontend expects a backend API running on `localhost:8000`, with API calls proxied through the `/api` endpoint.
 -   HMR WebSocket is configured for the Replit environment.
--   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, `Attendance`, and `ParentTeacherMessage` to support core functionalities.
+-   Database models include `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, `Attendance`, `ParentTeacherMessage`, and `Homework` to support core functionalities.
 -   Role-based permissions are enforced across all API endpoints.
 -   Parent-Teacher messaging system uses a dedicated `ParentTeacherMessage` model tracking sender, recipient, message content, subject, timestamps, and read status.
 
@@ -104,7 +112,13 @@ Key features include:
 -   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
 -   **Subject Performance Analytics:** View comprehensive statistics including class average, pass rate (≥50%), top 5 performers, and exam type breakdowns.
 -   **Parent-Teacher Messaging:** Two-way communication system allowing teachers to both view/reply to messages from parents AND initiate new conversations with parents. Teachers can toggle between viewing existing conversations and searching for parents to start new conversations. Messages are organized by conversation with message history.
--   **Navigation:** Complete sidebar with links to Dashboard, Add Marks, Attendance, Performance, and Messages.
+-   **Homework Management:** Teachers can create homework assignments by:
+    - Selecting subject and class for the homework
+    - Adding a title (displayed as "{Subject} Homework - {title}")
+    - Setting a due date
+    - Either typing homework description OR uploading PDF/Word documents (max 10MB)
+    - View, download, and delete their created homework
+-   **Navigation:** Complete sidebar with links to Dashboard, Add Marks, Attendance, Performance, Homework, and Messages.
 -   **API Endpoints:**
     - `GET /api/teachers/subjects/` - List subjects taught by teacher
     - `GET /api/teachers/subjects/<id>/students/` - List students for a subject (filtered by class or existing results)
