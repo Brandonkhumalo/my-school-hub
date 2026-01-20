@@ -34,6 +34,7 @@ import AdminInvoices from "./pages/admin/AdminInvoices";
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminComplaints from "./pages/admin/AdminComplaints";
+import AdminParentLinkRequests from "./pages/admin/AdminParentLinkRequests";
 
 // Student Pages
 import StudentProfile from "./pages/student/StudentProfile";
@@ -90,6 +91,7 @@ function App() {
         <Route path="/admin/payments" element={<AdminPayments />} />
         <Route path="/admin/announcements" element={<AdminAnnouncements />} />
         <Route path="/admin/complaints" element={<AdminComplaints />} />
+        <Route path="/admin/parent-requests" element={<AdminParentLinkRequests />} />
 
         {/* Teacher Routes */}
         <Route path="/teacher" element={<TeacherDashboard />} />

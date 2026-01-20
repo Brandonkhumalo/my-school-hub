@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function StudentTimetable() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [timetable, setTimetable] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,14 @@ export default function StudentTimetable() {
       <Header title="My Timetable" user={user} />
       
       <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
+        
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6">
             <h2 className="text-2xl font-bold">Weekly Timetable</h2>

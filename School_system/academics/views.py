@@ -351,8 +351,8 @@ def pending_parent_link_requests(request):
             'student_id': link.student.id,
             'student_name': f"{link.student.user.first_name} {link.student.user.last_name}",
             'student_number': link.student.user.student_number or '',
-            'student_class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
-            'requested_date': link.created_at,
+            'class_name': link.student.student_class.name if link.student.student_class else 'Not Assigned',
+            'created_at': link.linked_date,
         })
     
     return Response(data)

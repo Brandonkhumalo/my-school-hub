@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function StudentTeachers() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +41,17 @@ export default function StudentTeachers() {
       <Header title="My Teachers" user={user} />
       
       <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
+        
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">My Teachers</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">My Subject Teachers</h2>
+          <p className="text-gray-600 mb-4">Teachers assigned to the subjects you are studying</p>
           
           {teachers.length === 0 ? (
             <div className="text-center py-12">

@@ -17,6 +17,7 @@ function Layout() {
       { path: '/admin/students', icon: 'fa-user-graduate', title: 'Students' },
       { path: '/admin/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },
       { path: '/admin/parents', icon: 'fa-users', title: 'Parents' },
+      { path: '/admin/parent-requests', icon: 'fa-link', title: 'Parent Link Requests' },
       { path: '/admin/classes', icon: 'fa-school', title: 'Classes' },
       { path: '/admin/timetable', icon: 'fa-calendar-alt', title: 'Timetable' },
       { path: '/admin/subjects', icon: 'fa-book', title: 'Subjects' },

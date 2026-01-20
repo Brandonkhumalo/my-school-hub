@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
 export default function StudentResults() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [performance, setPerformance] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +31,15 @@ export default function StudentResults() {
   return (
     <div>
       <Header title="My Results" user={user} />
+      <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
+      </div>
       {performance ? (
         <>
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">

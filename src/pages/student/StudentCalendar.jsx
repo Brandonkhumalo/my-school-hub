@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function StudentCalendar() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +76,14 @@ export default function StudentCalendar() {
       <Header title="School Calendar" user={user} />
       
       <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
+        
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Upcoming School Events & Holidays</h2>
           

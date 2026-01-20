@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function StudentMarks() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,13 @@ export default function StudentMarks() {
       <Header title="My Marks" user={user} />
       
       <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
         <div className="bg-white rounded-lg shadow-lg p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Academic Performance</h2>
           

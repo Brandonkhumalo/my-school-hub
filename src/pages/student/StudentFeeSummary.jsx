@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
 export default function StudentFeeSummary() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +31,15 @@ export default function StudentFeeSummary() {
   return (
     <div>
       <Header title="Fee Summary" user={user} />
+      <div className="p-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+          <i className="fas fa-arrow-left mr-2"></i>
+          Back
+        </button>
+      </div>
       {summary ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

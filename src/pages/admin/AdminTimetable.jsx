@@ -7,8 +7,7 @@ export default function AdminTimetable() {
   const [timetables, setTimetables] = useState([]);
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState('all');
-  const [selectedClass, setSelectedClass] = useState('all');
+  const [selectedClass, setSelectedClass] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -30,239 +29,237 @@ export default function AdminTimetable() {
     }
   };
 
-  // Define grade structure
-  const primaryGrades = [
-    { grade: 1, sections: ['A', 'B'] },
-    { grade: 2, sections: ['A', 'B'] },
-    { grade: 3, sections: ['A', 'B'] },
-    { grade: 4, sections: ['A', 'B'] },
-    { grade: 5, sections: ['A', 'B'] },
-    { grade: 6, sections: ['A', 'B'] },
-    { grade: 7, sections: ['A', 'B'] },
-  ];
-
-  const secondaryForms = [
-    { form: 1, sections: ['A', 'B'] },
-    { form: 2, sections: ['A', 'B'] },
-    { form: 3, sections: ['A', 'B'] },
-    { form: 4, sections: ['A', 'B'] },
-    { form: 5, sections: ['A', 'B'] },
-    { form: 6, sections: ['A', 'B'] },
-  ];
-
-  // Function to get class name for display
-  const getClassName = (grade, section, isPrimary = true) => {
-    return isPrimary ? `Grade ${grade}${section}` : `Form ${grade}${section}`;
-  };
-
-  // Function to find class by name
-  const findClassByName = (className) => {
-    return classes.find(c => c.name === className);
-  };
-
-  // Function to get timetable for a class
   const getClassTimetable = (classId) => {
     return timetables.filter(t => t.class_obj?.id === classId || t.class === classId);
   };
 
-  // Filter classes based on selection
-  const filterClasses = () => {
-    if (selectedClass !== 'all') {
-      const cls = classes.find(c => c.id == selectedClass);
-      return cls ? [cls] : [];
-    }
-    if (selectedGrade !== 'all') {
-      return classes.filter(c => c.name?.toLowerCase().includes(selectedGrade.toLowerCase()));
-    }
-    return classes;
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+  const organizeTimetable = (entries) => {
+    const organized = {};
+    entries.forEach(entry => {
+      const timeSlot = `${entry.start_time} - ${entry.end_time}`;
+      if (!organized[timeSlot]) {
+        organized[timeSlot] = {};
+      }
+      organized[timeSlot][entry.day_of_week] = entry;
+    });
+    return organized;
   };
 
-  const filteredClasses = filterClasses();
+  const primaryClasses = classes.filter(c => {
+    const name = c.name?.toLowerCase() || '';
+    return name.includes('grade');
+  });
+
+  const secondaryClasses = classes.filter(c => {
+    const name = c.name?.toLowerCase() || '';
+    return name.includes('form');
+  });
 
   if (isLoading) return (
     <div>
-      <Header title="Class Timetable" />
+      <Header title="Class Timetables" />
       <LoadingSpinner />
     </div>
   );
 
   return (
     <div>
-      <Header title="Class Timetable & Schedules" />
+      <Header title="Class Timetables" />
       <div className="p-6">
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Level</label>
-              <select
-                value={selectedGrade}
-                onChange={(e) => setSelectedGrade(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Grades</option>
-                <optgroup label="Primary">
-                  <option value="grade 1">Grade 1</option>
-                  <option value="grade 2">Grade 2</option>
-                  <option value="grade 3">Grade 3</option>
-                  <option value="grade 4">Grade 4</option>
-                  <option value="grade 5">Grade 5</option>
-                  <option value="grade 6">Grade 6</option>
-                  <option value="grade 7">Grade 7</option>
-                </optgroup>
-                <optgroup label="Secondary">
-                  <option value="form 1">Form 1</option>
-                  <option value="form 2">Form 2</option>
-                  <option value="form 3">Form 3</option>
-                  <option value="form 4">Form 4</option>
-                  <option value="form 5">Form 5</option>
-                  <option value="form 6">Form 6</option>
-                </optgroup>
-              </select>
+        {selectedClass ? (
+          <div>
+            <button
+              onClick={() => setSelectedClass(null)}
+              className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium"
+            >
+              <i className="fas fa-arrow-left mr-2"></i>
+              Back to All Classes
+            </button>
+
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">{selectedClass.name} Timetable</h2>
+                  <p className="text-gray-600 mt-1">
+                    <i className="fas fa-user-tie mr-2"></i>
+                    Teacher: {selectedClass.teacher_name || 'Not assigned'}
+                  </p>
+                  <p className="text-gray-600 mt-1">
+                    <i className="fas fa-users mr-2"></i>
+                    Students: {selectedClass.student_count || 0}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filter by Class</label>
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Classes</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Primary Grades Overview */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Primary School (Grades 1-7)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {primaryGrades.map(({ grade, sections }) => (
-              sections.map(section => {
-                const className = getClassName(grade, section, true);
-                const classData = findClassByName(className);
-                const studentCount = classData?.student_count || 0;
-                
-                return (
-                  <div key={`${grade}${section}`} className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-lg font-semibold text-blue-600">{className}</h3>
-                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                        {studentCount} students
-                      </span>
-                    </div>
-                    {classData ? (
-                      <div className="text-sm text-gray-600">
-                        <p><i className="fas fa-user-tie mr-2"></i>Teacher: {classData.teacher_name || 'Not assigned'}</p>
-                        <p className="mt-1"><i className="fas fa-door-open mr-2"></i>Room: {classData.room_number || 'TBA'}</p>
-                        {getClassTimetable(classData.id).length > 0 && (
-                          <p className="mt-1 text-green-600">
-                            <i className="fas fa-check-circle mr-2"></i>
-                            {getClassTimetable(classData.id).length} lessons scheduled
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-gray-400 text-sm">Class not yet created</p>
-                    )}
-                  </div>
-                );
-              })
-            ))}
-          </div>
-        </div>
-
-        {/* Secondary Forms Overview */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Secondary School (Forms 1-6)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {secondaryForms.map(({ form, sections }) => (
-              sections.map(section => {
-                const className = getClassName(form, section, false);
-                const classData = findClassByName(className);
-                const studentCount = classData?.student_count || 0;
-                
-                return (
-                  <div key={`form${form}${section}`} className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-lg font-semibold text-green-600">{className}</h3>
-                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
-                        {studentCount} students
-                      </span>
-                    </div>
-                    {classData ? (
-                      <div className="text-sm text-gray-600">
-                        <p><i className="fas fa-user-tie mr-2"></i>Teacher: {classData.teacher_name || 'Not assigned'}</p>
-                        <p className="mt-1"><i className="fas fa-door-open mr-2"></i>Room: {classData.room_number || 'TBA'}</p>
-                        {getClassTimetable(classData.id).length > 0 && (
-                          <p className="mt-1 text-green-600">
-                            <i className="fas fa-check-circle mr-2"></i>
-                            {getClassTimetable(classData.id).length} lessons scheduled
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-gray-400 text-sm">Class not yet created</p>
-                    )}
-                  </div>
-                );
-              })
-            ))}
-          </div>
-        </div>
-
-        {/* Detailed Timetable View for Selected Classes */}
-        {filteredClasses.length > 0 && selectedClass !== 'all' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">
-              Timetable for {filteredClasses[0].name}
-            </h2>
-            {getClassTimetable(filteredClasses[0].id).length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Day</th>
-                      <th className="px-4 py-2 text-left">Time</th>
-                      <th className="px-4 py-2 text-left">Subject</th>
-                      <th className="px-4 py-2 text-left">Teacher</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getClassTimetable(filteredClasses[0].id).map((entry) => (
-                      <tr key={entry.id} className="border-t">
-                        <td className="px-4 py-2">{entry.day_of_week}</td>
-                        <td className="px-4 py-2">{entry.start_time} - {entry.end_time}</td>
-                        <td className="px-4 py-2">{entry.subject_name || entry.subject}</td>
-                        <td className="px-4 py-2">{entry.teacher_name || 'TBA'}</td>
+            {getClassTimetable(selectedClass.id).length > 0 ? (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Time</th>
+                        {days.map((day) => (
+                          <th key={day} className="px-4 py-3 text-left font-semibold text-gray-700">
+                            {day}
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {Object.entries(organizeTimetable(getClassTimetable(selectedClass.id))).map(([timeSlot, dayEntries]) => (
+                        <tr key={timeSlot} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
+                            {timeSlot}
+                          </td>
+                          {days.map((day) => {
+                            const entry = dayEntries[day];
+                            return (
+                              <td key={day} className="px-4 py-3">
+                                {entry ? (
+                                  <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-500">
+                                    <p className="font-semibold text-gray-800 text-sm">{entry.subject_name || entry.subject}</p>
+                                    {entry.teacher_name && (
+                                      <p className="text-xs text-gray-600 mt-1">{entry.teacher_name}</p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-400 text-sm">-</div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <i className="fas fa-calendar-times text-gray-400 text-5xl mb-4"></i>
-                <p className="text-gray-500">No timetable entries for this class yet</p>
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="text-center py-8">
+                  <i className="fas fa-calendar-times text-gray-400 text-5xl mb-4"></i>
+                  <p className="text-gray-500">No timetable entries for this class yet</p>
+                </div>
               </div>
             )}
           </div>
-        )}
+        ) : (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">All Classes</h2>
+              <p className="text-gray-600 mt-1">Click on a class to view its timetable</p>
+            </div>
 
-        {/* Empty State */}
-        {classes.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
-            <i className="fas fa-calendar-alt text-gray-400 text-6xl mb-4"></i>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Classes Found</h3>
-            <p className="text-gray-500 mb-4">
-              Create classes to start managing timetables
-            </p>
+            {primaryClasses.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">
+                  <i className="fas fa-school mr-2 text-blue-600"></i>
+                  Primary School (Grades)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {primaryClasses.map((cls) => {
+                    const timetableCount = getClassTimetable(cls.id).length;
+                    return (
+                      <div 
+                        key={cls.id} 
+                        className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition cursor-pointer border-l-4 border-blue-500"
+                        onClick={() => setSelectedClass(cls)}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-blue-600">{cls.name}</h3>
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                            {cls.student_count || 0} students
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <p><i className="fas fa-user-tie mr-2"></i>{cls.teacher_name || 'No teacher assigned'}</p>
+                          <p className="mt-1">
+                            {timetableCount > 0 ? (
+                              <span className="text-green-600">
+                                <i className="fas fa-check-circle mr-2"></i>
+                                {timetableCount} lessons scheduled
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">
+                                <i className="fas fa-calendar-times mr-2"></i>
+                                No timetable
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="mt-3 text-right">
+                          <span className="text-blue-600 text-sm font-medium">
+                            View Timetable <i className="fas fa-arrow-right ml-1"></i>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {secondaryClasses.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">
+                  <i className="fas fa-graduation-cap mr-2 text-green-600"></i>
+                  Secondary School (Forms)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {secondaryClasses.map((cls) => {
+                    const timetableCount = getClassTimetable(cls.id).length;
+                    return (
+                      <div 
+                        key={cls.id} 
+                        className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition cursor-pointer border-l-4 border-green-500"
+                        onClick={() => setSelectedClass(cls)}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-green-600">{cls.name}</h3>
+                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">
+                            {cls.student_count || 0} students
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <p><i className="fas fa-user-tie mr-2"></i>{cls.teacher_name || 'No teacher assigned'}</p>
+                          <p className="mt-1">
+                            {timetableCount > 0 ? (
+                              <span className="text-green-600">
+                                <i className="fas fa-check-circle mr-2"></i>
+                                {timetableCount} lessons scheduled
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">
+                                <i className="fas fa-calendar-times mr-2"></i>
+                                No timetable
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="mt-3 text-right">
+                          <span className="text-green-600 text-sm font-medium">
+                            View Timetable <i className="fas fa-arrow-right ml-1"></i>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {classes.length === 0 && (
+              <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+                <i className="fas fa-calendar-alt text-gray-400 text-6xl mb-4"></i>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Classes Found</h3>
+                <p className="text-gray-500 mb-4">
+                  Create classes to start managing timetables
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
