@@ -1,7 +1,15 @@
-# School Management System - Frontend
+# Willovale Secondary School - Management System
 
 ## Overview
-This project is a React-based School Management System frontend, built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. Its primary purpose is to provide a comprehensive and intuitive platform for managing various aspects of school operations and communication. The system aims to streamline administrative tasks, enhance teacher-parent-student interaction, and provide students with access to their academic information.
+This project is a React-based School Management System for **Willovale Secondary School**, built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. Willovale Secondary School, established in 1985 in Willowvale, Eastern Cape, South Africa, uses this platform to manage school operations and communication. The system streamlines administrative tasks, enhances teacher-parent-student interaction, and provides students with access to their academic information.
+
+## School Branding
+- **School Name:** Willovale Secondary School
+- **Established:** 1985
+- **Location:** Willowvale, Eastern Cape, South Africa
+- **Motto:** "Knowledge is Power"
+- **Colors:** Blue (#1e3a8a) and Yellow (#eab308)
+- **Logo:** Yellow "W" on blue background
 
 ## User Preferences
 I want to communicate in simple language. I prefer iterative development. Ask before making major changes.
@@ -21,7 +29,9 @@ I want to communicate in simple language. I prefer iterative development. Ask be
 
 ### Frontend Routing Structure
 - **Public Routes:**
-  - `/` - Landing page with hero section and features
+  - `/` - Landing page for Willovale Secondary School with hero section, school info, programs, and news
+  - `/about` - About Us page with school history, mission, vision, leadership, and facilities
+  - `/contact` - Contact Us page with school contact information and enquiry form
   - `/login` - Login page for students, parents, and teachers
   - `/admin/login` - Dedicated admin login page
   - `/register/parent` - Parent self-registration
