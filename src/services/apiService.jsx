@@ -182,6 +182,30 @@ const apiService = {
   searchTeachers: (query = '') => request(`/teachers/search/?q=${query}`, "GET"),
   searchParents: (query = '') => request(`/parents/search/?q=${query}`, "GET"),
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
+  
+  // Homework endpoints
+  getTeacherHomework: () => request("/teachers/homework/", "GET"),
+  getTeacherHomeworkClasses: () => request("/teachers/homework/classes/", "GET"),
+  createHomework: async (formData) => {
+    const token = getToken();
+    const response = await fetch(`${API_BASE_URL}/teachers/homework/create/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Failed to create homework");
+    }
+    return response.json();
+  },
+  deleteHomework: (homeworkId) => request(`/teachers/homework/${homeworkId}/delete/`, "DELETE"),
+  downloadHomework: (homeworkId) => `${API_BASE_URL}/teachers/homework/${homeworkId}/download/`,
+  
+  getParentHomework: () => request("/parents/homework/", "GET"),
+  downloadParentHomework: (homeworkId) => `${API_BASE_URL}/parents/homework/${homeworkId}/download/`,
 };
 
 export default apiService;
