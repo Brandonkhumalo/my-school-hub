@@ -6,9 +6,12 @@ import apiService from "../../services/apiService";
 
 export default function ParentMessages() {
   const { user } = useAuth();
+  const [view, setView] = useState("conversations");
+  const [conversations, setConversations] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
-  const [conversation, setConversation] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [messageText, setMessageText] = useState("");
   const [subject, setSubject] = useState("");
@@ -16,8 +19,42 @@ export default function ParentMessages() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    loadTeachers();
+    loadConversations();
   }, []);
+
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getMessages();
+      
+      const conversationMap = {};
+      data.forEach(msg => {
+        const otherUserId = msg.sender === user.id ? msg.recipient : msg.sender;
+        const otherUserName = msg.sender === user.id ? msg.recipient_name : msg.sender_name;
+        const isUnread = msg.recipient === user.id && !msg.is_read;
+        
+        if (!conversationMap[otherUserId] || new Date(msg.date_sent) > new Date(conversationMap[otherUserId].lastMessageDate)) {
+          conversationMap[otherUserId] = {
+            userId: otherUserId,
+            userName: otherUserName,
+            lastMessage: msg.message,
+            lastMessageDate: msg.date_sent,
+            unread: conversationMap[otherUserId]?.unread || isUnread
+          };
+        } else if (isUnread) {
+          conversationMap[otherUserId].unread = true;
+        }
+      });
+      
+      setConversations(Object.values(conversationMap).sort((a, b) => 
+        new Date(b.lastMessageDate) - new Date(a.lastMessageDate)
+      ));
+    } catch (error) {
+      console.error("Error loading conversations:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadTeachers = async () => {
     try {
@@ -31,11 +68,23 @@ export default function ParentMessages() {
     }
   };
 
-  const loadConversation = async (teacher) => {
+  const loadMessages = async (conv) => {
+    try {
+      setSelectedConversation(conv);
+      setSelectedTeacher(null);
+      const data = await apiService.getConversation(conv.userId);
+      setMessages(data);
+    } catch (error) {
+      console.error("Error loading messages:", error);
+    }
+  };
+
+  const loadTeacherConversation = async (teacher) => {
     try {
       setSelectedTeacher(teacher);
+      setSelectedConversation(null);
       const data = await apiService.getConversation(teacher.user.id);
-      setConversation(data);
+      setMessages(data);
     } catch (error) {
       console.error("Error loading conversation:", error);
     }
@@ -49,17 +98,30 @@ export default function ParentMessages() {
       return;
     }
 
+    const recipientId = selectedConversation?.userId || selectedTeacher?.user.id;
+    if (!recipientId) {
+      alert("Please select a recipient");
+      return;
+    }
+
     try {
       setSending(true);
       await apiService.sendMessage({
-        recipient_id: selectedTeacher.user.id,
+        recipient_id: recipientId,
         message: messageText,
         subject: subject
       });
       
       setMessageText("");
       setSubject("");
-      await loadConversation(selectedTeacher);
+      
+      if (selectedConversation) {
+        await loadMessages(selectedConversation);
+      } else if (selectedTeacher) {
+        await loadTeacherConversation(selectedTeacher);
+      }
+      
+      await loadConversations();
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send message: " + (error.message || "Unknown error"));
@@ -73,10 +135,24 @@ export default function ParentMessages() {
     loadTeachers();
   };
 
-  if (loading && !selectedTeacher) {
+  const switchToConversations = () => {
+    setView("conversations");
+    setSelectedTeacher(null);
+    setMessages([]);
+    loadConversations();
+  };
+
+  const switchToNewMessage = () => {
+    setView("new");
+    setSelectedConversation(null);
+    setMessages([]);
+    loadTeachers();
+  };
+
+  if (loading && conversations.length === 0 && teachers.length === 0) {
     return (
       <div>
-        <Header title="Messages" user={user} />
+        <Header title="Chat with Teachers" user={user} />
         <LoadingSpinner />
       </div>
     );
@@ -84,78 +160,163 @@ export default function ParentMessages() {
 
   return (
     <div>
-      <Header title="Messages" user={user} />
+      <Header title="Chat with Teachers" user={user} />
       
       <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Teacher List */}
-          <div className="lg:col-span-1 bg-white rounded-lg shadow-lg p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Teachers</h3>
-            
-            {/* Search */}
-            <form onSubmit={handleSearch} className="mb-4">
-              <input
-                type="text"
-                placeholder="Search teachers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </form>
+        <div className="flex gap-4 mb-6">
+          <button
+            onClick={switchToConversations}
+            className={`px-6 py-2 rounded-lg font-medium transition ${
+              view === "conversations"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
+          >
+            <i className="fas fa-inbox mr-2"></i>
+            My Conversations
+            {conversations.some(c => c.unread) && (
+              <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">New</span>
+            )}
+          </button>
+          <button
+            onClick={switchToNewMessage}
+            className={`px-6 py-2 rounded-lg font-medium transition ${
+              view === "new"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
+          >
+            <i className="fas fa-plus mr-2"></i>
+            New Message
+          </button>
+        </div>
 
-            {/* Teacher List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {teachers.map((teacher) => (
-                <div
-                  key={teacher.id}
-                  onClick={() => loadConversation(teacher)}
-                  className={`p-3 rounded-lg cursor-pointer transition ${
-                    selectedTeacher?.id === teacher.id
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-50 hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="font-semibold">
-                    {teacher.user.first_name} {teacher.user.last_name}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Sidebar */}
+          <div className="lg:col-span-1 bg-white rounded-lg shadow-lg p-4">
+            {view === "conversations" ? (
+              <>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Conversations</h3>
+                
+                {conversations.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <i className="fas fa-comments text-4xl mb-2"></i>
+                    <p>No conversations yet</p>
+                    <button
+                      onClick={switchToNewMessage}
+                      className="mt-4 text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Start a new conversation
+                    </button>
                   </div>
-                  <div className={`text-sm ${
-                    selectedTeacher?.id === teacher.id ? 'text-blue-100' : 'text-gray-500'
-                  }`}>
-                    {teacher.subjects && teacher.subjects.length > 0
-                      ? teacher.subjects.map(s => s.name).join(', ')
-                      : 'No subjects'}
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.userId}
+                        onClick={() => loadMessages(conv)}
+                        className={`p-3 rounded-lg cursor-pointer transition ${
+                          selectedConversation?.userId === conv.userId
+                            ? 'bg-blue-500 text-white'
+                            : conv.unread
+                              ? 'bg-blue-50 border-l-4 border-blue-500'
+                              : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold">{conv.userName}</div>
+                          {conv.unread && selectedConversation?.userId !== conv.userId && (
+                            <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">New</span>
+                          )}
+                        </div>
+                        <div className={`text-sm truncate ${
+                          selectedConversation?.userId === conv.userId ? 'text-blue-100' : 'text-gray-500'
+                        }`}>
+                          {conv.lastMessage}
+                        </div>
+                        <div className={`text-xs ${
+                          selectedConversation?.userId === conv.userId ? 'text-blue-200' : 'text-gray-400'
+                        }`}>
+                          {new Date(conv.lastMessageDate).toLocaleDateString()}
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Find a Teacher</h3>
+                
+                <form onSubmit={handleSearch} className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search by name or subject..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    className="mt-2 w-full py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition"
+                  >
+                    <i className="fas fa-search mr-2"></i>Search
+                  </button>
+                </form>
+
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {teachers.map((teacher) => (
+                    <div
+                      key={teacher.id}
+                      onClick={() => loadTeacherConversation(teacher)}
+                      className={`p-3 rounded-lg cursor-pointer transition ${
+                        selectedTeacher?.id === teacher.id
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        {teacher.user.first_name} {teacher.user.last_name}
+                      </div>
+                      <div className={`text-sm ${
+                        selectedTeacher?.id === teacher.id ? 'text-blue-100' : 'text-gray-500'
+                      }`}>
+                        {teacher.subjects && teacher.subjects.length > 0
+                          ? teacher.subjects.map(s => s.name).join(', ')
+                          : 'Teacher'}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {teachers.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <i className="fas fa-search text-4xl mb-2"></i>
+                      <p>Search for teachers</p>
+                    </div>
+                  )}
                 </div>
-              ))}
-              
-              {teachers.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <i className="fas fa-search text-4xl mb-2"></i>
-                  <p>No teachers found</p>
-                </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
-          {/* Conversation */}
+          {/* Message Area */}
           <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-4 flex flex-col" style={{height: '600px'}}>
-            {selectedTeacher ? (
+            {(selectedConversation || selectedTeacher) ? (
               <>
-                {/* Chat Header */}
                 <div className="border-b pb-3 mb-4">
                   <h3 className="text-lg font-semibold text-gray-800">
-                    {selectedTeacher.user.first_name} {selectedTeacher.user.last_name}
+                    {selectedConversation?.userName || 
+                     `${selectedTeacher?.user.first_name} ${selectedTeacher?.user.last_name}`}
                   </h3>
-                  <p className="text-sm text-gray-500">
-                    {selectedTeacher.subjects && selectedTeacher.subjects.length > 0
-                      ? selectedTeacher.subjects.map(s => s.name).join(', ')
-                      : 'Teacher'}
-                  </p>
+                  {selectedTeacher?.subjects && (
+                    <p className="text-sm text-gray-500">
+                      {selectedTeacher.subjects.map(s => s.name).join(', ')}
+                    </p>
+                  )}
                 </div>
 
-                {/* Messages */}
                 <div className="flex-1 overflow-y-auto mb-4 space-y-3">
-                  {conversation.map((msg) => (
+                  {messages.map((msg) => (
                     <div
                       key={msg.id}
                       className={`flex ${msg.sender === user.id ? 'justify-end' : 'justify-start'}`}
@@ -180,7 +341,7 @@ export default function ParentMessages() {
                     </div>
                   ))}
 
-                  {conversation.length === 0 && (
+                  {messages.length === 0 && (
                     <div className="text-center py-12 text-gray-500">
                       <i className="fas fa-comment-dots text-6xl mb-4"></i>
                       <p>No messages yet. Start the conversation!</p>
@@ -188,7 +349,6 @@ export default function ParentMessages() {
                   )}
                 </div>
 
-                {/* Message Input */}
                 <form onSubmit={handleSendMessage} className="border-t pt-4">
                   <input
                     type="text"
@@ -223,7 +383,11 @@ export default function ParentMessages() {
               <div className="flex-1 flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <i className="fas fa-comments text-6xl mb-4"></i>
-                  <p>Select a teacher to start messaging</p>
+                  <p>
+                    {view === "conversations" 
+                      ? "Select a conversation to view messages" 
+                      : "Search and select a teacher to start messaging"}
+                  </p>
                 </div>
               </div>
             )}

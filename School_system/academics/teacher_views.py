@@ -304,7 +304,7 @@ def subject_performance(request, subject_id):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def attendance_register(request):
-    """Get attendance register for a specific date and class"""
+    """Get attendance register for the teacher's assigned class"""
     if request.user.role != 'teacher':
         return Response({'error': 'Only teachers can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
@@ -312,7 +312,6 @@ def attendance_register(request):
     try:
         teacher = request.user.teacher
         date_str = request.query_params.get('date', str(datetime.now().date()))
-        class_id = request.query_params.get('class_id')
         
         # Parse date
         try:
@@ -321,17 +320,21 @@ def attendance_register(request):
             return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
-        # Get students
-        if class_id:
-            try:
-                students = Student.objects.filter(
-                    student_class_id=class_id
-                ).select_related('user', 'student_class')
-            except:
-                return Response({'error': 'Invalid class ID'}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-        else:
-            students = Student.objects.all().select_related('user', 'student_class')
+        # Get the class where this teacher is the class_teacher
+        teacher_class = Class.objects.filter(class_teacher=request.user).first()
+        
+        if not teacher_class:
+            return Response({
+                'no_class': True,
+                'error': 'You are not a class teacher. Contact admin to assign you as a class teacher.',
+                'students': [],
+                'class_name': ''
+            })
+        
+        # Get students from teacher's class only
+        students = Student.objects.filter(
+            student_class=teacher_class
+        ).select_related('user', 'student_class').order_by('user__last_name', 'user__first_name')
         
         # Get attendance records for this date
         attendance_records = Attendance.objects.filter(
@@ -370,6 +373,8 @@ def attendance_register(request):
         
         return Response({
             'date': str(attendance_date),
+            'class_name': teacher_class.name,
+            'class_id': teacher_class.id,
             'students': data
         })
     except Teacher.DoesNotExist:

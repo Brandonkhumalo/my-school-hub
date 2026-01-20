@@ -11,6 +11,11 @@ export default function TeacherAttendance() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
+  const [className, setClassName] = useState("");
+  const [attendanceMarked, setAttendanceMarked] = useState(false);
+  const [noClass, setNoClass] = useState(false);
+
+  const isToday = date === new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     loadAttendance();
@@ -19,21 +24,42 @@ export default function TeacherAttendance() {
   const loadAttendance = async () => {
     try {
       setLoading(true);
+      setAttendanceMarked(false);
       const data = await apiService.getAttendanceRegister(date, null);
-      setStudents(data.students);
       
-      // Initialize attendance state from existing data
+      if (data.no_class) {
+        setNoClass(true);
+        setStudents([]);
+        setClassName("");
+        return;
+      }
+      
+      setNoClass(false);
+      setStudents(data.students || []);
+      setClassName(data.class_name || "");
+      
       const attendanceMap = {};
-      data.students.forEach(student => {
+      let hasAttendance = false;
+      
+      (data.students || []).forEach(student => {
         attendanceMap[student.student_id] = {
           status: student.status || 'present',
           remarks: student.remarks || ''
         };
+        if (student.status) {
+          hasAttendance = true;
+        }
       });
+      
       setAttendance(attendanceMap);
+      setAttendanceMarked(hasAttendance && isToday);
     } catch (error) {
       console.error("Error loading attendance:", error);
-      alert("Failed to load attendance register");
+      if (error.message?.includes("not a class teacher")) {
+        setNoClass(true);
+      } else {
+        alert("Failed to load attendance register");
+      }
     } finally {
       setLoading(false);
     }
@@ -65,7 +91,6 @@ export default function TeacherAttendance() {
     try {
       setSubmitting(true);
       
-      // Prepare attendance data
       const attendanceData = students.map(student => ({
         student_id: student.student_id,
         status: attendance[student.student_id]?.status || 'present',
@@ -77,7 +102,7 @@ export default function TeacherAttendance() {
         attendance: attendanceData
       });
 
-      alert("Attendance saved successfully!");
+      setAttendanceMarked(true);
       await loadAttendance();
     } catch (error) {
       console.error("Error saving attendance:", error);
@@ -114,6 +139,27 @@ export default function TeacherAttendance() {
     );
   }
 
+  if (noClass) {
+    return (
+      <div>
+        <Header title="Attendance Register" user={user} />
+        <div className="p-6">
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg">
+            <div className="flex items-start">
+              <i className="fas fa-exclamation-triangle text-yellow-600 text-2xl mr-4"></i>
+              <div>
+                <h3 className="text-lg font-semibold text-yellow-800">No Class Assigned</h3>
+                <p className="text-yellow-700 mt-2">
+                  You are not assigned as a class teacher. Please contact the administrator to assign you as a class teacher before you can mark attendance.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Header title="Attendance Register" user={user} />
@@ -121,12 +167,26 @@ export default function TeacherAttendance() {
       <div className="p-6">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Daily Attendance Register</h2>
-          <p className="text-gray-600 mt-2">Mark student attendance for the day</p>
+          <p className="text-gray-600 mt-2">
+            Mark attendance for <span className="font-semibold text-blue-600">{className}</span>
+          </p>
         </div>
 
-        {/* Date and Summary */}
+        {attendanceMarked && isToday && (
+          <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+            <div className="flex items-center">
+              <i className="fas fa-check-circle text-green-600 text-xl mr-3"></i>
+              <div>
+                <h4 className="font-semibold text-green-800">Attendance Marked for Today</h4>
+                <p className="text-green-700 text-sm">
+                  Attendance has been recorded. Check again tomorrow for the next day's register.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
-          {/* Date Selector */}
           <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <i className="fas fa-calendar mr-2 text-blue-600"></i>
@@ -137,10 +197,10 @@ export default function TeacherAttendance() {
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
             />
           </div>
 
-          {/* Summary Cards */}
           <div className="bg-green-50 rounded-lg shadow p-4 border-l-4 border-green-500">
             <div className="text-sm text-gray-600">Present</div>
             <div className="text-2xl font-bold text-green-600">{statusCounts.present}</div>
@@ -155,18 +215,17 @@ export default function TeacherAttendance() {
           </div>
         </div>
 
-        {/* Attendance Form */}
         <form onSubmit={handleSubmit}>
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">
               <i className="fas fa-clipboard-list mr-2 text-blue-600"></i>
-              Student List ({students.length} students)
+              {className} - Student List ({students.length} students)
             </h3>
 
             {students.length === 0 ? (
               <div className="text-center py-8">
                 <i className="fas fa-user-graduate text-6xl text-gray-300 mb-4"></i>
-                <p className="text-gray-500">No students found</p>
+                <p className="text-gray-500">No students in this class</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -176,7 +235,6 @@ export default function TeacherAttendance() {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">#</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Student Number</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Class</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Remarks</th>
                     </tr>
@@ -189,7 +247,6 @@ export default function TeacherAttendance() {
                         <td className="px-4 py-3 text-sm font-medium text-gray-800">
                           {student.name} {student.surname}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{student.class}</td>
                         <td className="px-4 py-3">
                           <div className="flex space-x-2">
                             <button
@@ -286,7 +343,6 @@ export default function TeacherAttendance() {
           )}
         </form>
 
-        {/* Legend */}
         <div className="mt-6 bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
           <div className="flex">
             <i className="fas fa-info-circle text-blue-600 text-xl mr-3"></i>
