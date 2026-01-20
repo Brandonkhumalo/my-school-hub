@@ -3,6 +3,8 @@ import { Routes, Route } from "react-router-dom";
 
 // Landing Page
 import Index from "./pages/Index";
+import AboutUs from "./pages/AboutUs";
+import ContactUs from "./pages/ContactUs";
 
 // Layout
 import Layout from "./components/Layout";
@@ -63,6 +65,8 @@ function App() {
     <Routes>
       {/* Landing page */}
       <Route path="/" element={<Index />} />
+      <Route path="/about" element={<AboutUs />} />
+      <Route path="/contact" element={<ContactUs />} />
       
       {/* Auth pages */}
       <Route path="/login" element={<LoginPage />} />
