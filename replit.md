@@ -85,14 +85,19 @@ Key features include:
 -   Parent-Teacher messaging system uses a dedicated `ParentTeacherMessage` model tracking sender, recipient, message content, subject, timestamps, and read status.
 
 ### Parent-Child Linking Security Model
--   **Parent Request Flow:** Parents can browse all students (with name/surname/class filtering) and request links. This creates an unconfirmed `ParentChildLink` record.
--   **Admin Approval Required:** Only administrators and teachers can approve parent-child link requests. Parents cannot self-approve for security.
+-   **Privacy-Focused Search:** Parents cannot browse all students. Instead, they must search by:
+    - Student number (minimum 3 characters), OR
+    - Both first name AND last name (minimum 2 characters each)
+    - Search returns maximum 10 results to prevent enumeration
+-   **Parent Request Flow:** After searching, parents can request to link with their child. This creates an unconfirmed `ParentChildLink` record.
+-   **Admin Approval Required:** Only administrators can approve parent-child link requests via the `/admin/parent-requests` page. Parents cannot self-approve for security.
 -   **Confirmed Access Only:** Parents can only access student data (grades, fees, messages) for confirmed children.
 -   **API Endpoints:**
-    - `GET /api/parents/students/all/` - Browse all students (parent-only)
+    - `GET /api/parents/students/search/?student_number=X` - Search by student number (parent-only)
+    - `GET /api/parents/students/search/?first_name=X&last_name=Y` - Search by name (parent-only)
     - `POST /api/parents/children/request/` - Request child link (parent-only)
-    - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin/teacher-only)
--   **Security Note:** This two-step verification (parent request → admin approval) prevents unauthorized access to student records.
+    - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin-only)
+-   **Security Note:** This privacy-focused design (search-only + admin approval) protects student data and prevents unauthorized access.
 
 ### Teacher Platform Features
 -   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam). Student list is intelligently filtered to show only: (1) students who have existing marks for that subject with the teacher, or (2) students in classes taught by that teacher.
