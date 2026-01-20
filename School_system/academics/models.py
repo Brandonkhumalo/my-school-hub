@@ -231,3 +231,24 @@ class ParentTeacherMessage(models.Model):
     
     def __str__(self):
         return f"From {self.sender.first_name} to {self.recipient.first_name} - {self.date_sent.strftime('%Y-%m-%d %H:%M')}"
+
+
+def homework_file_path(instance, filename):
+    return f'homework/{instance.subject.code}/{filename}'
+
+
+class Homework(models.Model):
+    title = models.CharField(max_length=200)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='homework')
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='homework')
+    assigned_class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='homework')
+    description = models.TextField(blank=True)
+    file = models.FileField(upload_to=homework_file_path, blank=True, null=True)
+    due_date = models.DateField()
+    date_created = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date_created']
+    
+    def __str__(self):
+        return f"{self.subject.name} Homework - {self.title} ({self.assigned_class.name})"
