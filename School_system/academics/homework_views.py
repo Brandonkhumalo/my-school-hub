@@ -270,19 +270,24 @@ def teacher_classes_for_homework(request):
     try:
         teacher = request.user.teacher
         
+        class_ids = set()
+        
         classes_from_timetable = Class.objects.filter(
             timetable__teacher=teacher
-        ).distinct()
+        ).values_list('id', flat=True)
+        class_ids.update(classes_from_timetable)
         
         classes_from_results = Class.objects.filter(
             students__results__teacher=teacher
-        ).distinct()
+        ).values_list('id', flat=True)
+        class_ids.update(classes_from_results)
         
-        all_classes = (classes_from_timetable | classes_from_results).distinct()
+        class_teacher_classes = Class.objects.filter(
+            class_teacher=teacher.user
+        ).values_list('id', flat=True)
+        class_ids.update(class_teacher_classes)
         
-        if teacher.user.taught_classes.exists():
-            class_teacher_classes = teacher.user.taught_classes.all()
-            all_classes = (all_classes | class_teacher_classes).distinct()
+        all_classes = Class.objects.filter(id__in=class_ids)
         
         data = [{'id': c.id, 'name': c.name, 'grade_level': c.grade_level} for c in all_classes]
         return Response(data)
