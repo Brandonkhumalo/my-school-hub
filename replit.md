@@ -40,7 +40,13 @@ I want to communicate in simple language. I prefer iterative development. Ask be
 
 - **Protected Routes (requires authentication):**
   - `/admin` - Admin dashboard
-  - `/admin/*` - Admin management pages
+  - `/admin/students` - Student management with search and detailed views
+  - `/admin/teachers` - Teacher management with search and subject/class assignments
+  - `/admin/parent-requests` - Parent-child link request approval/rejection
+  - `/admin/invoices` - Invoice management with filtering, sorting, and pagination
+  - `/admin/results` - Class performance overview with per-subject breakdown
+  - `/admin/timetable` - All classes timetable viewer (Primary/Secondary)
+  - `/admin/*` - Other admin management pages
   - `/teacher` - Teacher dashboard
   - `/teacher/marks` - Add/update student marks
   - `/teacher/attendance` - Daily attendance register
