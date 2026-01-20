@@ -94,13 +94,15 @@ function Layout() {
           </nav>
 
           <div className="mt-6 pt-6 border-t border-blue-800">
-            <Link
-              to="/profile"
-              className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition mb-2"
-            >
-              <i className="fas fa-user-circle mr-3 w-5"></i>
-              Profile
-            </Link>
+            {role !== 'parent' && (
+              <Link
+                to="/profile"
+                className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition mb-2"
+              >
+                <i className="fas fa-user-circle mr-3 w-5"></i>
+                Profile
+              </Link>
+            )}
             <Link
               to="/logout"
               className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition"
