@@ -30,6 +30,7 @@ class School(models.Model):
     email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     logo = models.URLField(blank=True)
+    admin_password = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -62,6 +62,14 @@ import AdminLogin from "./pages/auth/AdminLogin";
 import ParentRegister from "./pages/auth/ParentRegister";
 import Logout from "./pages/auth/Logout";
 
+// Tishanyq Admin Pages
+import TishanyqLogin from "./pages/tishanyq/TishanyqLogin";
+import TishanyqRegister from "./pages/tishanyq/TishanyqRegister";
+import TishanyqDashboard from "./pages/tishanyq/TishanyqDashboard";
+import TishanyqHome from "./pages/tishanyq/TishanyqHome";
+import CreateSchool from "./pages/tishanyq/CreateSchool";
+import SchoolsList from "./pages/tishanyq/SchoolsList";
+
 // 404
 import NotFound from "./pages/notfound/NotFound";
 
@@ -78,6 +86,15 @@ function App() {
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/register/parent" element={<ParentRegister />} />
       <Route path="/logout" element={<Logout />} />
+
+      {/* Tishanyq Admin Portal */}
+      <Route path="/tishanyq/admin/login" element={<TishanyqLogin />} />
+      <Route path="/tishanyq/admin/register" element={<TishanyqRegister />} />
+      <Route path="/tishanyq/admin" element={<TishanyqDashboard />}>
+        <Route path="dashboard" element={<TishanyqHome />} />
+        <Route path="create-school" element={<CreateSchool />} />
+        <Route path="schools" element={<SchoolsList />} />
+      </Route>
 
       {/* Protected pages */}
       <Route element={<Layout />}>
