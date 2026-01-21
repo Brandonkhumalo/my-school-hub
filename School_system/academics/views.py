@@ -21,11 +21,26 @@ class SubjectListCreateView(generics.ListCreateAPIView):
     serializer_class = SubjectSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Subject.objects.filter(school=user.school)
+        return Subject.objects.none()
+
+    def perform_create(self, serializer):
+        serializer.save(school=self.request.user.school)
+
 
 class SubjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Subject.objects.all()
     serializer_class = SubjectSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Subject.objects.filter(school=user.school)
+        return Subject.objects.none()
 
 
 # Class Views
@@ -35,7 +50,11 @@ class ClassListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Class.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Class.objects.filter(school=user.school)
+        else:
+            queryset = Class.objects.none()
         level_type = self.request.query_params.get('level', None)
         if level_type == 'primary':
             queryset = queryset.filter(grade_level__lte=7)
@@ -43,11 +62,20 @@ class ClassListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(grade_level__gt=7)
         return queryset
 
+    def perform_create(self, serializer):
+        serializer.save(school=self.request.user.school)
+
 
 class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Class.objects.filter(school=user.school)
+        return Class.objects.none()
 
 
 # Student Views
@@ -61,14 +89,14 @@ class StudentListView(generics.ListCreateAPIView):
         return StudentSerializer
 
     def get_queryset(self):
-        queryset = Student.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Student.objects.filter(user__school=user.school)
+        else:
+            queryset = Student.objects.none()
         class_id = self.request.query_params.get('class', None)
         if class_id:
             queryset = queryset.filter(student_class_id=class_id)
-
-        for student in queryset:
-            print(f"Class Name: {student.student_class.name if student.student_class else 'No Class'}")
-
         return queryset
 
 
@@ -77,12 +105,22 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = StudentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Student.objects.filter(user__school=user.school)
+        return Student.objects.none()
+
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def student_performance_view(request, student_id):
     try:
         student = Student.objects.get(id=student_id)
+        
+        # Verify student belongs to same school as requesting user (tenant isolation)
+        if request.user.school and student.user.school != request.user.school:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         # Check permissions - students can only view their own, parents can view their children's
         if request.user.role == 'student' and request.user.student.id != student_id:
@@ -155,6 +193,12 @@ class TeacherListView(generics.ListCreateAPIView):
             return CreateTeacherSerializer
         return TeacherSerializer
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Teacher.objects.filter(user__school=user.school)
+        return Teacher.objects.none()
+
 
 # Parent Views
 class ParentListView(generics.ListCreateAPIView):
@@ -165,6 +209,12 @@ class ParentListView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return CreateParentSerializer
         return ParentSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Parent.objects.filter(user__school=user.school)
+        return Parent.objects.none()
 
 
 # Result Views
@@ -178,7 +228,11 @@ class ResultListCreateView(generics.ListCreateAPIView):
         return ResultSerializer
 
     def get_queryset(self):
-        queryset = Result.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Result.objects.filter(student__user__school=user.school)
+        else:
+            queryset = Result.objects.none()
         
         # Filter by teacher if teacher is making request
         if self.request.user.role == 'teacher':
@@ -215,9 +269,13 @@ class ResultDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Result.objects.all()
-        if self.request.user.role == 'teacher':
-            queryset = queryset.filter(teacher__user=self.request.user)
+        user = self.request.user
+        if user.school:
+            queryset = Result.objects.filter(student__user__school=user.school)
+        else:
+            queryset = Result.objects.none()
+        if user.role == 'teacher':
+            queryset = queryset.filter(teacher__user=user)
         return queryset
 
 
@@ -228,14 +286,18 @@ class TimetableListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Timetable.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Timetable.objects.filter(class_assigned__school=user.school)
+        else:
+            queryset = Timetable.objects.none()
         
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(class_assigned=self.request.user.student.student_class)
-        elif self.request.user.role == 'teacher':
-            queryset = queryset.filter(teacher__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_classes = self.request.user.parent.children.values_list('student_class', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(class_assigned=user.student.student_class)
+        elif user.role == 'teacher':
+            queryset = queryset.filter(teacher__user=user)
+        elif user.role == 'parent':
+            children_classes = user.parent.children.values_list('student_class', flat=True)
             queryset = queryset.filter(class_assigned_id__in=children_classes)
         
         class_id = self.request.query_params.get('class')
@@ -256,10 +318,13 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Announcement.objects.filter(is_active=True)
-        user_role = self.request.user.role
+        user = self.request.user
+        if user.school:
+            queryset = Announcement.objects.filter(is_active=True, author__school=user.school)
+        else:
+            queryset = Announcement.objects.none()
+        user_role = user.role
         
-        # Filter by target audience
         queryset = queryset.filter(
             Q(target_audience='all') | Q(target_audience=user_role)
         )
@@ -277,15 +342,19 @@ class ComplaintListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Complaint.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Complaint.objects.filter(student__user__school=user.school)
+        else:
+            queryset = Complaint.objects.none()
         
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(student__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(student__user=user)
+        elif user.role == 'parent':
+            children_ids = user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_id__in=children_ids)
-        elif self.request.user.role == 'teacher':
-            queryset = queryset.filter(submitted_by=self.request.user)
+        elif user.role == 'teacher':
+            queryset = queryset.filter(submitted_by=user)
         
         return queryset.order_by('-date_submitted')
 
@@ -298,6 +367,12 @@ class ComplaintDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ComplaintSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Complaint.objects.filter(student__user__school=user.school)
+        return Complaint.objects.none()
+
 
 # Suspension Views
 class SuspensionListCreateView(generics.ListCreateAPIView):
@@ -306,15 +381,19 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Suspension.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = Suspension.objects.filter(student__user__school=user.school)
+        else:
+            queryset = Suspension.objects.none()
         
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(student__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(student__user=user)
+        elif user.role == 'parent':
+            children_ids = user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_id__in=children_ids)
-        elif self.request.user.role == 'teacher':
-            queryset = queryset.filter(teacher__user=self.request.user)
+        elif user.role == 'teacher':
+            queryset = queryset.filter(teacher__user=user)
         
         return queryset.order_by('-date_created')
 

@@ -141,6 +141,7 @@ const apiService = {
     if (params.student_number) queryParams.append('student_number', params.student_number);
     if (params.first_name) queryParams.append('first_name', params.first_name);
     if (params.last_name) queryParams.append('last_name', params.last_name);
+    if (params.school_id) queryParams.append('school_id', params.school_id);
     return request(`/parents/students/search/?${queryParams.toString()}`, "GET");
   },
   requestChildLink: (studentId) => request("/parents/children/request/", "POST", { student_id: studentId }),

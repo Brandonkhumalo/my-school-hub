@@ -211,8 +211,11 @@ class CreateStudentSerializer(serializers.Serializer):
         student_contact = validated_data.get('student_contact', '')
         student_address = validated_data.get('student_address', '')
         student_class = validated_data['student_class']
+        
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+        created_by = request.user if request else None
 
-        # Generate student number
         enrollment_year = str(admission_date.year)[-2:]
         student_number = generate_unique_student_number(enrollment_year)
 
@@ -224,7 +227,9 @@ class CreateStudentSerializer(serializers.Serializer):
             last_name=last_name,
             role='student',
             student_number=student_number,
-            phone_number=student_contact
+            phone_number=student_contact,
+            school=school,
+            created_by=created_by
         )
 
         student = Student.objects.create(
@@ -262,11 +267,13 @@ class CreateTeacherSerializer(serializers.Serializer):
         from django.db import transaction
         from .utils import generate_unique_staff_number
         
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+        created_by = request.user if request else None
+        
         with transaction.atomic():
-            # Generate unique staff number
             staff_number = generate_unique_staff_number()
             
-            # Create user account
             full_name = f"{validated_data['first_name']} {validated_data['last_name']}"
             user = CustomUser.objects.create_user(
                 username=staff_number,
@@ -275,21 +282,20 @@ class CreateTeacherSerializer(serializers.Serializer):
                 full_name=full_name,
                 role='teacher',
                 student_number=staff_number,
-                phone_number=validated_data.get('phone_number', '')
+                phone_number=validated_data.get('phone_number', ''),
+                school=school,
+                created_by=created_by
             )
             
-            # Create teacher profile
             teacher = Teacher.objects.create(
                 user=user,
                 hire_date=validated_data['hire_date'],
                 qualification=validated_data.get('qualification', '')
             )
             
-            # Assign subjects if provided
             if validated_data.get('subject_ids'):
                 teacher.subjects_taught.set(validated_data['subject_ids'])
             
-            # Assign class if provided (for primary teachers)
             if validated_data.get('assigned_class_id'):
                 assigned_class = Class.objects.get(id=validated_data['assigned_class_id'])
                 assigned_class.class_teacher = user

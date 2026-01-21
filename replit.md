@@ -1,7 +1,29 @@
 # MySchoolHub - School Management System
 
 ## Overview
-MySchoolHub is a comprehensive React-based School Management System built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. The platform streamlines school administration, enhances teacher-parent-student communication, and provides all stakeholders with easy access to academic information.
+MySchoolHub is a comprehensive multi-tenant SaaS School Management System built with React and Django, where each school operates as a separate tenant. Schools self-register and receive auto-generated admin credentials. The platform offers distinct dashboards for administrators, teachers, students, and parents, streamlining school administration and enhancing communication.
+
+## Multi-Tenant Architecture
+
+### School as Tenant Entity
+- **School Model:** Each school is a tenant with unique code (SCH + 5 random alphanumeric), name, email, phone, address, city, curriculum (ZIMSEC/Cambridge), and school type (Primary/Secondary/Combined)
+- **Tenant Isolation:** All users (students, teachers, parents) are associated with a school. All data queries are filtered by school to prevent cross-tenant data access.
+- **User Creation Flow:** When admins create students/teachers, the new users automatically inherit the admin's school and are tracked via `created_by`.
+
+### School Registration & Admin Credentials
+- **Self-Registration:** Schools register via `/api/auth/schools/register/` endpoint
+- **Auto-Generated Admin:** System creates admin user with generated username (schoolname_admin) and secure random password
+- **One-Time Password Delivery:** Admin password is returned only once in registration response - it cannot be recovered
+- **API Endpoints:**
+  - `POST /api/auth/schools/register/` - Register new school (public)
+  - `GET /api/auth/schools/search/?q=<query>` - Search schools by name/code (public)
+  - `GET /api/auth/schools/` - List all schools (superadmin only)
+
+### Tenant-Isolated API Endpoints
+All list/create/update/delete endpoints filter data by `request.user.school`:
+- Subjects, Classes, Students, Teachers, Parents
+- Results, Timetables, Announcements, Complaints, Suspensions
+- Parent student search requires `school_id` parameter
 
 ## Product Branding
 - **Product Name:** MySchoolHub
@@ -93,19 +115,24 @@ Key features include:
 -   Parent-Teacher messaging system uses a dedicated `ParentTeacherMessage` model tracking sender, recipient, message content, subject, timestamps, and read status.
 
 ### Parent-Child Linking Security Model
+-   **Two-Step Flow:** Parents must first select a school, then search for their child within that school:
+    1. Step 1: Search for school by name or code
+    2. Step 2: Search for child by student number OR full name within selected school
 -   **Privacy-Focused Search:** Parents cannot browse all students. Instead, they must search by:
     - Student number (minimum 3 characters), OR
     - Both first name AND last name (minimum 2 characters each)
+    - Search requires `school_id` parameter for tenant isolation
     - Search returns maximum 10 results to prevent enumeration
 -   **Parent Request Flow:** After searching, parents can request to link with their child. This creates an unconfirmed `ParentChildLink` record.
 -   **Admin Approval Required:** Only administrators can approve parent-child link requests via the `/admin/parent-requests` page. Parents cannot self-approve for security.
 -   **Confirmed Access Only:** Parents can only access student data (grades, fees, messages) for confirmed children.
 -   **API Endpoints:**
-    - `GET /api/parents/students/search/?student_number=X` - Search by student number (parent-only)
-    - `GET /api/parents/students/search/?first_name=X&last_name=Y` - Search by name (parent-only)
+    - `GET /api/auth/schools/search/?q=<query>` - Search schools by name/code (public)
+    - `GET /api/parents/students/search/?student_number=X&school_id=Y` - Search by student number (parent-only)
+    - `GET /api/parents/students/search/?first_name=X&last_name=Y&school_id=Z` - Search by name (parent-only)
     - `POST /api/parents/children/request/` - Request child link (parent-only)
     - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin-only)
--   **Security Note:** This privacy-focused design (search-only + admin approval) protects student data and prevents unauthorized access.
+-   **Security Note:** This privacy-focused design (school selection + search-only + admin approval) protects student data and prevents unauthorized cross-tenant access.
 
 ### Admin Extras Page
 The `/admin/extras` page provides additional administrative tools:
