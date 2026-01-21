@@ -107,6 +107,20 @@ Key features include:
     - `POST /api/parents/children/<id>/confirm/` - Approve link request (admin-only)
 -   **Security Note:** This privacy-focused design (search-only + admin approval) protects student data and prevents unauthorized access.
 
+### Admin Extras Page
+The `/admin/extras` page provides additional administrative tools:
+-   **Timetable Generation:** Uses CSP (Constraint Satisfaction Problem) algorithm with backtracking and MRV (Minimum Remaining Values) heuristic to auto-generate conflict-free timetables. Prevents teacher, class, and room double-booking.
+-   **School Fees Management:** Admins can set tuition and fees (tuition, levy, sports, computer, other) for each grade/form per academic year and term. Supports USD, ZWL, and ZAR currencies.
+-   **API Endpoints:**
+    - `GET /api/academics/timetables/stats/` - Get timetable coverage statistics
+    - `POST /api/academics/timetables/generate/` - Generate timetables for all classes
+    - `GET /api/finances/school-fees/` - List all school fees (admin)
+    - `POST /api/finances/school-fees/` - Create school fees (admin-only)
+    - `PUT /api/finances/school-fees/<id>/` - Update school fees (admin-only)
+    - `DELETE /api/finances/school-fees/<id>/` - Delete school fees (admin-only)
+    - `GET /api/finances/school-fees/my-fees/` - Get fees for student or parent's children
+    - `GET /api/finances/grades/` - Get all grades for dropdown (admin-only)
+
 ### Teacher Platform Features
 -   **Marks Entry:** Teachers can add and update student marks for subjects they teach, with support for different exam types (test, quiz, assignment, midterm, final exam). Student list is intelligently filtered to show only: (1) students who have existing marks for that subject with the teacher, or (2) students in classes taught by that teacher.
 -   **Attendance Register:** Daily attendance tracking with four status options (Present, Absent, Late, Excused).
