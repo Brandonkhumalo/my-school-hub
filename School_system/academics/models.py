@@ -4,8 +4,12 @@ from django.conf import settings
 
 class Subject(models.Model):
     name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='subjects')
+    
+    class Meta:
+        unique_together = ('code', 'school')
     
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -16,6 +20,7 @@ class Class(models.Model):
     grade_level = models.IntegerField()
     academic_year = models.CharField(max_length=20)
     class_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='taught_classes')
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='classes')
     
     class Meta:
         verbose_name_plural = "Classes"

@@ -1,24 +1,101 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser
+from .models import CustomUser, School
 import random
+import secrets
+import string
+
+
+class SchoolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = School
+        fields = [
+            'id', 'name', 'code', 'school_type', 'curriculum',
+            'address', 'city', 'country', 'phone', 'email',
+            'website', 'logo', 'is_active', 'created_at'
+        ]
+        read_only_fields = ['id', 'code', 'created_at']
+
+
+class SchoolRegistrationSerializer(serializers.Serializer):
+    """Register a new school with auto-generated admin credentials"""
+    school_name = serializers.CharField(max_length=255)
+    school_type = serializers.ChoiceField(choices=School.SCHOOL_TYPE_CHOICES, default='secondary')
+    curriculum = serializers.ChoiceField(choices=School.CURRICULUM_CHOICES, default='zimsec')
+    address = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    
+    admin_first_name = serializers.CharField(max_length=255)
+    admin_last_name = serializers.CharField(max_length=255)
+    admin_email = serializers.EmailField()
+    admin_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    
+    def generate_password(self, length=12):
+        """Generate a secure random password"""
+        chars = string.ascii_letters + string.digits + "!@#$%"
+        return ''.join(secrets.choice(chars) for _ in range(length))
+    
+    def create(self, validated_data):
+        school_code = School.generate_school_code()
+        
+        school = School.objects.create(
+            name=validated_data['school_name'],
+            code=school_code,
+            school_type=validated_data.get('school_type', 'secondary'),
+            curriculum=validated_data.get('curriculum', 'zimsec'),
+            address=validated_data.get('address', ''),
+            city=validated_data.get('city', ''),
+            phone=validated_data.get('phone', ''),
+            email=validated_data.get('email', '')
+        )
+        
+        admin_password = self.generate_password()
+        admin_username = f"admin_{school_code.lower()}"
+        
+        admin_user = CustomUser.objects.create_user(
+            username=admin_username,
+            email=validated_data['admin_email'],
+            password=admin_password,
+            first_name=validated_data['admin_first_name'],
+            last_name=validated_data['admin_last_name'],
+            phone_number=validated_data.get('admin_phone', ''),
+            role='admin',
+            school=school
+        )
+        
+        return {
+            'school': school,
+            'admin_user': admin_user,
+            'admin_password': admin_password
+        }
 
 
 class UserSerializer(serializers.ModelSerializer):
+    school_name = serializers.SerializerMethodField()
+    school_code = serializers.SerializerMethodField()
+    
     class Meta:
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'phone_number', 'role', 'student_number', 'is_active',
-            'date_joined', 'password'
+            'date_joined', 'password', 'school_name', 'school_code'
         ]
-        read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number']
+        read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'school_name', 'school_code']
         extra_kwargs = {
             'password': {'write_only': True},
             'first_name': {'required': True},
             'last_name': {'required': True},
         }
+    
+    def get_school_name(self, obj):
+        return obj.school.name if obj.school else None
+    
+    def get_school_code(self, obj):
+        return obj.school.code if obj.school else None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)

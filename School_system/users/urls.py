@@ -20,4 +20,10 @@ urlpatterns = [
     
     # Dashboard
     path('dashboard/stats/', views.dashboard_stats_view, name='dashboard-stats'),
+    
+    # School management (SaaS multi-tenant)
+    path('schools/register/', views.register_school, name='register-school'),
+    path('schools/search/', views.search_schools, name='search-schools'),
+    path('schools/', views.list_schools, name='list-schools'),
+    path('schools/<int:school_id>/', views.get_school_details, name='school-details'),
 ]

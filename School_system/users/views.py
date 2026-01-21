@@ -2,10 +2,11 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db import models
-from .models import CustomUser
+from django.db.models import Q
+from .models import CustomUser, School
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
-    ChangePasswordSerializer, SetWhatsAppPinSerializer
+    ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer
 )
 from .token import JWTAuthentication
 
@@ -186,3 +187,70 @@ def delete_user_view(request, user_id):
         return Response({'message': 'User deleted successfully'})
     except CustomUser.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def register_school(request):
+    """Register a new school and generate admin credentials"""
+    serializer = SchoolRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        result = serializer.save()
+        
+        school_data = SchoolSerializer(result['school']).data
+        admin_data = UserSerializer(result['admin_user']).data
+        
+        return Response({
+            'message': 'School registered successfully',
+            'school': school_data,
+            'admin_credentials': {
+                'username': result['admin_user'].username,
+                'password': result['admin_password'],
+                'email': result['admin_user'].email
+            },
+            'important': 'Please save these admin credentials securely. The password cannot be recovered.'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def search_schools(request):
+    """Search for schools by name or code (for parents to find their child's school)"""
+    query = request.query_params.get('q', '').strip()
+    
+    if len(query) < 2:
+        return Response({'error': 'Search query must be at least 2 characters'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    schools = School.objects.filter(
+        Q(name__icontains=query) | Q(code__icontains=query),
+        is_active=True
+    )[:10]
+    
+    return Response({
+        'schools': SchoolSerializer(schools, many=True).data,
+        'count': schools.count()
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def list_schools(request):
+    """List all schools (superadmin only)"""
+    if request.user.role != 'superadmin':
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    schools = School.objects.all().order_by('-created_at')
+    return Response(SchoolSerializer(schools, many=True).data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_school_details(request, school_id):
+    """Get details of a specific school"""
+    try:
+        school = School.objects.get(id=school_id)
+        return Response(SchoolSerializer(school).data)
+    except School.DoesNotExist:
+        return Response({'error': 'School not found'}, status=status.HTTP_404_NOT_FOUND)

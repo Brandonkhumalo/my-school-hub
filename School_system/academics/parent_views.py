@@ -82,7 +82,7 @@ def available_children_to_confirm(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search_students(request):
-    """Search for students by name+surname OR student number - privacy-focused endpoint"""
+    """Search for students by school + (name+surname OR student number) - privacy-focused endpoint"""
     if request.user.role != 'parent':
         return Response({'error': 'Only parents can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
@@ -91,9 +91,22 @@ def search_students(request):
         parent = request.user.parent
         
         # Get search parameters
+        school_id = request.query_params.get('school_id', '').strip()
         student_number = request.query_params.get('student_number', '').strip()
         first_name = request.query_params.get('first_name', '').strip()
         last_name = request.query_params.get('last_name', '').strip()
+        
+        # School selection is now required
+        if not school_id:
+            return Response({
+                'error': 'Please select a school first',
+                'hint': 'Search for your child\'s school, then search for your child within that school.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Base queryset filtered by school
+        base_queryset = Student.objects.filter(
+            user__school_id=school_id
+        ).select_related('user', 'student_class')
         
         # Validate: must have either student_number OR (first_name AND last_name)
         if student_number:
@@ -103,9 +116,9 @@ def search_students(request):
                     'error': 'Student number must be at least 3 characters'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            students = Student.objects.filter(
+            students = base_queryset.filter(
                 user__student_number__icontains=student_number
-            ).select_related('user', 'student_class')[:10]
+            )[:10]
             
         elif first_name and last_name:
             # Search by name AND surname - both required, at least 2 chars each
@@ -114,10 +127,10 @@ def search_students(request):
                     'error': 'First name and last name must each be at least 2 characters'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            students = Student.objects.filter(
+            students = base_queryset.filter(
                 user__first_name__icontains=first_name,
                 user__last_name__icontains=last_name
-            ).select_related('user', 'student_class')[:10]
+            )[:10]
             
         else:
             # No valid search criteria provided
@@ -140,6 +153,8 @@ def search_students(request):
                 'surname': student.user.last_name,
                 'class': student.student_class.name if student.student_class else 'Not Assigned',
                 'student_number': student.user.student_number or '',
+                'school_name': student.user.school.name if student.user.school else None,
+                'school_code': student.user.school.code if student.user.school else None,
                 'is_linked': is_linked
             })
         

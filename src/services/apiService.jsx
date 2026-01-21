@@ -224,6 +224,12 @@ const apiService = {
   // Timetable generation endpoints
   generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
   getTimetableStats: () => request("/academics/timetables/stats/", "GET"),
+  
+  // School management (SaaS multi-tenant)
+  registerSchool: (data) => request("/auth/schools/register/", "POST", data, false),
+  searchSchools: (query) => request(`/auth/schools/search/?q=${encodeURIComponent(query)}`, "GET", null, false),
+  getSchools: () => request("/auth/schools/", "GET"),
+  getSchoolDetails: (schoolId) => request(`/auth/schools/${schoolId}/`, "GET"),
 };
 
 export default apiService;
