@@ -1,16 +1,16 @@
-# Willovale Secondary School - Management System
+# MySchoolHub - School Management System
 
 ## Overview
-This project is a React-based School Management System for **Willovale Secondary School**, built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. Willovale Secondary School, established in 1985 in Willowvale, Eastern Cape, South Africa, uses this platform to manage school operations and communication. The system streamlines administrative tasks, enhances teacher-parent-student interaction, and provides students with access to their academic information.
+MySchoolHub is a comprehensive React-based School Management System built with Vite, offering distinct dashboards and functionalities for administrators, teachers, students, and parents. The platform streamlines school administration, enhances teacher-parent-student communication, and provides all stakeholders with easy access to academic information.
 
-## School Branding
-- **School Name:** Willovale Secondary School
-- **Established:** 1985
-- **Location:** Highlands, Harare, Zimbabwe
-- **Motto:** "Knowledge is Power"
+## Product Branding
+- **Product Name:** MySchoolHub
+- **Tagline:** "Complete School Management"
+- **Developer:** Tishanyq Digital (tishanyq.co.zw)
 - **Colors:** Blue (#1e3a8a) and Yellow (#eab308)
-- **Logo:** Yellow "W" on blue background
-- **Curricula:** ZIMSEC and Cambridge International
+- **Logo:** Book icon on yellow/gold gradient background
+- **Target Users:** Primary schools, Secondary schools, High schools (both public and private)
+- **Supported Curricula:** ZIMSEC and Cambridge International
 
 ## User Preferences
 I want to communicate in simple language. I prefer iterative development. Ask before making major changes.
@@ -30,9 +30,9 @@ I want to communicate in simple language. I prefer iterative development. Ask be
 
 ### Frontend Routing Structure
 - **Public Routes:**
-  - `/` - Landing page for Willovale Secondary School with hero section, school info, programs, and news
-  - `/about` - About Us page with school history, mission, vision, leadership, and facilities
-  - `/contact` - Contact Us page with school contact information and enquiry form
+  - `/` - Landing page for MySchoolHub with hero section, use cases, target audience, features, and security info
+  - `/about` - Features page with detailed capabilities for admins, teachers, students, and parents
+  - `/contact` - Contact page with inquiry form, FAQ, and developer info (Tishanyq Digital)
   - `/login` - Login page for students, parents, and teachers
   - `/admin/login` - Dedicated admin login page
   - `/register/parent` - Parent self-registration

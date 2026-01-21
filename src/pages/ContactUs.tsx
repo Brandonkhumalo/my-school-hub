@@ -7,6 +7,7 @@ const ContactUs = () => {
     name: "",
     email: "",
     phone: "",
+    school: "",
     subject: "",
     message: ""
   });
@@ -31,23 +32,25 @@ const ContactUs = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
-                <span className="text-blue-900 font-bold text-xl">W</span>
+              <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-7 h-7 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold">Willovale Secondary School</h1>
-                <p className="text-xs text-blue-200">Excellence in Education Since 1985</p>
+                <h1 className="text-xl font-bold">MySchoolHub</h1>
+                <p className="text-xs text-blue-200">Complete School Management</p>
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-6">
               <Link to="/" className="hover:text-yellow-400 transition">Home</Link>
-              <Link to="/about" className="hover:text-yellow-400 transition">About Us</Link>
+              <Link to="/about" className="hover:text-yellow-400 transition">Features</Link>
               <Link to="/contact" className="text-yellow-400">Contact</Link>
               <button 
                 onClick={() => navigate('/login')}
                 className="bg-yellow-500 text-blue-900 px-6 py-2 rounded-lg font-semibold hover:bg-yellow-400 transition"
               >
-                Student Portal
+                Access Portal
               </button>
             </div>
           </div>
@@ -57,8 +60,13 @@ const ContactUs = () => {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 py-20">
         <div className="container px-4 mx-auto max-w-6xl text-center text-white">
+          <span className="inline-block px-4 py-1 text-sm font-semibold text-yellow-400 bg-yellow-400/20 rounded-full border border-yellow-400/30 mb-4">
+            Get In Touch
+          </span>
           <h1 className="text-4xl md:text-5xl font-bold mb-4">Contact Us</h1>
-          <p className="text-xl text-blue-200">We'd love to hear from you</p>
+          <p className="text-xl text-blue-200 max-w-2xl mx-auto">
+            Have questions about MySchoolHub? We'd love to hear from you. Reach out for demos, support, or partnership inquiries.
+          </p>
         </div>
       </section>
 
@@ -68,92 +76,86 @@ const ContactUs = () => {
           <div className="grid gap-12 lg:grid-cols-2">
             {/* Contact Information */}
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-8">Get In Touch</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-8">Let's Connect</h2>
               
               <div className="space-y-6">
                 <div className="flex items-start space-x-4">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900">Physical Address</h3>
-                    <p className="text-gray-600">45 Enterprise Road</p>
-                    <p className="text-gray-600">Highlands, Harare</p>
-                    <p className="text-gray-600">Zimbabwe</p>
+                    <h3 className="font-bold text-gray-900">Website</h3>
+                    <a href="https://tishanyq.co.zw" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                      tishanyq.co.zw
+                    </a>
                   </div>
                 </div>
 
                 <div className="flex items-start space-x-4">
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900">Phone Numbers</h3>
-                    <p className="text-gray-600">Main Office: +263 (0) 24 270 1234</p>
-                    <p className="text-gray-600">Admissions: +263 (0) 24 270 1235</p>
-                    <p className="text-gray-600">WhatsApp: +263 (0) 77 123 4567</p>
+                    <h3 className="font-bold text-gray-900">Email</h3>
+                    <p className="text-gray-600">info@tishanyq.co.zw</p>
+                    <p className="text-gray-600">support@myschoolhub.co.zw</p>
                   </div>
                 </div>
 
                 <div className="flex items-start space-x-4">
                   <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900">Email Addresses</h3>
-                    <p className="text-gray-600">General Enquiries: info@willovale.co.zw</p>
-                    <p className="text-gray-600">Admissions: admissions@willovale.co.zw</p>
-                    <p className="text-gray-600">Principal: principal@willovale.co.zw</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Office Hours</h3>
-                    <p className="text-gray-600">Monday - Friday: 7:30 AM - 4:00 PM</p>
-                    <p className="text-gray-600">Saturday: 8:00 AM - 12:00 PM (Admissions only)</p>
-                    <p className="text-gray-600">Sunday: Closed</p>
+                    <h3 className="font-bold text-gray-900">Developer</h3>
+                    <p className="text-gray-600">Tishanyq Digital</p>
+                    <p className="text-gray-600">Harare, Zimbabwe</p>
                   </div>
                 </div>
               </div>
 
-              {/* Department Contacts */}
-              <div className="mt-10">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Department Contacts</h3>
-                <div className="bg-gray-50 rounded-lg p-6 space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Admissions Office</span>
-                    <span className="font-semibold text-gray-900">Ext. 101</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Accounts / Finance</span>
-                    <span className="font-semibold text-gray-900">Ext. 102</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Academic Affairs</span>
-                    <span className="font-semibold text-gray-900">Ext. 103</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Sports & Extramural</span>
-                    <span className="font-semibold text-gray-900">Ext. 104</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Student Affairs</span>
-                    <span className="font-semibold text-gray-900">Ext. 105</span>
-                  </div>
-                </div>
+              {/* Why Choose Us */}
+              <div className="mt-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Why Choose MySchoolHub?</h3>
+                <ul className="space-y-3">
+                  <li className="flex items-center space-x-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-gray-700">Built specifically for African schools</span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-gray-700">Supports ZIMSEC and Cambridge curricula</span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-gray-700">Cloud-based, accessible anywhere</span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-gray-700">Dedicated local support</span>
+                  </li>
+                  <li className="flex items-center space-x-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-gray-700">Affordable pricing for all school sizes</span>
+                  </li>
+                </ul>
               </div>
             </div>
 
@@ -171,7 +173,7 @@ const ContactUs = () => {
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">Thank You!</h3>
                     <p className="text-gray-600 mb-6">
-                      Your message has been received. We will get back to you within 2-3 business days.
+                      Your message has been received. Our team will get back to you within 24-48 hours.
                     </p>
                     <button 
                       onClick={() => setSubmitted(false)}
@@ -218,27 +220,39 @@ const ContactUs = () => {
                           value={formData.phone}
                           onChange={handleChange}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="+27 (0) XX XXX XXXX"
+                          placeholder="+263 XX XXX XXXX"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Subject *</label>
-                        <select
-                          name="subject"
-                          value={formData.subject}
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">School Name</label>
+                        <input
+                          type="text"
+                          name="school"
+                          value={formData.school}
                           onChange={handleChange}
-                          required
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Select a subject</option>
-                          <option value="admissions">Admissions Enquiry</option>
-                          <option value="academic">Academic Query</option>
-                          <option value="fees">Fees & Payments</option>
-                          <option value="general">General Enquiry</option>
-                          <option value="complaint">Complaint / Feedback</option>
-                          <option value="other">Other</option>
-                        </select>
+                          placeholder="Your school name"
+                        />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Inquiry Type *</label>
+                      <select
+                        name="subject"
+                        value={formData.subject}
+                        onChange={handleChange}
+                        required
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select inquiry type</option>
+                        <option value="demo">Request a Demo</option>
+                        <option value="pricing">Pricing Information</option>
+                        <option value="support">Technical Support</option>
+                        <option value="partnership">Partnership Inquiry</option>
+                        <option value="feature">Feature Request</option>
+                        <option value="other">Other</option>
+                      </select>
                     </div>
 
                     <div>
@@ -250,7 +264,7 @@ const ContactUs = () => {
                         required
                         rows={5}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Please describe your enquiry in detail..."
+                        placeholder="Tell us more about your school and how we can help..."
                       ></textarea>
                     </div>
 
@@ -271,57 +285,99 @@ const ContactUs = () => {
         </div>
       </section>
 
-      {/* Map Section */}
+      {/* FAQ Section */}
       <section className="py-16 bg-gray-50">
-        <div className="container px-4 mx-auto max-w-6xl">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Find Us</h2>
-            <p className="text-gray-600">Located in the Highlands suburb of Harare, Zimbabwe</p>
+        <div className="container px-4 mx-auto max-w-4xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
+            <p className="text-gray-600">Common questions about MySchoolHub</p>
           </div>
-          <div className="bg-gray-300 rounded-2xl h-64 flex items-center justify-center">
-            <div className="text-center text-gray-600">
-              <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <p className="font-semibold">45 Enterprise Road, Highlands</p>
-              <p>Harare, Zimbabwe</p>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 mb-2">What types of schools can use MySchoolHub?</h3>
+              <p className="text-gray-600">
+                MySchoolHub is designed for primary schools, secondary schools, and high schools. 
+                It works for both public and private institutions, and supports ZIMSEC and Cambridge curricula.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 mb-2">How do parents get access to the system?</h3>
+              <p className="text-gray-600">
+                Parents can register themselves through the portal. They then search for and request to link 
+                with their children. For security, an administrator must approve each parent-child link before 
+                the parent can view the student's information.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 mb-2">Is student data secure?</h3>
+              <p className="text-gray-600">
+                Yes, security is a top priority. We use role-based access control, secure authentication, 
+                and privacy-focused features like admin-approved parent linking to ensure student data 
+                is protected and only accessible to authorized users.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 mb-2">Can teachers upload homework files?</h3>
+              <p className="text-gray-600">
+                Yes, teachers can create homework assignments and attach PDF or Word documents (up to 10MB). 
+                Students and parents can then view and download these files from their respective portals.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Emergency Contact */}
-      <section className="py-8 bg-red-600">
-        <div className="container px-4 mx-auto max-w-6xl">
-          <div className="flex flex-col md:flex-row items-center justify-between text-white">
-            <div className="flex items-center space-x-4 mb-4 md:mb-0">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <div>
-                <h3 className="font-bold text-lg">Emergency Contact</h3>
-                <p className="text-red-100">For urgent matters after hours</p>
-              </div>
-            </div>
-            <div className="text-center md:text-right">
-              <p className="text-2xl font-bold">+263 (0) 77 999 1234</p>
-              <p className="text-red-100">Available 24/7 for emergencies</p>
-            </div>
+      {/* CTA Section */}
+      <section className="py-16 bg-gradient-to-br from-blue-900 to-indigo-900">
+        <div className="container px-4 mx-auto text-center max-w-4xl">
+          <h2 className="text-3xl font-bold text-white mb-4">Ready to Transform Your School?</h2>
+          <p className="text-blue-200 mb-8">
+            Join schools already using MySchoolHub to streamline their administration 
+            and improve communication with parents and students.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button 
+              onClick={() => navigate('/login')}
+              className="px-8 py-3 bg-yellow-500 text-blue-900 font-semibold rounded-lg hover:bg-yellow-400 transition"
+            >
+              Access Portal
+            </button>
+            <button 
+              onClick={() => navigate('/')}
+              className="px-8 py-3 bg-transparent border-2 border-white text-white font-semibold rounded-lg hover:bg-white/10 transition"
+            >
+              Learn More
+            </button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-8">
-        <div className="container px-4 mx-auto max-w-6xl text-center">
-          <div className="flex justify-center space-x-6 mb-4">
-            <Link to="/" className="text-gray-400 hover:text-white transition">Home</Link>
-            <Link to="/about" className="text-gray-400 hover:text-white transition">About</Link>
-            <Link to="/contact" className="text-gray-400 hover:text-white transition">Contact</Link>
-            <Link to="/login" className="text-gray-400 hover:text-white transition">Portal</Link>
+        <div className="container px-4 mx-auto max-w-6xl">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="flex items-center space-x-3 mb-4 md:mb-0">
+              <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <span className="text-xl font-bold">MySchoolHub</span>
+            </div>
+            <div className="flex space-x-6 mb-4 md:mb-0">
+              <Link to="/" className="text-gray-400 hover:text-white transition">Home</Link>
+              <Link to="/about" className="text-gray-400 hover:text-white transition">Features</Link>
+              <Link to="/contact" className="text-gray-400 hover:text-white transition">Contact</Link>
+              <Link to="/login" className="text-gray-400 hover:text-white transition">Portal</Link>
+            </div>
           </div>
-          <p className="text-gray-400">&copy; 2025 Willovale Secondary School. All rights reserved.</p>
+          <div className="border-t border-gray-800 mt-6 pt-6 text-center text-sm text-gray-400">
+            <p>&copy; 2025 MySchoolHub. All rights reserved.</p>
+            <p className="mt-2">
+              Developed by <a href="https://tishanyq.co.zw" target="_blank" rel="noopener noreferrer" className="text-yellow-400 hover:text-yellow-300 font-semibold">Tishanyq Digital</a>
+            </p>
+          </div>
         </div>
       </footer>
     </div>
