@@ -273,18 +273,6 @@ export default function AdminExtras() {
               </div>
             </div>
             
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <h4 className="font-semibold text-yellow-800 mb-2">
-                <i className="fas fa-lightbulb mr-2"></i>CSP Algorithm Features
-              </h4>
-              <ul className="text-sm text-yellow-700 space-y-1">
-                <li><i className="fas fa-check mr-2"></i>Teachers don't clash - No teacher teaches two classes at the same time</li>
-                <li><i className="fas fa-check mr-2"></i>Classes don't overlap - No class has two subjects at the same time</li>
-                <li><i className="fas fa-check mr-2"></i>Rooms aren't double-booked - No room hosts two classes simultaneously</li>
-                <li><i className="fas fa-check mr-2"></i>Uses Backtracking with MRV (Minimum Remaining Values) heuristic</li>
-              </ul>
-            </div>
-            
             <button
               onClick={handleGenerateTimetable}
               disabled={generating}
