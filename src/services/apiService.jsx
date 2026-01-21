@@ -209,6 +209,21 @@ const apiService = {
   
   getStudentHomework: () => request("/students/homework/", "GET"),
   downloadStudentHomework: (homeworkId) => `${API_BASE_URL}/students/homework/${homeworkId}/download/`,
+  
+  // School Fees endpoints
+  getSchoolFees: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/school-fees/${query ? '?' + query : ''}`, "GET");
+  },
+  createSchoolFees: (data) => request("/finances/school-fees/", "POST", data),
+  updateSchoolFees: (id, data) => request(`/finances/school-fees/${id}/`, "PUT", data),
+  deleteSchoolFees: (id) => request(`/finances/school-fees/${id}/`, "DELETE"),
+  getMySchoolFees: () => request("/finances/school-fees/my-fees/", "GET"),
+  getAllGrades: () => request("/finances/grades/", "GET"),
+  
+  // Timetable generation endpoints
+  generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
+  getTimetableStats: () => request("/academics/timetables/stats/", "GET"),
 };
 
 export default apiService;

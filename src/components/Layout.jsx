@@ -26,6 +26,7 @@ function Layout() {
       { path: '/admin/announcements', icon: 'fa-bullhorn', title: 'Announcements' },
       { path: '/admin/complaints', icon: 'fa-exclamation-circle', title: 'Complaints' },
       { path: '/admin/users', icon: 'fa-user-cog', title: 'User Management' },
+      { path: '/admin/extras', icon: 'fa-cogs', title: 'Extras' },
     ],
     teacher: [
       { path: '/teacher', icon: 'fa-home', title: 'Dashboard' },

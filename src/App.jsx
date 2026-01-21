@@ -36,6 +36,7 @@ import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminComplaints from "./pages/admin/AdminComplaints";
 import AdminParentLinkRequests from "./pages/admin/AdminParentLinkRequests";
+import AdminExtras from "./pages/admin/AdminExtras";
 
 // Student Pages
 import StudentProfile from "./pages/student/StudentProfile";
@@ -95,6 +96,7 @@ function App() {
         <Route path="/admin/announcements" element={<AdminAnnouncements />} />
         <Route path="/admin/complaints" element={<AdminComplaints />} />
         <Route path="/admin/parent-requests" element={<AdminParentLinkRequests />} />
+        <Route path="/admin/extras" element={<AdminExtras />} />
 
         {/* Teacher Routes */}
         <Route path="/teacher" element={<TeacherDashboard />} />
