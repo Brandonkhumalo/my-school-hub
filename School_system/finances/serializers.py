@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees
 from academics.models import Student
 
 
@@ -119,3 +119,18 @@ class StudentFinancialSummarySerializer(serializers.Serializer):
     unpaid_fees_count = serializers.IntegerField()
     recent_payments = PaymentSerializer(many=True)
     pending_fees = StudentFeeSerializer(many=True)
+
+
+class SchoolFeesSerializer(serializers.ModelSerializer):
+    total_fee = serializers.ReadOnlyField()
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    
+    class Meta:
+        model = SchoolFees
+        fields = [
+            'id', 'grade_level', 'grade_name', 'tuition_fee', 'levy_fee',
+            'sports_fee', 'computer_fee', 'other_fees', 'total_fee',
+            'academic_year', 'academic_term', 'currency',
+            'date_created', 'date_updated', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['created_by', 'date_created', 'date_updated']

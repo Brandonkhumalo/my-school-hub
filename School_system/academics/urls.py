@@ -28,6 +28,8 @@ urlpatterns = [
     
     # Timetable endpoints
     path('timetables/', views.TimetableListView.as_view(), name='timetable-list'),
+    path('timetables/generate/', views.generate_timetable_view, name='timetable-generate'),
+    path('timetables/stats/', views.get_timetable_stats, name='timetable-stats'),
     
     # Announcement endpoints
     path('announcements/', views.AnnouncementListCreateView.as_view(), name='announcement-list-create'),

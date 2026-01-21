@@ -24,4 +24,10 @@ urlpatterns = [
     
     # Summary endpoints
     path('students/<int:student_id>/summary/', views.student_financial_summary, name='student-financial-summary'),
+    
+    # School Fees endpoints (admin sets fees per grade/form)
+    path('school-fees/', views.SchoolFeesListCreateView.as_view(), name='school-fees-list-create'),
+    path('school-fees/<int:pk>/', views.SchoolFeesDetailView.as_view(), name='school-fees-detail'),
+    path('school-fees/my-fees/', views.get_my_school_fees, name='my-school-fees'),
+    path('grades/', views.get_all_grades, name='all-grades'),
 ]

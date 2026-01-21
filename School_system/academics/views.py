@@ -468,3 +468,60 @@ def class_averages_view(request):
         })
     
     return Response(results)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_timetable_view(request):
+    """Generate timetables for all classes using CSP algorithm"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can generate timetables'}, status=status.HTTP_403_FORBIDDEN)
+    
+    academic_year = request.data.get('academic_year')
+    clear_existing = request.data.get('clear_existing', True)
+    
+    try:
+        from .timetable_generator import generate_timetable
+        
+        success, message, entries = generate_timetable(
+            academic_year=academic_year,
+            clear_existing=clear_existing
+        )
+        
+        if success:
+            return Response({
+                'success': True,
+                'message': message,
+                'entries_count': len(entries),
+                'timetables': TimetableSerializer(entries, many=True).data
+            })
+        else:
+            return Response({
+                'success': False,
+                'message': message
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error generating timetable: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_timetable_stats(request):
+    """Get timetable statistics for admin"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can view timetable stats'}, status=status.HTTP_403_FORBIDDEN)
+    
+    total_entries = Timetable.objects.count()
+    classes_with_timetables = Timetable.objects.values('class_assigned').distinct().count()
+    total_classes = Class.objects.count()
+    
+    return Response({
+        'total_entries': total_entries,
+        'classes_with_timetables': classes_with_timetables,
+        'total_classes': total_classes,
+        'coverage_percent': round((classes_with_timetables / total_classes * 100) if total_classes > 0 else 0, 1)
+    })

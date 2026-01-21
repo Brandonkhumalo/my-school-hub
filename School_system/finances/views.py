@@ -2,12 +2,12 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Sum, Q
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport
-from academics.models import Student
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees
+from academics.models import Student, Class
 from .serializers import (
     FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
     InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
-    StudentFinancialSummarySerializer
+    StudentFinancialSummarySerializer, SchoolFeesSerializer
 )
 
 
@@ -269,3 +269,128 @@ def process_whatsapp_payment(request):
         return Response({'error': 'Student fee not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SchoolFeesListCreateView(generics.ListCreateAPIView):
+    queryset = SchoolFees.objects.all()
+    serializer_class = SchoolFeesSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = SchoolFees.objects.all()
+        
+        academic_year = self.request.query_params.get('academic_year')
+        academic_term = self.request.query_params.get('academic_term')
+        grade_level = self.request.query_params.get('grade_level')
+        
+        if academic_year:
+            queryset = queryset.filter(academic_year=academic_year)
+        if academic_term:
+            queryset = queryset.filter(academic_term=academic_term)
+        if grade_level:
+            queryset = queryset.filter(grade_level=grade_level)
+            
+        return queryset.order_by('grade_level', 'academic_term')
+
+    def perform_create(self, serializer):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only admins can create school fees")
+        serializer.save(created_by=self.request.user)
+
+
+class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = SchoolFees.objects.all()
+    serializer_class = SchoolFeesSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def perform_update(self, serializer):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only admins can update school fees")
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only admins can delete school fees")
+        instance.delete()
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_my_school_fees(request):
+    """Get school fees for a student or parent's children based on their grade/form"""
+    user = request.user
+    
+    if user.role == 'student':
+        try:
+            student = user.student
+            student_class = student.student_class
+            grade_level = student_class.grade_level
+            
+            fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
+            
+            return Response({
+                'student_name': user.full_name,
+                'student_number': user.student_number,
+                'class_name': student_class.name,
+                'grade_level': grade_level,
+                'fees': SchoolFeesSerializer(fees, many=True).data
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif user.role == 'parent':
+        try:
+            from academics.models import ParentChildLink
+            
+            confirmed_links = ParentChildLink.objects.filter(
+                parent=user.parent,
+                is_confirmed=True
+            ).select_related('student__student_class', 'student__user')
+            
+            children_fees = []
+            for link in confirmed_links:
+                student = link.student
+                student_class = student.student_class
+                grade_level = student_class.grade_level
+                
+                fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
+                
+                children_fees.append({
+                    'student_id': student.id,
+                    'student_name': student.user.full_name,
+                    'student_number': student.user.student_number,
+                    'class_name': student_class.name,
+                    'grade_level': grade_level,
+                    'fees': SchoolFeesSerializer(fees, many=True).data
+                })
+            
+            return Response({'children_fees': children_fees})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({'error': 'Invalid user role'}, status=status.HTTP_403_FORBIDDEN)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_all_grades(request):
+    """Get all unique grade levels from classes for the fees dropdown"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    grades = Class.objects.values('grade_level', 'name').distinct().order_by('grade_level')
+    
+    grade_list = []
+    seen_levels = set()
+    for g in grades:
+        if g['grade_level'] not in seen_levels:
+            seen_levels.add(g['grade_level'])
+            grade_list.append({
+                'grade_level': g['grade_level'],
+                'grade_name': g['name']
+            })
+    
+    return Response({'grades': grade_list})

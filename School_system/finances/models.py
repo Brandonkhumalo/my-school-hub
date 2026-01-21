@@ -91,3 +91,36 @@ class FinancialReport(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.report_type}"
+
+
+class SchoolFees(models.Model):
+    TERM_CHOICES = [
+        ('term_1', 'Term 1'),
+        ('term_2', 'Term 2'),
+        ('term_3', 'Term 3'),
+    ]
+    
+    grade_level = models.IntegerField()
+    grade_name = models.CharField(max_length=50)
+    tuition_fee = models.DecimalField(max_digits=10, decimal_places=2)
+    levy_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sports_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    computer_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    other_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=20, choices=TERM_CHOICES)
+    currency = models.CharField(max_length=10, default='USD')
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    
+    class Meta:
+        unique_together = ('grade_level', 'academic_year', 'academic_term')
+        verbose_name_plural = "School Fees"
+    
+    @property
+    def total_fee(self):
+        return self.tuition_fee + self.levy_fee + self.sports_fee + self.computer_fee + self.other_fees
+    
+    def __str__(self):
+        return f"{self.grade_name} - {self.academic_term} {self.academic_year}: {self.currency}{self.total_fee}"

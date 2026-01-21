@@ -1,0 +1,235 @@
+"""
+Timetable Generation using Constraint Satisfaction Problem (CSP) Algorithm
+Uses backtracking with MRV (Minimum Remaining Values) heuristic
+
+Constraints enforced:
+1. Teachers don't clash - No teacher teaches two classes at the same time
+2. Classes don't overlap - No class has two subjects at the same time  
+3. Rooms aren't double-booked - No room hosts two classes at the same time
+4. Subject periods per week - Each subject gets required number of periods
+5. Teacher availability - Teachers only assigned during available times
+"""
+
+import random
+from collections import defaultdict
+from .models import Class, Subject, Teacher, Timetable
+
+
+DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+PERIODS = [
+    ('08:00', '08:45'),
+    ('08:45', '09:30'),
+    ('09:30', '10:15'),
+    ('10:30', '11:15'),  # After break
+    ('11:15', '12:00'),
+    ('12:00', '12:45'),
+    ('14:00', '14:45'),  # After lunch
+    ('14:45', '15:30'),
+]
+
+
+class TimetableCSP:
+    def __init__(self, classes, subjects, teachers, rooms, subjects_per_class, periods_per_subject):
+        self.classes = classes
+        self.subjects = subjects
+        self.teachers = teachers
+        self.rooms = rooms
+        self.subjects_per_class = subjects_per_class  # dict: {class_id: [subject_ids]}
+        self.periods_per_subject = periods_per_subject  # dict: {subject_id: int}
+        
+        self.time_slots = [(day, start, end) for day in DAYS for start, end in PERIODS]
+        
+        self.timetable = {}  # {(class_id, day, start_time): (subject_id, teacher_id, room)}
+        self.teacher_schedule = defaultdict(set)  # {teacher_id: {(day, time)}}
+        self.room_schedule = defaultdict(set)  # {room: {(day, time)}}
+        self.class_schedule = defaultdict(set)  # {class_id: {(day, time)}}
+        self.subject_count = defaultdict(lambda: defaultdict(int))  # {class_id: {subject_id: count}}
+        
+    def get_teacher_for_subject(self, subject_id, class_id):
+        """Find a teacher who can teach this subject"""
+        for teacher in self.teachers:
+            if subject_id in [s.id for s in teacher.subjects_taught.all()]:
+                return teacher.id
+        return None
+    
+    def get_available_rooms(self, day, start_time):
+        """Get rooms not booked at this time"""
+        time_key = (day, start_time)
+        return [room for room in self.rooms if time_key not in self.room_schedule[room]]
+    
+    def is_teacher_available(self, teacher_id, day, start_time):
+        """Check if teacher is free at this time"""
+        return (day, start_time) not in self.teacher_schedule[teacher_id]
+    
+    def is_class_available(self, class_id, day, start_time):
+        """Check if class is free at this time"""
+        return (day, start_time) not in self.class_schedule[class_id]
+    
+    def get_remaining_periods(self, class_id, subject_id):
+        """Get how many more periods this subject needs for this class"""
+        required = self.periods_per_subject.get(subject_id, 4)
+        current = self.subject_count[class_id][subject_id]
+        return required - current
+    
+    def get_unassigned_slots(self, class_id):
+        """Get all time slots not yet assigned for this class (MRV)"""
+        unassigned = []
+        for day, start, end in self.time_slots:
+            if (day, start) not in self.class_schedule[class_id]:
+                unassigned.append((day, start, end))
+        return unassigned
+    
+    def get_subjects_needing_periods(self, class_id):
+        """Get subjects that still need more periods for this class (MRV)"""
+        subjects_needing = []
+        for subject_id in self.subjects_per_class.get(class_id, []):
+            remaining = self.get_remaining_periods(class_id, subject_id)
+            if remaining > 0:
+                subjects_needing.append((subject_id, remaining))
+        # Sort by remaining periods (MRV - minimum remaining values first)
+        subjects_needing.sort(key=lambda x: x[1])
+        return [s[0] for s in subjects_needing]
+    
+    def assign_slot(self, class_id, day, start_time, end_time, subject_id, teacher_id, room):
+        """Assign a subject to a time slot"""
+        time_key = (day, start_time)
+        self.timetable[(class_id, day, start_time)] = (subject_id, teacher_id, room, end_time)
+        self.teacher_schedule[teacher_id].add(time_key)
+        self.room_schedule[room].add(time_key)
+        self.class_schedule[class_id].add(time_key)
+        self.subject_count[class_id][subject_id] += 1
+    
+    def unassign_slot(self, class_id, day, start_time):
+        """Remove assignment from a time slot (for backtracking)"""
+        time_key = (day, start_time)
+        if (class_id, day, start_time) in self.timetable:
+            subject_id, teacher_id, room, _ = self.timetable[(class_id, day, start_time)]
+            del self.timetable[(class_id, day, start_time)]
+            self.teacher_schedule[teacher_id].discard(time_key)
+            self.room_schedule[room].discard(time_key)
+            self.class_schedule[class_id].discard(time_key)
+            self.subject_count[class_id][subject_id] -= 1
+    
+    def solve_class(self, class_id):
+        """Solve timetable for a single class using backtracking"""
+        unassigned_slots = self.get_unassigned_slots(class_id)
+        subjects_needing = self.get_subjects_needing_periods(class_id)
+        
+        if not subjects_needing:
+            return True
+        
+        if not unassigned_slots:
+            return len(subjects_needing) == 0
+        
+        subject_id = subjects_needing[0]
+        teacher_id = self.get_teacher_for_subject(subject_id, class_id)
+        
+        if teacher_id is None:
+            return False
+        
+        random.shuffle(unassigned_slots)
+        
+        for day, start, end in unassigned_slots:
+            if not self.is_teacher_available(teacher_id, day, start):
+                continue
+            
+            available_rooms = self.get_available_rooms(day, start)
+            if not available_rooms:
+                continue
+            
+            room = available_rooms[0]
+            
+            self.assign_slot(class_id, day, start, end, subject_id, teacher_id, room)
+            
+            if self.solve_class(class_id):
+                return True
+            
+            self.unassign_slot(class_id, day, start)
+        
+        return False
+    
+    def solve(self):
+        """Solve timetable for all classes"""
+        for class_obj in self.classes:
+            success = self.solve_class(class_obj.id)
+            if not success:
+                return False, f"Could not generate timetable for {class_obj.name}"
+        return True, "Timetable generated successfully"
+    
+    def get_timetable(self):
+        """Return the generated timetable"""
+        return self.timetable
+
+
+def generate_timetable(academic_year=None, clear_existing=True):
+    """
+    Main function to generate timetables for all classes
+    Returns: (success, message, timetable_entries)
+    """
+    from django.db import transaction
+    
+    classes = list(Class.objects.filter(academic_year=academic_year) if academic_year else Class.objects.all())
+    subjects = list(Subject.objects.all())
+    teachers = list(Teacher.objects.prefetch_related('subjects_taught').all())
+    
+    if not classes:
+        return False, "No classes found", []
+    
+    if not teachers:
+        return False, "No teachers found", []
+    
+    if not subjects:
+        return False, "No subjects found", []
+    
+    rooms = [f"Room {i}" for i in range(1, len(classes) + 5)]
+    
+    subjects_per_class = {}
+    for cls in classes:
+        subjects_per_class[cls.id] = [s.id for s in subjects[:min(10, len(subjects))]]
+    
+    periods_per_subject = {s.id: 4 for s in subjects}
+    
+    csp = TimetableCSP(
+        classes=classes,
+        subjects=subjects,
+        teachers=teachers,
+        rooms=rooms,
+        subjects_per_class=subjects_per_class,
+        periods_per_subject=periods_per_subject
+    )
+    
+    success, message = csp.solve()
+    
+    if not success:
+        return False, message, []
+    
+    timetable_entries = []
+    
+    with transaction.atomic():
+        if clear_existing:
+            if academic_year:
+                Timetable.objects.filter(class_assigned__academic_year=academic_year).delete()
+            else:
+                Timetable.objects.all().delete()
+        
+        for (class_id, day, start_time), (subject_id, teacher_id, room, end_time) in csp.get_timetable().items():
+            try:
+                class_obj = Class.objects.get(id=class_id)
+                subject_obj = Subject.objects.get(id=subject_id)
+                teacher_obj = Teacher.objects.get(id=teacher_id)
+                
+                entry = Timetable.objects.create(
+                    class_assigned=class_obj,
+                    subject=subject_obj,
+                    teacher=teacher_obj,
+                    day_of_week=day,
+                    start_time=start_time,
+                    end_time=end_time,
+                    room=room
+                )
+                timetable_entries.append(entry)
+            except Exception as e:
+                print(f"Error creating timetable entry: {e}")
+                continue
+    
+    return True, f"Successfully generated timetable with {len(timetable_entries)} entries", timetable_entries
