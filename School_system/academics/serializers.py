@@ -255,6 +255,19 @@ class CreateTeacherSerializer(serializers.Serializer):
     is_secondary_teacher = serializers.BooleanField(default=False)
     
     def validate(self, data):
+        from users.models import CustomUser
+        
+        # Check for duplicate phone number
+        phone = data.get('phone_number', '').strip()
+        if phone:
+            if CustomUser.objects.filter(phone_number=phone).exists():
+                raise serializers.ValidationError({"phone_number": "This phone number is already registered"})
+        
+        # Check for duplicate email
+        email = data.get('email', '').strip()
+        if CustomUser.objects.filter(email=email).exists():
+            raise serializers.ValidationError({"email": "This email is already registered"})
+        
         # Validate subject assignments for secondary teachers
         if data.get('is_secondary_teacher'):
             subject_ids = data.get('subject_ids', [])
@@ -274,6 +287,7 @@ class CreateTeacherSerializer(serializers.Serializer):
         with transaction.atomic():
             staff_number = generate_unique_staff_number()
             
+            phone = validated_data.get('phone_number', '').strip()
             user = CustomUser.objects.create_user(
                 username=staff_number,
                 email=validated_data['email'],
@@ -282,7 +296,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 last_name=validated_data['last_name'],
                 role='teacher',
                 student_number=staff_number,
-                phone_number=validated_data.get('phone_number', ''),
+                phone_number=phone if phone else None,
                 school=school,
                 created_by=created_by
             )
