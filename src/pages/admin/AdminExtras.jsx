@@ -14,7 +14,7 @@ export default function AdminExtras() {
   const [generating, setGenerating] = useState(false);
   
   const [schoolFees, setSchoolFees] = useState([]);
-  const [grades, setGrades] = useState([]);
+  const [schoolType, setSchoolType] = useState('combined');
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [editingFee, setEditingFee] = useState(null);
   const [feeForm, setFeeForm] = useState({
@@ -36,12 +36,14 @@ export default function AdminExtras() {
 
   const loadInitialData = async () => {
     try {
-      const [statsData, gradesData] = await Promise.all([
+      const [statsData, dashboardData] = await Promise.all([
         apiService.getTimetableStats(),
-        apiService.getAllGrades()
+        apiService.getDashboardStats()
       ]);
       setTimetableStats(statsData);
-      setGrades(gradesData.grades || []);
+      if (dashboardData.school_type) {
+        setSchoolType(dashboardData.school_type);
+      }
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -166,15 +168,25 @@ export default function AdminExtras() {
     });
   };
 
+  const getGradeName = (level) => {
+    const l = parseInt(level);
+    if (l === -1) return 'ECD B';
+    if (l === 0) return 'ECD A';
+    if (l <= 7) return `Grade ${l}`;
+    return `Form ${l - 7}`;
+  };
+
   const handleGradeSelect = (e) => {
     const gradeLevel = e.target.value;
-    const selectedGrade = grades.find(g => g.grade_level.toString() === gradeLevel);
     setFeeForm({
       ...feeForm,
       grade_level: gradeLevel,
-      grade_name: selectedGrade ? selectedGrade.grade_name : ''
+      grade_name: getGradeName(gradeLevel)
     });
   };
+
+  const showPrimary = schoolType === 'primary' || schoolType === 'combined';
+  const showSecondary = schoolType === 'secondary' || schoolType === 'high' || schoolType === 'combined';
 
   return (
     <div>
@@ -323,9 +335,9 @@ export default function AdminExtras() {
                   {editingFee ? 'Edit School Fees' : 'Add New School Fees'}
                 </h4>
                 <form onSubmit={handleFeeSubmit}>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Grade/Form</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Grade/Form *</label>
                       {!editingFee ? (
                         <select
                           value={feeForm.grade_level}
@@ -333,25 +345,30 @@ export default function AdminExtras() {
                           className="w-full border border-gray-300 rounded-lg px-3 py-2"
                           required
                         >
-                          <option value="">Select Grade</option>
-                          {grades.map((grade) => (
-                            <option key={grade.grade_level} value={grade.grade_level}>
-                              {grade.grade_name} (Level {grade.grade_level})
-                            </option>
-                          ))}
-                          <option value="1">Grade 1</option>
-                          <option value="2">Grade 2</option>
-                          <option value="3">Grade 3</option>
-                          <option value="4">Grade 4</option>
-                          <option value="5">Grade 5</option>
-                          <option value="6">Grade 6</option>
-                          <option value="7">Grade 7</option>
-                          <option value="8">Form 1</option>
-                          <option value="9">Form 2</option>
-                          <option value="10">Form 3</option>
-                          <option value="11">Form 4</option>
-                          <option value="12">Form 5</option>
-                          <option value="13">Form 6</option>
+                          <option value="">Select Grade/Form...</option>
+                          {showPrimary && (
+                            <optgroup label="Primary (ECD - Grade 7)">
+                              <option value="-1">ECD B</option>
+                              <option value="0">ECD A</option>
+                              <option value="1">Grade 1</option>
+                              <option value="2">Grade 2</option>
+                              <option value="3">Grade 3</option>
+                              <option value="4">Grade 4</option>
+                              <option value="5">Grade 5</option>
+                              <option value="6">Grade 6</option>
+                              <option value="7">Grade 7</option>
+                            </optgroup>
+                          )}
+                          {showSecondary && (
+                            <optgroup label="Secondary (Form 1 - Form 6)">
+                              <option value="8">Form 1</option>
+                              <option value="9">Form 2</option>
+                              <option value="10">Form 3</option>
+                              <option value="11">Form 4</option>
+                              <option value="12">Form 5 (Lower 6)</option>
+                              <option value="13">Form 6 (Upper 6)</option>
+                            </optgroup>
+                          )}
                         </select>
                       ) : (
                         <input
@@ -361,26 +378,18 @@ export default function AdminExtras() {
                           disabled
                         />
                       )}
+                      {feeForm.grade_level && (
+                        <p className="text-xs text-blue-600 mt-1">Fee will be set for: {feeForm.grade_name}</p>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Grade Name</label>
-                      <input
-                        type="text"
-                        value={feeForm.grade_name}
-                        onChange={(e) => setFeeForm({...feeForm, grade_name: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder="e.g., Form 3 or Grade 5"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year *</label>
                       <input
                         type="text"
                         value={feeForm.academic_year}
                         onChange={(e) => setFeeForm({...feeForm, academic_year: e.target.value})}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        placeholder="e.g., 2025"
+                        placeholder="e.g., 2026"
                         required
                       />
                     </div>
