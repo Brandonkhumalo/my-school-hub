@@ -3,6 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
+// AdminSubjects Component - v2 with Add Subject functionality
 export default function AdminSubjects() {
   const [subjects, setSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(false);

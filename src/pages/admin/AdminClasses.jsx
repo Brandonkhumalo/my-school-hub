@@ -3,6 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
+// AdminClasses Component - v2 with Add Class functionality
 export default function AdminClasses() {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
