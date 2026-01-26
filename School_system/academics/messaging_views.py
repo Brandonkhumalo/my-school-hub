@@ -71,6 +71,7 @@ def send_message(request):
     
     try:
         from users.models import CustomUser
+        from .models import Timetable
         recipient = CustomUser.objects.get(id=recipient_id)
         
         if recipient.role not in ['parent', 'teacher']:
@@ -80,6 +81,23 @@ def send_message(request):
         if user.role == recipient.role:
             return Response({'error': 'Cannot send message to same role'}, 
                            status=status.HTTP_400_BAD_REQUEST)
+        
+        if user.role == 'teacher':
+            teacher = Teacher.objects.get(user=user)
+            class_ids = Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True)
+            student_ids = Student.objects.filter(student_class_id__in=class_ids).values_list('id', flat=True)
+            parent = Parent.objects.get(user=recipient)
+            if not parent.children.filter(id__in=student_ids).exists():
+                return Response({'error': 'You can only message parents of students you teach'}, 
+                               status=status.HTTP_403_FORBIDDEN)
+        else:
+            parent = Parent.objects.get(user=user)
+            child_class_ids = parent.children.values_list('student_class_id', flat=True)
+            teacher_ids = Timetable.objects.filter(class_assigned_id__in=child_class_ids).values_list('teacher_id', flat=True)
+            teacher = Teacher.objects.get(user=recipient)
+            if teacher.id not in teacher_ids:
+                return Response({'error': 'You can only message teachers who teach your children'}, 
+                               status=status.HTTP_403_FORBIDDEN)
         
         message = ParentTeacherMessage.objects.create(
             sender=user,
@@ -96,12 +114,15 @@ def send_message(request):
     except CustomUser.DoesNotExist:
         return Response({'error': 'Recipient not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+    except (Teacher.DoesNotExist, Parent.DoesNotExist):
+        return Response({'error': 'Invalid teacher or parent profile'}, 
+                       status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search_teachers(request):
-    """Search for teachers by name or subject (for parents)"""
+    """Search for teachers who teach the parent's children"""
     user = request.user
     
     if user.role != 'parent':
@@ -110,23 +131,36 @@ def search_teachers(request):
     
     query = request.GET.get('q', '')
     
-    if not query:
-        teachers = Teacher.objects.all().select_related('user').prefetch_related('subjects_taught')
-    else:
-        teachers = Teacher.objects.filter(
-            Q(user__first_name__icontains=query) | 
-            Q(user__last_name__icontains=query) |
-            Q(subjects_taught__name__icontains=query)
-        ).distinct().select_related('user').prefetch_related('subjects_taught')
-    
-    serializer = TeacherSerializer(teachers, many=True)
-    return Response(serializer.data)
+    try:
+        parent = Parent.objects.get(user=user)
+        children = parent.children.all()
+        child_class_ids = children.values_list('student_class_id', flat=True)
+        
+        from .models import Timetable
+        teacher_ids = Timetable.objects.filter(
+            class_assigned_id__in=child_class_ids
+        ).values_list('teacher_id', flat=True).distinct()
+        
+        teachers = Teacher.objects.filter(id__in=teacher_ids).select_related('user').prefetch_related('subjects_taught')
+        
+        if query:
+            teachers = teachers.filter(
+                Q(user__first_name__icontains=query) | 
+                Q(user__last_name__icontains=query) |
+                Q(subjects_taught__name__icontains=query)
+            ).distinct()
+        
+        serializer = TeacherSerializer(teachers, many=True)
+        return Response(serializer.data)
+        
+    except Parent.DoesNotExist:
+        return Response({'error': 'Parent profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search_parents(request):
-    """Search for parents by name (for teachers to initiate conversations)"""
+    """Search for parents of students the teacher teaches"""
     user = request.user
     
     if user.role != 'teacher':
@@ -135,28 +169,47 @@ def search_parents(request):
     
     query = request.GET.get('q', '')
     
-    if not query:
-        parents = Parent.objects.all().select_related('user')[:50]
-    else:
+    try:
+        teacher = Teacher.objects.get(user=user)
+        
+        from .models import Timetable
+        class_ids = Timetable.objects.filter(
+            teacher=teacher
+        ).values_list('class_assigned_id', flat=True).distinct()
+        
+        student_ids = Student.objects.filter(
+            student_class_id__in=class_ids
+        ).values_list('id', flat=True)
+        
         parents = Parent.objects.filter(
-            Q(user__first_name__icontains=query) | 
-            Q(user__last_name__icontains=query) |
-            Q(user__email__icontains=query)
-        ).select_related('user')[:50]
-    
-    parent_data = [{
-        'id': parent.id,
-        'user': {
-            'id': parent.user.id,
-            'first_name': parent.user.first_name,
-            'last_name': parent.user.last_name,
-            'email': parent.user.email,
-        },
-        'occupation': parent.occupation or '',
-        'phone': parent.user.phone_number or ''
-    } for parent in parents]
-    
-    return Response(parent_data)
+            children__id__in=student_ids
+        ).distinct().select_related('user')
+        
+        if query:
+            parents = parents.filter(
+                Q(user__first_name__icontains=query) | 
+                Q(user__last_name__icontains=query) |
+                Q(user__email__icontains=query)
+            )
+        
+        parents = parents[:50]
+        
+        parent_data = [{
+            'id': parent.id,
+            'user': {
+                'id': parent.user.id,
+                'first_name': parent.user.first_name,
+                'last_name': parent.user.last_name,
+                'email': parent.user.email,
+            },
+            'occupation': parent.occupation or '',
+            'phone': parent.user.phone_number or ''
+        } for parent in parents]
+        
+        return Response(parent_data)
+        
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
