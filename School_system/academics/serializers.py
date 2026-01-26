@@ -274,12 +274,12 @@ class CreateTeacherSerializer(serializers.Serializer):
         with transaction.atomic():
             staff_number = generate_unique_staff_number()
             
-            full_name = f"{validated_data['first_name']} {validated_data['last_name']}"
             user = CustomUser.objects.create_user(
                 username=staff_number,
                 email=validated_data['email'],
                 password=validated_data['password'],
-                full_name=full_name,
+                first_name=validated_data['first_name'],
+                last_name=validated_data['last_name'],
                 role='teacher',
                 student_number=staff_number,
                 phone_number=validated_data.get('phone_number', ''),
