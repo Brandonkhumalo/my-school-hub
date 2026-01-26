@@ -238,17 +238,16 @@ export default function AdminTeachers() {
                   </div>
                 </div>
               )}
-              {!formData.is_secondary_teacher && (
-                <div className="col-span-full">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Class (Primary Teacher)</label>
-                  <select name="assigned_class_id" value={formData.assigned_class_id} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="">Select a class (optional)...</option>
-                    {Array.isArray(classes) && classes.filter(c => c.grade_level <= 7).map((cls) => (
-                      <option key={cls.id} value={cls.id}>{cls.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div className="col-span-full">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class Responsibility (Class Teacher)</label>
+                <select name="assigned_class_id" value={formData.assigned_class_id} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="">No class responsibility (optional)...</option>
+                  {Array.isArray(classes) && classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>{cls.name} ({cls.grade_level <= 7 ? `Grade ${cls.grade_level}` : `Form ${cls.grade_level - 7}`})</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Assign this teacher as the class teacher responsible for a specific class</p>
+              </div>
               <div className="col-span-full">
                 <button type="submit" className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">Add Teacher</button>
               </div>
@@ -287,10 +286,14 @@ export default function AdminTeachers() {
                   ) : (
                     <p className="text-gray-500">No subjects assigned</p>
                   )}
-                  {selectedTeacher.assigned_class && (
+                  {selectedTeacher.class_taught && selectedTeacher.class_taught.length > 0 && (
                     <div>
-                      <p className="text-sm text-gray-600 mb-2">Assigned Class:</p>
-                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">{selectedTeacher.assigned_class.name || selectedTeacher.assigned_class}</span>
+                      <p className="text-sm text-gray-600 mb-2">Class Responsibility:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTeacher.class_taught.map((cls, idx) => (
+                          <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">{cls.name}</span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -330,8 +333,12 @@ export default function AdminTeachers() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {teacher.assigned_class ? (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">{teacher.assigned_class.name || teacher.assigned_class}</span>
+                          {teacher.class_taught && teacher.class_taught.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {teacher.class_taught.map((cls, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">{cls.name}</span>
+                              ))}
+                            </div>
                           ) : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">

@@ -154,22 +154,36 @@ class UserListView(generics.ListAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
-    """Get dashboard statistics for admin"""
+    """Get dashboard statistics for admin - filtered by school"""
     from academics.models import Class, Subject, Result
     from finances.models import Invoice, Payment
     
-    stats = {
-        'total_students': CustomUser.objects.filter(role='student', is_active=True).count(),
-        'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True).count(),
-        'total_parents': CustomUser.objects.filter(role='parent', is_active=True).count(),
-        'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True).count(),
-        'total_classes': Class.objects.count(),
-        'total_subjects': Subject.objects.count(),
-        'pending_invoices': Invoice.objects.filter(is_paid=False).count(),
-        'total_revenue': Payment.objects.filter(payment_status='completed').aggregate(
-            total=models.Sum('amount')
-        )['total'] or 0,
-    }
+    school = request.user.school
+    
+    if school:
+        stats = {
+            'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
+            'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
+            'total_parents': CustomUser.objects.filter(role='parent', is_active=True, school=school).count(),
+            'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True, school=school).count(),
+            'total_classes': Class.objects.filter(school=school).count(),
+            'total_subjects': Subject.objects.filter(school=school).count(),
+            'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
+            'total_revenue': Payment.objects.filter(payment_status='completed', invoice__student__user__school=school).aggregate(
+                total=models.Sum('amount')
+            )['total'] or 0,
+        }
+    else:
+        stats = {
+            'total_students': 0,
+            'total_teachers': 0,
+            'total_parents': 0,
+            'total_staff': 0,
+            'total_classes': 0,
+            'total_subjects': 0,
+            'pending_invoices': 0,
+            'total_revenue': 0,
+        }
     
     return Response(stats)
 
