@@ -319,7 +319,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 'id': teacher.id,
                 'staff_number': staff_number,
                 'password': validated_data['password'],
-                'full_name': full_name,
+                'full_name': f"{validated_data['first_name']} {validated_data['last_name']}",
                 'email': validated_data['email']
             }
 
