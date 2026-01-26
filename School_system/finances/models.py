@@ -100,6 +100,7 @@ class SchoolFees(models.Model):
         ('term_3', 'Term 3'),
     ]
     
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='school_fees', null=True, blank=True)
     grade_level = models.IntegerField()
     grade_name = models.CharField(max_length=50)
     tuition_fee = models.DecimalField(max_digits=10, decimal_places=2)
@@ -115,7 +116,7 @@ class SchoolFees(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     
     class Meta:
-        unique_together = ('grade_level', 'academic_year', 'academic_term')
+        unique_together = ('school', 'grade_level', 'academic_year', 'academic_term')
         verbose_name_plural = "School Fees"
     
     @property
