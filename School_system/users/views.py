@@ -144,7 +144,11 @@ class UserListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = CustomUser.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = CustomUser.objects.filter(school=user.school)
+        else:
+            queryset = CustomUser.objects.none()
         role = self.request.query_params.get('role', None)
         if role:
             queryset = queryset.filter(role=role)

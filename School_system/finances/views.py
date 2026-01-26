@@ -18,11 +18,18 @@ class FeeTypeListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = FeeType.objects.all()
+        user = self.request.user
+        if user.school:
+            queryset = FeeType.objects.filter(school=user.school)
+        else:
+            queryset = FeeType.objects.none()
         academic_year = self.request.query_params.get('academic_year')
         if academic_year:
             queryset = queryset.filter(academic_year=academic_year)
         return queryset
+    
+    def perform_create(self, serializer):
+        serializer.save(school=self.request.user.school)
 
 
 class FeeTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -38,13 +45,19 @@ class StudentFeeListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = StudentFee.objects.all()
+        user = self.request.user
+        
+        # Filter by school first
+        if user.school:
+            queryset = StudentFee.objects.filter(student__user__school=user.school)
+        else:
+            queryset = StudentFee.objects.none()
         
         # Filter by user role
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(student__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(student__user=user)
+        elif user.role == 'parent':
+            children_ids = user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_id__in=children_ids)
         
         # Additional filters
@@ -82,13 +95,19 @@ class PaymentListCreateView(generics.ListCreateAPIView):
         return PaymentSerializer
 
     def get_queryset(self):
-        queryset = Payment.objects.all()
+        user = self.request.user
+        
+        # Filter by school first
+        if user.school:
+            queryset = Payment.objects.filter(student_fee__student__user__school=user.school)
+        else:
+            queryset = Payment.objects.none()
         
         # Filter by user role
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(student_fee__student__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(student_fee__student__user=user)
+        elif user.role == 'parent':
+            children_ids = user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_fee__student_id__in=children_ids)
         
         # Additional filters
@@ -122,13 +141,19 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Invoice.objects.all()
+        user = self.request.user
+        
+        # Filter by school first
+        if user.school:
+            queryset = Invoice.objects.filter(student__user__school=user.school)
+        else:
+            queryset = Invoice.objects.none()
         
         # Filter by user role
-        if self.request.user.role == 'student':
-            queryset = queryset.filter(student__user=self.request.user)
-        elif self.request.user.role == 'parent':
-            children_ids = self.request.user.parent.children.values_list('id', flat=True)
+        if user.role == 'student':
+            queryset = queryset.filter(student__user=user)
+        elif user.role == 'parent':
+            children_ids = user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_id__in=children_ids)
         
         # Additional filters
@@ -156,11 +181,18 @@ class FinancialReportListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
+        
         # Only accountants and admins can view financial reports
-        if self.request.user.role not in ['accountant', 'admin']:
+        if user.role not in ['accountant', 'admin']:
             return FinancialReport.objects.none()
         
-        queryset = FinancialReport.objects.all()
+        # Filter by school
+        if user.school:
+            queryset = FinancialReport.objects.filter(generated_by__school=user.school)
+        else:
+            queryset = FinancialReport.objects.none()
+        
         report_type = self.request.query_params.get('type')
         academic_year = self.request.query_params.get('academic_year')
         
@@ -277,7 +309,13 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = SchoolFees.objects.all()
+        user = self.request.user
+        
+        # Filter by school
+        if user.school:
+            queryset = SchoolFees.objects.filter(school=user.school)
+        else:
+            queryset = SchoolFees.objects.none()
         
         academic_year = self.request.query_params.get('academic_year')
         academic_term = self.request.query_params.get('academic_term')
@@ -296,13 +334,19 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can create school fees")
-        serializer.save(created_by=self.request.user)
+        serializer.save(created_by=self.request.user, school=self.request.user.school)
 
 
 class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = SchoolFees.objects.all()
     serializer_class = SchoolFeesSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return SchoolFees.objects.filter(school=user.school)
+        return SchoolFees.objects.none()
     
     def perform_update(self, serializer):
         if self.request.user.role != 'admin':
