@@ -319,8 +319,16 @@ class CreateTeacherSerializer(serializers.Serializer):
                 'id': teacher.id,
                 'staff_number': staff_number,
                 'password': validated_data['password'],
+                'first_name': validated_data['first_name'],
+                'last_name': validated_data['last_name'],
                 'full_name': f"{validated_data['first_name']} {validated_data['last_name']}",
-                'email': validated_data['email']
+                'email': validated_data['email'],
+                'phone_number': phone if phone else '',
+                'hire_date': str(validated_data['hire_date']),
+                'qualification': validated_data.get('qualification', ''),
+                'subject_ids': validated_data.get('subject_ids', []),
+                'assigned_class_id': validated_data.get('assigned_class_id'),
+                'is_secondary_teacher': validated_data.get('is_secondary_teacher', False)
             }
 
 
