@@ -39,6 +39,9 @@ The system provides tailored experiences for four roles: Admin, Teacher, Student
 -   **Admin Extras:** Includes timetable generation using a CSP algorithm and comprehensive school fees management supporting multiple currencies and academic structures.
 -   **Teacher Features:** Intelligent filtering for marks entry, detailed attendance options, comprehensive subject analytics, and a bidirectional parent-teacher messaging system.
 -   **Tishanyq Developer Admin Portal:** A hidden superadmin portal for Tishanyq Digital team members to manage schools, create new schools, and reset admin passwords, accessible via a secret key.
+-   **Dashboard Data:** Admin dashboard displays real-time statistics filtered by the logged-in user's school, including student count, teacher count, parent count, classes, subjects, invoices, and payments.
+-   **Class Management:** Admins can create classes with grade levels (ECD through Grade 7 for primary, Form 1-6 for secondary), academic year, and optional class teacher assignment.
+-   **Teacher Class Responsibility:** Any teacher can be assigned as a class teacher responsible for a specific class, regardless of primary/secondary designation.
 
 ## External Dependencies
 
