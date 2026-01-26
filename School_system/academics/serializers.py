@@ -249,10 +249,13 @@ class CreateTeacherSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     hire_date = serializers.DateField()
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(min_length=6)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     assigned_class_id = serializers.IntegerField(required=False, allow_null=True)
     is_secondary_teacher = serializers.BooleanField(default=False)
+    staff_number = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
+    id = serializers.IntegerField(read_only=True)
     
     def validate(self, data):
         from users.models import CustomUser
