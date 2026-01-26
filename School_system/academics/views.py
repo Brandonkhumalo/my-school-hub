@@ -496,11 +496,17 @@ def decline_parent_link_request(request, link_id):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def class_averages_view(request):
-    """Get class averages grouped by class and subject"""
+    """Get class averages grouped by class and subject - filtered by school"""
     from django.db.models import Avg, Count, F
     
-    # Get all results and calculate averages by class and subject
-    averages = Result.objects.values(
+    school = request.user.school
+    
+    # Get results filtered by user's school
+    queryset = Result.objects.all()
+    if school:
+        queryset = queryset.filter(student__user__school=school)
+    
+    averages = queryset.values(
         'student__student_class__name',
         'student__student_class__id',
         'subject__name',
