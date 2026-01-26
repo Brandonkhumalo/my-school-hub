@@ -172,6 +172,8 @@ def dashboard_stats_view(request):
             'total_revenue': Payment.objects.filter(payment_status='completed', student_fee__student__user__school=school).aggregate(
                 total=models.Sum('amount')
             )['total'] or 0,
+            'school_type': school.school_type,
+            'school_name': school.name,
         }
     else:
         stats = {

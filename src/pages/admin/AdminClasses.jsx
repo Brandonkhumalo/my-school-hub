@@ -3,15 +3,15 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
-// AdminClasses Component - v2 with Add Class functionality
 export default function AdminClasses() {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [schoolType, setSchoolType] = useState('combined');
   const [formData, setFormData] = useState({
-    name: '',
     grade_level: '',
+    section: '',
     academic_year: new Date().getFullYear().toString(),
     class_teacher: ''
   });
@@ -23,17 +23,35 @@ export default function AdminClasses() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [classesData, teachersData] = await Promise.all([
+      const [classesData, teachersData, statsData] = await Promise.all([
         apiService.fetchClasses(),
-        apiService.fetchTeachers()
+        apiService.fetchTeachers(),
+        apiService.getDashboardStats()
       ]);
       setClasses(classesData);
       setTeachers(teachersData);
+      if (statsData.school_type) {
+        setSchoolType(statsData.school_type);
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getGradeLevelName = (level) => {
+    if (level === 0) return 'ECD A';
+    if (level === -1) return 'ECD B';
+    if (level <= 7) return `Grade ${level}`;
+    return `Form ${level - 7}`;
+  };
+
+  const generateClassName = () => {
+    if (!formData.grade_level) return '';
+    const levelName = getGradeLevelName(parseInt(formData.grade_level));
+    const section = formData.section ? ` ${formData.section.toUpperCase()}` : '';
+    return `${levelName}${section}`;
   };
 
   const handleInputChange = (e) => {
@@ -44,16 +62,17 @@ export default function AdminClasses() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const className = generateClassName();
       await apiService.createClass({
-        name: formData.name,
+        name: className,
         grade_level: parseInt(formData.grade_level),
         academic_year: formData.academic_year,
         class_teacher: formData.class_teacher || null
       });
       setShowForm(false);
       setFormData({
-        name: '',
         grade_level: '',
+        section: '',
         academic_year: new Date().getFullYear().toString(),
         class_teacher: ''
       });
@@ -74,6 +93,9 @@ export default function AdminClasses() {
       alert("Failed to delete class");
     }
   };
+
+  const showPrimary = schoolType === 'primary' || schoolType === 'combined';
+  const showSecondary = schoolType === 'secondary' || schoolType === 'high' || schoolType === 'combined';
 
   if (isLoading) return (
     <div>
@@ -102,19 +124,7 @@ export default function AdminClasses() {
             <h3 className="text-xl font-semibold mb-4">Add New Class</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Class Name *</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="e.g., Grade 1A, Form 2B"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Grade/Form Level *</label>
                 <select
                   name="grade_level"
                   value={formData.grade_level}
@@ -122,26 +132,44 @@ export default function AdminClasses() {
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Select grade level...</option>
-                  <optgroup label="Primary (ECD - Grade 7)">
-                    <option value="0">ECD A</option>
-                    <option value="1">Grade 1</option>
-                    <option value="2">Grade 2</option>
-                    <option value="3">Grade 3</option>
-                    <option value="4">Grade 4</option>
-                    <option value="5">Grade 5</option>
-                    <option value="6">Grade 6</option>
-                    <option value="7">Grade 7</option>
-                  </optgroup>
-                  <optgroup label="Secondary (Form 1 - Form 6)">
-                    <option value="8">Form 1</option>
-                    <option value="9">Form 2</option>
-                    <option value="10">Form 3</option>
-                    <option value="11">Form 4</option>
-                    <option value="12">Form 5 (Lower 6)</option>
-                    <option value="13">Form 6 (Upper 6)</option>
-                  </optgroup>
+                  <option value="">Select grade/form level...</option>
+                  {showPrimary && (
+                    <optgroup label="Primary (ECD - Grade 7)">
+                      <option value="-1">ECD B</option>
+                      <option value="0">ECD A</option>
+                      <option value="1">Grade 1</option>
+                      <option value="2">Grade 2</option>
+                      <option value="3">Grade 3</option>
+                      <option value="4">Grade 4</option>
+                      <option value="5">Grade 5</option>
+                      <option value="6">Grade 6</option>
+                      <option value="7">Grade 7</option>
+                    </optgroup>
+                  )}
+                  {showSecondary && (
+                    <optgroup label="Secondary (Form 1 - Form 6)">
+                      <option value="8">Form 1</option>
+                      <option value="9">Form 2</option>
+                      <option value="10">Form 3</option>
+                      <option value="11">Form 4</option>
+                      <option value="12">Form 5 (Lower 6)</option>
+                      <option value="13">Form 6 (Upper 6)</option>
+                    </optgroup>
+                  )}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Section/Stream</label>
+                <input
+                  type="text"
+                  name="section"
+                  value={formData.section}
+                  onChange={handleInputChange}
+                  placeholder="e.g., A, B, C, Red, Blue"
+                  maxLength="10"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional: Add A, B, C or custom section name</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year *</label>
@@ -171,6 +199,16 @@ export default function AdminClasses() {
                   ))}
                 </select>
               </div>
+              {formData.grade_level && (
+                <div className="col-span-full">
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <p className="text-sm text-blue-800">
+                      <i className="fas fa-info-circle mr-2"></i>
+                      Class will be created as: <strong>{generateClassName()}</strong>
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="col-span-full">
                 <button
                   type="submit"
@@ -209,7 +247,7 @@ export default function AdminClasses() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${cls.grade_level <= 7 ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'}`}>
-                          {cls.grade_level <= 7 ? `Grade ${cls.grade_level}` : `Form ${cls.grade_level - 7}`}
+                          {cls.grade_level <= 7 ? (cls.grade_level === 0 ? 'ECD A' : cls.grade_level === -1 ? 'ECD B' : `Grade ${cls.grade_level}`) : `Form ${cls.grade_level - 7}`}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{cls.academic_year}</td>
