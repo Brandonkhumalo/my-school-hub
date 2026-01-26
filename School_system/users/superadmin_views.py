@@ -2,7 +2,6 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.db import transaction
 import secrets
@@ -10,6 +9,7 @@ import string
 import os
 
 from .models import CustomUser, School
+from .token import JWTAuthentication
 
 
 SUPERADMIN_SECRET_KEY = os.environ.get('SUPERADMIN_SECRET_KEY', 'TISHANYQ_DEV_2025')
@@ -83,11 +83,13 @@ def superadmin_login(request):
     if not user.check_password(password):
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    refresh = RefreshToken.for_user(user)
+    payload = {'user_id': user.id, 'role': user.role}
+    access_token = JWTAuthentication.generate_token(payload)
+    refresh_token = JWTAuthentication.generate_refresh_token(payload)
     
     return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
+        'access': access_token,
+        'refresh': refresh_token,
         'user': {
             'id': user.id,
             'email': user.email,
@@ -153,7 +155,8 @@ def create_school_with_admin(request):
                 email=admin_email,
                 password=admin_password,
                 phone_number=admin_phone,
-                full_name=f"{school_name} Admin",
+                first_name=school_name,
+                last_name='Admin',
                 role='admin',
                 school=school,
                 created_by=request.user
