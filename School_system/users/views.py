@@ -169,7 +169,7 @@ def dashboard_stats_view(request):
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
             'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
-            'total_revenue': Payment.objects.filter(payment_status='completed', invoice__student__user__school=school).aggregate(
+            'total_revenue': Payment.objects.filter(payment_status='completed', student_fee__student__user__school=school).aggregate(
                 total=models.Sum('amount')
             )['total'] or 0,
         }
