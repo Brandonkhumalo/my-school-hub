@@ -81,6 +81,7 @@ const apiService = {
   
   fetchClasses: () => request("/academics/classes/", "GET"),
   createClass: (data) => request("/academics/classes/", "POST", data),
+  updateClass: (id, data) => request(`/academics/classes/${id}/`, "PATCH", data),
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
   
   fetchStudents: () => request("/academics/students/", "GET"),

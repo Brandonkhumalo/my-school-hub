@@ -8,8 +8,10 @@ export default function AdminClasses() {
   const [teachers, setTeachers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingClass, setEditingClass] = useState(null);
   const [schoolType, setSchoolType] = useState('combined');
-  const [formData, setFormData] = useState({
+  
+  const defaultFormData = {
     grade_level: '',
     section: '',
     academic_year: new Date().getFullYear().toString(),
@@ -23,7 +25,9 @@ export default function AdminClasses() {
     lunch_end: '13:30',
     friday_last_period_end: '13:00',
     include_transition_time: false
-  });
+  };
+  
+  const [formData, setFormData] = useState(defaultFormData);
 
   useEffect(() => {
     fetchData();
@@ -68,15 +72,44 @@ export default function AdminClasses() {
     setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
   };
 
+  const formatTimeForInput = (timeStr) => {
+    if (!timeStr) return '';
+    if (typeof timeStr === 'string' && timeStr.includes(':')) {
+      return timeStr.substring(0, 5);
+    }
+    return timeStr;
+  };
+
+  const handleEdit = (cls) => {
+    setEditingClass(cls);
+    setFormData({
+      grade_level: cls.grade_level?.toString() || '',
+      section: '',
+      academic_year: cls.academic_year || new Date().getFullYear().toString(),
+      class_teacher: cls.class_teacher || '',
+      first_period_start: formatTimeForInput(cls.first_period_start) || '07:30',
+      last_period_end: formatTimeForInput(cls.last_period_end) || '16:00',
+      period_duration_minutes: cls.period_duration_minutes || 45,
+      break_start: formatTimeForInput(cls.break_start) || '10:00',
+      break_end: formatTimeForInput(cls.break_end) || '10:30',
+      lunch_start: formatTimeForInput(cls.lunch_start) || '12:30',
+      lunch_end: formatTimeForInput(cls.lunch_end) || '13:30',
+      friday_last_period_end: formatTimeForInput(cls.friday_last_period_end) || '13:00',
+      include_transition_time: cls.include_transition_time || false
+    });
+    setShowForm(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingClass(null);
+    setFormData(defaultFormData);
+    setShowForm(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const className = generateClassName();
-      await apiService.createClass({
-        name: className,
-        grade_level: parseInt(formData.grade_level),
-        academic_year: formData.academic_year,
-        class_teacher: formData.class_teacher || null,
+      const submitData = {
         first_period_start: formData.first_period_start,
         last_period_end: formData.last_period_end,
         period_duration_minutes: parseInt(formData.period_duration_minutes),
@@ -85,28 +118,28 @@ export default function AdminClasses() {
         lunch_start: formData.lunch_start,
         lunch_end: formData.lunch_end,
         friday_last_period_end: formData.friday_last_period_end,
-        include_transition_time: formData.include_transition_time
-      });
+        include_transition_time: formData.include_transition_time,
+        class_teacher: formData.class_teacher || null
+      };
+
+      if (editingClass) {
+        await apiService.updateClass(editingClass.id, submitData);
+        setEditingClass(null);
+      } else {
+        const className = generateClassName();
+        await apiService.createClass({
+          ...submitData,
+          name: className,
+          grade_level: parseInt(formData.grade_level),
+          academic_year: formData.academic_year
+        });
+      }
       setShowForm(false);
-      setFormData({
-        grade_level: '',
-        section: '',
-        academic_year: new Date().getFullYear().toString(),
-        class_teacher: '',
-        first_period_start: '07:30',
-        last_period_end: '16:00',
-        period_duration_minutes: 45,
-        break_start: '10:00',
-        break_end: '10:30',
-        lunch_start: '12:30',
-        lunch_end: '13:30',
-        friday_last_period_end: '13:00',
-        include_transition_time: false
-      });
+      setFormData(defaultFormData);
       fetchData();
     } catch (error) {
-      console.error("Error creating class:", error);
-      alert("Failed to create class: " + (error.message || "Unknown error"));
+      console.error("Error saving class:", error);
+      alert("Failed to save class: " + (error.message || "Unknown error"));
     }
   };
 
@@ -138,7 +171,13 @@ export default function AdminClasses() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">All Classes ({classes.length})</h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                handleCancelEdit();
+              } else {
+                setShowForm(true);
+              }
+            }}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center"
           >
             <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'} mr-2`}></i>
@@ -148,68 +187,74 @@ export default function AdminClasses() {
 
         {showForm && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="text-xl font-semibold mb-4">Add New Class</h3>
+            <h3 className="text-xl font-semibold mb-4">
+              {editingClass ? `Edit Class: ${editingClass.name}` : 'Add New Class'}
+            </h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Grade/Form Level *</label>
-                <select
-                  name="grade_level"
-                  value={formData.grade_level}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select grade/form level...</option>
-                  {showPrimary && (
-                    <optgroup label="Primary (ECD - Grade 7)">
-                      <option value="-1">ECD B</option>
-                      <option value="0">ECD A</option>
-                      <option value="1">Grade 1</option>
-                      <option value="2">Grade 2</option>
-                      <option value="3">Grade 3</option>
-                      <option value="4">Grade 4</option>
-                      <option value="5">Grade 5</option>
-                      <option value="6">Grade 6</option>
-                      <option value="7">Grade 7</option>
-                    </optgroup>
-                  )}
-                  {showSecondary && (
-                    <optgroup label="Secondary (Form 1 - Form 6)">
-                      <option value="8">Form 1</option>
-                      <option value="9">Form 2</option>
-                      <option value="10">Form 3</option>
-                      <option value="11">Form 4</option>
-                      <option value="12">Form 5 (Lower 6)</option>
-                      <option value="13">Form 6 (Upper 6)</option>
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Section/Stream</label>
-                <input
-                  type="text"
-                  name="section"
-                  value={formData.section}
-                  onChange={handleInputChange}
-                  placeholder="e.g., A, B, C, Red, Blue"
-                  maxLength="10"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Optional: Add A, B, C or custom section name</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year *</label>
-                <input
-                  type="text"
-                  name="academic_year"
-                  value={formData.academic_year}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="e.g., 2026"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {!editingClass && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Grade/Form Level *</label>
+                    <select
+                      name="grade_level"
+                      value={formData.grade_level}
+                      onChange={handleInputChange}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select grade/form level...</option>
+                      {showPrimary && (
+                        <optgroup label="Primary (ECD - Grade 7)">
+                          <option value="-1">ECD B</option>
+                          <option value="0">ECD A</option>
+                          <option value="1">Grade 1</option>
+                          <option value="2">Grade 2</option>
+                          <option value="3">Grade 3</option>
+                          <option value="4">Grade 4</option>
+                          <option value="5">Grade 5</option>
+                          <option value="6">Grade 6</option>
+                          <option value="7">Grade 7</option>
+                        </optgroup>
+                      )}
+                      {showSecondary && (
+                        <optgroup label="Secondary (Form 1 - Form 6)">
+                          <option value="8">Form 1</option>
+                          <option value="9">Form 2</option>
+                          <option value="10">Form 3</option>
+                          <option value="11">Form 4</option>
+                          <option value="12">Form 5 (Lower 6)</option>
+                          <option value="13">Form 6 (Upper 6)</option>
+                        </optgroup>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Section/Stream</label>
+                    <input
+                      type="text"
+                      name="section"
+                      value={formData.section}
+                      onChange={handleInputChange}
+                      placeholder="e.g., A, B, C, Red, Blue"
+                      maxLength="10"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Optional: Add A, B, C or custom section name</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year *</label>
+                    <input
+                      type="text"
+                      name="academic_year"
+                      value={formData.academic_year}
+                      onChange={handleInputChange}
+                      required
+                      placeholder="e.g., 2026"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Class Teacher (Optional)</label>
                 <select
@@ -347,7 +392,7 @@ export default function AdminClasses() {
                 </label>
               </div>
 
-              {formData.grade_level && (
+              {!editingClass && formData.grade_level && (
                 <div className="col-span-full">
                   <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
                     <p className="text-sm text-blue-800">
@@ -362,7 +407,8 @@ export default function AdminClasses() {
                   type="submit"
                   className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
                 >
-                  <i className="fas fa-plus mr-2"></i>Create Class
+                  <i className={`fas ${editingClass ? 'fa-save' : 'fa-plus'} mr-2`}></i>
+                  {editingClass ? 'Save Changes' : 'Create Class'}
                 </button>
               </div>
             </form>
@@ -402,7 +448,13 @@ export default function AdminClasses() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {cls.class_teacher_name || cls.teacher_name || <span className="text-gray-400">Not assigned</span>}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-3">
+                        <button
+                          onClick={() => handleEdit(cls)}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <i className="fas fa-edit mr-1"></i>Edit
+                        </button>
                         <button
                           onClick={() => handleDelete(cls.id)}
                           className="text-red-600 hover:text-red-800"
