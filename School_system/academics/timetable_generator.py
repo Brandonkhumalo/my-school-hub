@@ -161,16 +161,22 @@ class TimetableCSP:
         return self.timetable
 
 
-def generate_timetable(academic_year=None, clear_existing=True):
+def generate_timetable(school=None, academic_year=None, clear_existing=True):
     """
-    Main function to generate timetables for all classes
+    Main function to generate timetables for all classes - filtered by school
     Returns: (success, message, timetable_entries)
     """
     from django.db import transaction
     
-    classes = list(Class.objects.filter(academic_year=academic_year) if academic_year else Class.objects.all())
-    subjects = list(Subject.objects.all())
-    teachers = list(Teacher.objects.prefetch_related('subjects_taught').all())
+    if not school:
+        return False, "School is required for timetable generation", []
+    
+    class_qs = Class.objects.filter(school=school)
+    if academic_year:
+        class_qs = class_qs.filter(academic_year=academic_year)
+    classes = list(class_qs)
+    subjects = list(Subject.objects.filter(school=school))
+    teachers = list(Teacher.objects.filter(user__school=school).prefetch_related('subjects_taught'))
     
     if not classes:
         return False, "No classes found", []
@@ -207,10 +213,10 @@ def generate_timetable(academic_year=None, clear_existing=True):
     
     with transaction.atomic():
         if clear_existing:
+            delete_qs = Timetable.objects.filter(class_assigned__school=school)
             if academic_year:
-                Timetable.objects.filter(class_assigned__academic_year=academic_year).delete()
-            else:
-                Timetable.objects.all().delete()
+                delete_qs = delete_qs.filter(class_assigned__academic_year=academic_year)
+            delete_qs.delete()
         
         for (class_id, day, start_time), (subject_id, teacher_id, room, end_time) in csp.get_timetable().items():
             try:

@@ -409,15 +409,20 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def pending_parent_link_requests(request):
-    """Get all pending parent-child link requests (Admin/Teacher only)"""
+    """Get all pending parent-child link requests (Admin/Teacher only) - filtered by school"""
     if request.user.role not in ['admin', 'teacher']:
         return Response({'error': 'Only administrators and teachers can view pending requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
     
+    school = request.user.school
+    if not school:
+        return Response([])
+    
     pending_links = ParentChildLink.objects.filter(
-        is_confirmed=False
+        is_confirmed=False,
+        student__user__school=school
     ).select_related('parent__user', 'student__user', 'student__student_class')
     
     data = []
@@ -440,17 +445,21 @@ def pending_parent_link_requests(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def approve_parent_link_request(request, link_id):
-    """Approve a parent-child link request (Admin/Teacher only)"""
+    """Approve a parent-child link request (Admin/Teacher only) - filtered by school"""
     if request.user.role not in ['admin', 'teacher']:
         return Response({'error': 'Only administrators and teachers can approve requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
     
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
         link = ParentChildLink.objects.select_related(
             'parent__user', 'student__user'
-        ).get(id=link_id, is_confirmed=False)
+        ).get(id=link_id, is_confirmed=False, student__user__school=school)
         
         link.is_confirmed = True
         link.confirmed_by = request.user
@@ -470,15 +479,19 @@ def approve_parent_link_request(request, link_id):
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def decline_parent_link_request(request, link_id):
-    """Decline/delete a parent-child link request (Admin/Teacher only)"""
+    """Decline/delete a parent-child link request (Admin/Teacher only) - filtered by school"""
     if request.user.role not in ['admin', 'teacher']:
         return Response({'error': 'Only administrators and teachers can decline requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
     
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        link = ParentChildLink.objects.get(id=link_id, is_confirmed=False)
+        link = ParentChildLink.objects.get(id=link_id, is_confirmed=False, student__user__school=school)
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}"
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}"
         link.delete()
@@ -558,9 +571,13 @@ def class_averages_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_timetable_view(request):
-    """Generate timetables for all classes using CSP algorithm"""
+    """Generate timetables for all classes using CSP algorithm - filtered by school"""
     if request.user.role != 'admin':
         return Response({'error': 'Only admins can generate timetables'}, status=status.HTTP_403_FORBIDDEN)
+    
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
     
     academic_year = request.data.get('academic_year')
     clear_existing = request.data.get('clear_existing', True)
@@ -569,6 +586,7 @@ def generate_timetable_view(request):
         from .timetable_generator import generate_timetable
         
         success, message, entries = generate_timetable(
+            school=school,
             academic_year=academic_year,
             clear_existing=clear_existing
         )
@@ -604,8 +622,8 @@ def get_timetable_stats(request):
     if not school:
         return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
     
-    total_entries = Timetable.objects.filter(school=school).count()
-    classes_with_timetables = Timetable.objects.filter(school=school).values('class_assigned').distinct().count()
+    total_entries = Timetable.objects.filter(class_assigned__school=school).count()
+    classes_with_timetables = Timetable.objects.filter(class_assigned__school=school).values('class_assigned').distinct().count()
     total_classes = Class.objects.filter(school=school).count()
     
     return Response({

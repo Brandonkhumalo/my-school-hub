@@ -213,12 +213,16 @@ def dashboard_stats_view(request):
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def delete_user_view(request, user_id):
-    """Delete a user (admin only)"""
+    """Delete a user (admin only) - filtered by school"""
     if request.user.role != 'admin':
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        user = CustomUser.objects.get(id=user_id)
+        user = CustomUser.objects.get(id=user_id, school=school)
         user.delete()
         return Response({'message': 'User deleted successfully'})
     except CustomUser.DoesNotExist:
