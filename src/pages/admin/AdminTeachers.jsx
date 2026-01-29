@@ -94,7 +94,11 @@ export default function AdminTeachers() {
     }
     
     try {
-      const response = await apiService.createTeacher(formData);
+      const submitData = {
+        ...formData,
+        assigned_class_id: formData.assigned_class_id ? parseInt(formData.assigned_class_id) : null
+      };
+      const response = await apiService.createTeacher(submitData);
       setShowCredentials(response);
       setShowForm(false);
       setFormData({

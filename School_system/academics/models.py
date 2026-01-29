@@ -22,6 +22,16 @@ class Class(models.Model):
     class_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='taught_classes')
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='classes')
     
+    first_period_start = models.TimeField(null=True, blank=True, help_text="Time first period starts (24hr format, e.g., 07:30)")
+    last_period_end = models.TimeField(null=True, blank=True, help_text="Time last period ends (24hr format, e.g., 16:00)")
+    period_duration_minutes = models.IntegerField(default=45, help_text="Duration of each period in minutes")
+    break_start = models.TimeField(null=True, blank=True, help_text="Morning break start time")
+    break_end = models.TimeField(null=True, blank=True, help_text="Morning break end time")
+    lunch_start = models.TimeField(null=True, blank=True, help_text="Lunch break start time")
+    lunch_end = models.TimeField(null=True, blank=True, help_text="Lunch break end time")
+    friday_last_period_end = models.TimeField(null=True, blank=True, help_text="Time last period ends on Friday (schools often close early)")
+    include_transition_time = models.BooleanField(default=False, help_text="Include 5 minutes between periods for class changes")
+    
     class Meta:
         verbose_name_plural = "Classes"
     

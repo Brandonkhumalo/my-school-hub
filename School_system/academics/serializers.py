@@ -35,7 +35,12 @@ class ClassSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Class
-        fields = ['id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'student_count']
+        fields = [
+            'id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'student_count',
+            'first_period_start', 'last_period_end', 'period_duration_minutes',
+            'break_start', 'break_end', 'lunch_start', 'lunch_end',
+            'friday_last_period_end', 'include_transition_time'
+        ]
 
     def get_student_count(self, obj):
         return obj.students.count()

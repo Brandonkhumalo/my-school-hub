@@ -8,36 +8,113 @@ Constraints enforced:
 3. Rooms aren't double-booked - No room hosts two classes at the same time
 4. Subject periods per week - Each subject gets required number of periods
 5. Teacher availability - Teachers only assigned during available times
+6. Class-specific scheduling - Uses each class's schedule configuration
 """
 
 import random
+from datetime import datetime, timedelta
 from collections import defaultdict
 from .models import Class, Subject, Teacher, Timetable
 
 
 DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-PERIODS = [
-    ('08:00', '08:45'),
-    ('08:45', '09:30'),
-    ('09:30', '10:15'),
-    ('10:30', '11:15'),  # After break
-    ('11:15', '12:00'),
-    ('12:00', '12:45'),
-    ('14:00', '14:45'),  # After lunch
-    ('14:45', '15:30'),
-]
+
+
+def generate_periods_for_class(class_obj):
+    """
+    Generate time periods based on class scheduling configuration.
+    Returns list of (start_time, end_time) tuples for regular days and Friday.
+    """
+    first_start = class_obj.first_period_start
+    last_end = class_obj.last_period_end
+    friday_end = class_obj.friday_last_period_end or last_end
+    duration = class_obj.period_duration_minutes or 45
+    transition = 5 if class_obj.include_transition_time else 0
+    
+    break_start = class_obj.break_start
+    break_end = class_obj.break_end
+    lunch_start = class_obj.lunch_start
+    lunch_end = class_obj.lunch_end
+    
+    if not first_start or not last_end:
+        return {day: [('08:00', '08:45'), ('08:45', '09:30'), ('09:30', '10:15'), 
+                      ('10:30', '11:15'), ('11:15', '12:00'), ('14:00', '14:45')] for day in DAYS}
+    
+    def time_to_minutes(t):
+        return t.hour * 60 + t.minute
+    
+    def minutes_to_time_str(mins):
+        return f"{mins // 60:02d}:{mins % 60:02d}"
+    
+    def generate_day_periods(end_time):
+        periods = []
+        current = time_to_minutes(first_start)
+        end_mins = time_to_minutes(end_time)
+        break_start_mins = time_to_minutes(break_start) if break_start else None
+        break_end_mins = time_to_minutes(break_end) if break_end else None
+        lunch_start_mins = time_to_minutes(lunch_start) if lunch_start else None
+        lunch_end_mins = time_to_minutes(lunch_end) if lunch_end else None
+        
+        max_iterations = 50
+        iterations = 0
+        
+        while current + duration <= end_mins and iterations < max_iterations:
+            iterations += 1
+            period_end = current + duration
+            previous_current = current
+            
+            if break_start_mins and break_end_mins and break_end_mins > break_start_mins:
+                if current < break_start_mins and period_end > break_start_mins:
+                    current = max(current + 1, break_end_mins)
+                    continue
+                if current >= break_start_mins and current < break_end_mins:
+                    current = max(current + 1, break_end_mins)
+                    continue
+            
+            if lunch_start_mins and lunch_end_mins and lunch_end_mins > lunch_start_mins:
+                if current < lunch_start_mins and period_end > lunch_start_mins:
+                    current = max(current + 1, lunch_end_mins)
+                    continue
+                if current >= lunch_start_mins and current < lunch_end_mins:
+                    current = max(current + 1, lunch_end_mins)
+                    continue
+            
+            periods.append((minutes_to_time_str(current), minutes_to_time_str(period_end)))
+            current = period_end + transition
+            
+            if current <= previous_current:
+                break
+        
+        return periods
+    
+    day_periods = {}
+    for day in DAYS:
+        if day == 'Friday':
+            day_periods[day] = generate_day_periods(friday_end)
+        else:
+            day_periods[day] = generate_day_periods(last_end)
+    
+    return day_periods
 
 
 class TimetableCSP:
-    def __init__(self, classes, subjects, teachers, rooms, subjects_per_class, periods_per_subject):
+    def __init__(self, classes, subjects, teachers, rooms, subjects_per_class, periods_per_subject, class_periods):
         self.classes = classes
         self.subjects = subjects
         self.teachers = teachers
         self.rooms = rooms
         self.subjects_per_class = subjects_per_class  # dict: {class_id: [subject_ids]}
         self.periods_per_subject = periods_per_subject  # dict: {subject_id: int}
+        self.class_periods = class_periods  # dict: {class_id: {day: [(start, end), ...]}}
         
-        self.time_slots = [(day, start, end) for day in DAYS for start, end in PERIODS]
+        self.time_slots = {}
+        for cls in classes:
+            cls_periods = class_periods.get(cls.id, {})
+            self.time_slots[cls.id] = []
+            for day in DAYS:
+                day_periods = cls_periods.get(day, [])
+                for start, end in day_periods:
+                    self.time_slots[cls.id].append((day, start, end))
         
         self.timetable = {}  # {(class_id, day, start_time): (subject_id, teacher_id, room)}
         self.teacher_schedule = defaultdict(set)  # {teacher_id: {(day, time)}}
@@ -74,7 +151,8 @@ class TimetableCSP:
     def get_unassigned_slots(self, class_id):
         """Get all time slots not yet assigned for this class (MRV)"""
         unassigned = []
-        for day, start, end in self.time_slots:
+        class_slots = self.time_slots.get(class_id, [])
+        for day, start, end in class_slots:
             if (day, start) not in self.class_schedule[class_id]:
                 unassigned.append((day, start, end))
         return unassigned
@@ -164,6 +242,7 @@ class TimetableCSP:
 def generate_timetable(school=None, academic_year=None, clear_existing=True):
     """
     Main function to generate timetables for all classes - filtered by school
+    Uses each class's scheduling configuration for period generation.
     Returns: (success, message, timetable_entries)
     """
     from django.db import transaction
@@ -189,6 +268,10 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
     
     rooms = [f"Room {i}" for i in range(1, len(classes) + 5)]
     
+    class_periods = {}
+    for cls in classes:
+        class_periods[cls.id] = generate_periods_for_class(cls)
+    
     subjects_per_class = {}
     for cls in classes:
         subjects_per_class[cls.id] = [s.id for s in subjects[:min(10, len(subjects))]]
@@ -201,7 +284,8 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
         teachers=teachers,
         rooms=rooms,
         subjects_per_class=subjects_per_class,
-        periods_per_subject=periods_per_subject
+        periods_per_subject=periods_per_subject,
+        class_periods=class_periods
     )
     
     success, message = csp.solve()

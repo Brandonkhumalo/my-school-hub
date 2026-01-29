@@ -13,7 +13,16 @@ export default function AdminClasses() {
     grade_level: '',
     section: '',
     academic_year: new Date().getFullYear().toString(),
-    class_teacher: ''
+    class_teacher: '',
+    first_period_start: '07:30',
+    last_period_end: '16:00',
+    period_duration_minutes: 45,
+    break_start: '10:00',
+    break_end: '10:30',
+    lunch_start: '12:30',
+    lunch_end: '13:30',
+    friday_last_period_end: '13:00',
+    include_transition_time: false
   });
 
   useEffect(() => {
@@ -55,8 +64,8 @@ export default function AdminClasses() {
   };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    const { name, value, type, checked } = e.target;
+    setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
   };
 
   const handleSubmit = async (e) => {
@@ -67,14 +76,32 @@ export default function AdminClasses() {
         name: className,
         grade_level: parseInt(formData.grade_level),
         academic_year: formData.academic_year,
-        class_teacher: formData.class_teacher || null
+        class_teacher: formData.class_teacher || null,
+        first_period_start: formData.first_period_start,
+        last_period_end: formData.last_period_end,
+        period_duration_minutes: parseInt(formData.period_duration_minutes),
+        break_start: formData.break_start,
+        break_end: formData.break_end,
+        lunch_start: formData.lunch_start,
+        lunch_end: formData.lunch_end,
+        friday_last_period_end: formData.friday_last_period_end,
+        include_transition_time: formData.include_transition_time
       });
       setShowForm(false);
       setFormData({
         grade_level: '',
         section: '',
         academic_year: new Date().getFullYear().toString(),
-        class_teacher: ''
+        class_teacher: '',
+        first_period_start: '07:30',
+        last_period_end: '16:00',
+        period_duration_minutes: 45,
+        break_start: '10:00',
+        break_end: '10:30',
+        lunch_start: '12:30',
+        lunch_end: '13:30',
+        friday_last_period_end: '13:00',
+        include_transition_time: false
       });
       fetchData();
     } catch (error) {
@@ -199,6 +226,127 @@ export default function AdminClasses() {
                   ))}
                 </select>
               </div>
+
+              <div className="col-span-full border-t pt-4 mt-2">
+                <h4 className="text-lg font-semibold text-gray-800 mb-3">
+                  <i className="fas fa-clock mr-2"></i>Schedule Configuration
+                </h4>
+                <p className="text-sm text-gray-600 mb-4">Configure the class timetable schedule (24-hour format)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Period Starts *</label>
+                <input
+                  type="time"
+                  name="first_period_start"
+                  value={formData.first_period_start}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">e.g., 07:30 for 7:30 AM</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Period Ends *</label>
+                <input
+                  type="time"
+                  name="last_period_end"
+                  value={formData.last_period_end}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">e.g., 16:00 for 4:00 PM</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Period Duration (minutes) *</label>
+                <input
+                  type="number"
+                  name="period_duration_minutes"
+                  value={formData.period_duration_minutes}
+                  onChange={handleInputChange}
+                  required
+                  min="20"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Each lesson/period length (e.g., 30, 45, 60)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Friday Last Period Ends</label>
+                <input
+                  type="time"
+                  name="friday_last_period_end"
+                  value={formData.friday_last_period_end}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Schools often close early on Fridays</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Morning Break Start</label>
+                <input
+                  type="time"
+                  name="break_start"
+                  value={formData.break_start}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Morning Break End</label>
+                <input
+                  type="time"
+                  name="break_end"
+                  value={formData.break_end}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lunch Break Start</label>
+                <input
+                  type="time"
+                  name="lunch_start"
+                  value={formData.lunch_start}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lunch Break End</label>
+                <input
+                  type="time"
+                  name="lunch_end"
+                  value={formData.lunch_end}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="col-span-full">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="include_transition_time"
+                    checked={formData.include_transition_time}
+                    onChange={handleInputChange}
+                    className="mr-3 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Include 5-minute transition time between periods</span>
+                    <p className="text-xs text-gray-500">Allows students and teachers time to switch classes</p>
+                  </div>
+                </label>
+              </div>
+
               {formData.grade_level && (
                 <div className="col-span-full">
                   <div className="bg-blue-50 border border-blue-200 rounded-md p-3">

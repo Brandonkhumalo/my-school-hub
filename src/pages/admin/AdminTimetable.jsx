@@ -30,7 +30,7 @@ export default function AdminTimetable() {
   };
 
   const getClassTimetable = (classId) => {
-    return timetables.filter(t => t.class_obj?.id === classId || t.class === classId);
+    return timetables.filter(t => t.class_assigned === classId || t.class_obj?.id === classId || t.class === classId);
   };
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
