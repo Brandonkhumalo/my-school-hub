@@ -28,8 +28,16 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || "API request failed");
+      let errorData = null;
+      try {
+        errorData = await response.json();
+      } catch {
+        const errorText = await response.text();
+        errorData = { error: errorText || "API request failed" };
+      }
+      const error = new Error(errorData.error || errorData.message || "API request failed");
+      error.response = { data: errorData, status: response.status };
+      throw error;
     }
     const data = await response.json();
     
