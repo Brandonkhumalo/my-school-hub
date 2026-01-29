@@ -28,8 +28,9 @@ def generate_periods_for_class(class_obj):
     first_start = class_obj.first_period_start
     last_end = class_obj.last_period_end
     friday_end = class_obj.friday_last_period_end or last_end
-    duration = class_obj.period_duration_minutes or 45
+    base_duration = class_obj.period_duration_minutes or 45
     transition = 5 if class_obj.include_transition_time else 0
+    duration = base_duration - transition if transition > 0 else base_duration
     
     break_start = class_obj.break_start
     break_end = class_obj.break_end
@@ -55,35 +56,56 @@ def generate_periods_for_class(class_obj):
         lunch_start_mins = time_to_minutes(lunch_start) if lunch_start else None
         lunch_end_mins = time_to_minutes(lunch_end) if lunch_end else None
         
+        min_period_length = 10
+        
         max_iterations = 50
         iterations = 0
         
-        while current + duration <= end_mins and iterations < max_iterations:
+        while current < end_mins and iterations < max_iterations:
             iterations += 1
-            period_end = current + duration
             previous_current = current
             
             if break_start_mins and break_end_mins and break_end_mins > break_start_mins:
-                if current < break_start_mins and period_end > break_start_mins:
-                    current = max(current + 1, break_end_mins)
-                    continue
                 if current >= break_start_mins and current < break_end_mins:
-                    current = max(current + 1, break_end_mins)
+                    current = break_end_mins
                     continue
             
             if lunch_start_mins and lunch_end_mins and lunch_end_mins > lunch_start_mins:
-                if current < lunch_start_mins and period_end > lunch_start_mins:
-                    current = max(current + 1, lunch_end_mins)
-                    continue
                 if current >= lunch_start_mins and current < lunch_end_mins:
-                    current = max(current + 1, lunch_end_mins)
+                    current = lunch_end_mins
                     continue
             
-            periods.append((minutes_to_time_str(current), minutes_to_time_str(period_end)))
-            current = period_end + transition
+            next_barrier = end_mins
+            if break_start_mins and current < break_start_mins:
+                next_barrier = min(next_barrier, break_start_mins)
+            if lunch_start_mins and current < lunch_start_mins:
+                next_barrier = min(next_barrier, lunch_start_mins)
+            
+            time_until_barrier = next_barrier - current
+            
+            if time_until_barrier >= duration:
+                period_end = current + duration
+                periods.append((minutes_to_time_str(current), minutes_to_time_str(period_end)))
+                current = period_end + transition
+            elif time_until_barrier >= min_period_length:
+                period_end = next_barrier
+                periods.append((minutes_to_time_str(current), minutes_to_time_str(period_end)))
+                if next_barrier == break_start_mins:
+                    current = break_end_mins
+                elif next_barrier == lunch_start_mins:
+                    current = lunch_end_mins
+                else:
+                    current = period_end + transition
+            else:
+                if next_barrier == break_start_mins:
+                    current = break_end_mins
+                elif next_barrier == lunch_start_mins:
+                    current = lunch_end_mins
+                else:
+                    break
             
             if current <= previous_current:
-                break
+                current = previous_current + 1
         
         return periods
     

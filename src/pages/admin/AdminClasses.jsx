@@ -86,7 +86,7 @@ export default function AdminClasses() {
       grade_level: cls.grade_level?.toString() || '',
       section: '',
       academic_year: cls.academic_year || new Date().getFullYear().toString(),
-      class_teacher: cls.class_teacher || '',
+      class_teacher: cls.class_teacher ? cls.class_teacher.toString() : '',
       first_period_start: formatTimeForInput(cls.first_period_start) || '07:30',
       last_period_end: formatTimeForInput(cls.last_period_end) || '16:00',
       period_duration_minutes: cls.period_duration_minutes || 45,
