@@ -596,13 +596,17 @@ def generate_timetable_view(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_timetable_stats(request):
-    """Get timetable statistics for admin"""
+    """Get timetable statistics for admin - filtered by school"""
     if request.user.role != 'admin':
         return Response({'error': 'Only admins can view timetable stats'}, status=status.HTTP_403_FORBIDDEN)
     
-    total_entries = Timetable.objects.count()
-    classes_with_timetables = Timetable.objects.values('class_assigned').distinct().count()
-    total_classes = Class.objects.count()
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    total_entries = Timetable.objects.filter(school=school).count()
+    classes_with_timetables = Timetable.objects.filter(school=school).values('class_assigned').distinct().count()
+    total_classes = Class.objects.filter(school=school).count()
     
     return Response({
         'total_entries': total_entries,
