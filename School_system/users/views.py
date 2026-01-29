@@ -45,6 +45,22 @@ def login_view(request):
     if serializer.is_valid():
         user = serializer.validated_data['user']
 
+        if user.school and user.school.is_suspended:
+            if user.role == 'admin':
+                return Response({
+                    'error': 'school_suspended_admin',
+                    'message': 'Your school has been suspended. Please contact Tishanyq Digital for assistance.',
+                    'contact': {
+                        'phone': ['+263 78 160 3382', '+263 78 221 6826'],
+                        'email': 'sales@tishanyq.co.zw'
+                    }
+                }, status=403)
+            else:
+                return Response({
+                    'error': 'school_suspended',
+                    'message': 'Your school has been suspended. Please contact your school administrator.'
+                }, status=403)
+
         user_data = UserSerializer(user).data
         if user.student_number:
             user_data['student_number'] = user.student_number

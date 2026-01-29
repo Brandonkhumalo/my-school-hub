@@ -35,4 +35,5 @@ urlpatterns = [
     path('superadmin/create-school/', superadmin_views.create_school_with_admin, name='superadmin-create-school'),
     path('superadmin/schools/', superadmin_views.list_schools_with_admins, name='superadmin-schools'),
     path('superadmin/schools/<int:school_id>/reset-password/', superadmin_views.reset_admin_password, name='superadmin-reset-password'),
+    path('superadmin/schools/<int:school_id>/suspend/', superadmin_views.suspend_school, name='superadmin-suspend-school'),
 ]

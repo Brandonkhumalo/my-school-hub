@@ -10,6 +10,7 @@ function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [suspendedModal, setSuspendedModal] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,7 +43,20 @@ function Login() {
           navigate("/");
       }
     } catch (err) {
-      setError("Failed to login. Please check your credentials.");
+      if (err.response?.data?.error === 'school_suspended_admin') {
+        setSuspendedModal({
+          type: 'admin',
+          message: err.response.data.message,
+          contact: err.response.data.contact
+        });
+      } else if (err.response?.data?.error === 'school_suspended') {
+        setSuspendedModal({
+          type: 'user',
+          message: err.response.data.message
+        });
+      } else {
+        setError("Failed to login. Please check your credentials.");
+      }
       console.error("Login error:", err);
     } finally {
       setLoading(false);
@@ -51,6 +65,41 @@ function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      {suspendedModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">School Suspended</h3>
+              <p className="text-gray-600">{suspendedModal.message}</p>
+            </div>
+            
+            {suspendedModal.type === 'admin' && suspendedModal.contact && (
+              <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                <p className="text-sm font-semibold text-blue-800 mb-2">Contact Tishanyq Digital:</p>
+                <div className="space-y-1 text-sm text-blue-700">
+                  {suspendedModal.contact.phone?.map((phone, idx) => (
+                    <p key={idx}><i className="fas fa-phone mr-2"></i>{phone}</p>
+                  ))}
+                  <p><i className="fas fa-envelope mr-2"></i>{suspendedModal.contact.email}</p>
+                </div>
+              </div>
+            )}
+            
+            <button
+              onClick={() => setSuspendedModal(null)}
+              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-semibold transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
         <div className="mb-6">
           <button

@@ -5,6 +5,7 @@ export default function SchoolsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(null);
+  const [suspending, setSuspending] = useState(null);
   const [showPassword, setShowPassword] = useState({});
 
   useEffect(() => {
@@ -73,6 +74,43 @@ export default function SchoolsList() {
     setShowPassword(prev => ({ ...prev, [schoolId]: !prev[schoolId] }));
   };
 
+  const handleToggleSuspend = async (schoolId, currentStatus) => {
+    const action = currentStatus ? 'unsuspend' : 'suspend';
+    const reason = !currentStatus ? prompt("Enter reason for suspension (optional):") : null;
+    
+    if (!currentStatus && reason === null) return;
+
+    setSuspending(schoolId);
+
+    try {
+      const token = localStorage.getItem("tishanyq_token");
+      const response = await fetch(`/api/auth/superadmin/schools/${schoolId}/suspend/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ suspend: !currentStatus, reason: reason || '' }),
+      });
+
+      if (!response.ok) throw new Error(`Failed to ${action} school`);
+
+      const data = await response.json();
+      
+      setSchools(schools.map(s => 
+        s.id === schoolId 
+          ? { ...s, is_suspended: data.is_suspended }
+          : s
+      ));
+      
+      alert(`School ${action}ed successfully!`);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setSuspending(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -125,6 +163,7 @@ export default function SchoolsList() {
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">School</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Password</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
@@ -142,6 +181,17 @@ export default function SchoolsList() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm">{school.code}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {school.is_suspended ? (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          <i className="fas fa-ban mr-1"></i>Suspended
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          <i className="fas fa-check-circle mr-1"></i>Active
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div>
@@ -164,17 +214,36 @@ export default function SchoolsList() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => handleResetPassword(school.id)}
-                        disabled={resetting === school.id}
-                        className="px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-sm transition disabled:opacity-50"
-                      >
-                        {resetting === school.id ? (
-                          <span><i className="fas fa-spinner fa-spin mr-1"></i>Resetting...</span>
-                        ) : (
-                          <span><i className="fas fa-key mr-1"></i>Reset Password</span>
-                        )}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleResetPassword(school.id)}
+                          disabled={resetting === school.id}
+                          className="px-3 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-sm transition disabled:opacity-50"
+                        >
+                          {resetting === school.id ? (
+                            <span><i className="fas fa-spinner fa-spin mr-1"></i></span>
+                          ) : (
+                            <span><i className="fas fa-key mr-1"></i>Reset</span>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleToggleSuspend(school.id, school.is_suspended)}
+                          disabled={suspending === school.id}
+                          className={`px-3 py-2 rounded-lg text-sm transition disabled:opacity-50 ${
+                            school.is_suspended 
+                              ? 'bg-green-100 hover:bg-green-200 text-green-700'
+                              : 'bg-red-100 hover:bg-red-200 text-red-700'
+                          }`}
+                        >
+                          {suspending === school.id ? (
+                            <span><i className="fas fa-spinner fa-spin mr-1"></i></span>
+                          ) : school.is_suspended ? (
+                            <span><i className="fas fa-play mr-1"></i>Activate</span>
+                          ) : (
+                            <span><i className="fas fa-ban mr-1"></i>Suspend</span>
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

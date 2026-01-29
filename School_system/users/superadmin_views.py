@@ -197,6 +197,7 @@ def list_schools_with_admins(request):
             'city': school.city,
             'school_type': school.get_school_type_display() if hasattr(school, 'get_school_type_display') else school.school_type,
             'curriculum': school.curriculum,
+            'is_suspended': school.is_suspended,
             'admin_username': admin.username if admin else 'N/A',
             'admin_email': admin.email if admin else 'N/A',
             'admin_phone': admin.phone_number if admin else 'N/A',
@@ -237,4 +238,38 @@ def reset_admin_password(request, school_id):
     return Response({
         'message': 'Password reset successfully',
         'new_password': new_password
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def suspend_school(request, school_id):
+    if request.user.role != 'superadmin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    suspend = request.data.get('suspend', True)
+    reason = request.data.get('reason', '')
+    
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({'error': 'School not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    from django.utils import timezone
+    
+    school.is_suspended = suspend
+    if suspend:
+        school.suspension_reason = reason
+        school.suspended_at = timezone.now()
+    else:
+        school.suspension_reason = None
+        school.suspended_at = None
+    
+    school.save()
+    
+    action = 'suspended' if suspend else 'activated'
+    
+    return Response({
+        'message': f'School {action} successfully',
+        'is_suspended': school.is_suspended
     })
