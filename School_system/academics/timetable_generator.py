@@ -210,8 +210,16 @@ class TimetableCSP:
             self.class_schedule[class_id].discard(time_key)
             self.subject_count[class_id][subject_id] -= 1
     
+    def get_subject_days(self, class_id, subject_id):
+        """Get which days this subject is already assigned for this class"""
+        days_assigned = set()
+        for (cid, day, start), (sid, tid, room, end) in self.timetable.items():
+            if cid == class_id and sid == subject_id:
+                days_assigned.add(day)
+        return days_assigned
+
     def solve_class(self, class_id):
-        """Solve timetable for a single class using backtracking"""
+        """Solve timetable for a single class using backtracking with day distribution"""
         unassigned_slots = self.get_unassigned_slots(class_id)
         subjects_needing = self.get_subjects_needing_periods(class_id)
         
@@ -227,9 +235,16 @@ class TimetableCSP:
         if teacher_id is None:
             return False
         
-        random.shuffle(unassigned_slots)
+        subject_days = self.get_subject_days(class_id, subject_id)
         
-        for day, start, end in unassigned_slots:
+        def slot_priority(slot):
+            day, start, end = slot
+            day_already_has_subject = 1 if day in subject_days else 0
+            return (day_already_has_subject, random.random())
+        
+        sorted_slots = sorted(unassigned_slots, key=slot_priority)
+        
+        for day, start, end in sorted_slots:
             if not self.is_teacher_available(teacher_id, day, start):
                 continue
             

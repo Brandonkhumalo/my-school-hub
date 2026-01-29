@@ -35,16 +35,49 @@ export default function AdminTimetable() {
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-  const organizeTimetable = (entries) => {
+  const timeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const [hours, mins] = timeStr.split(':').map(Number);
+    return hours * 60 + mins;
+  };
+
+  const organizeTimetable = (entries, classData) => {
     const organized = {};
+    
     entries.forEach(entry => {
       const timeSlot = `${entry.start_time} - ${entry.end_time}`;
       if (!organized[timeSlot]) {
-        organized[timeSlot] = {};
+        organized[timeSlot] = { isBreak: false, isLunch: false };
       }
       organized[timeSlot][entry.day_of_week] = entry;
     });
-    return organized;
+    
+    if (classData) {
+      if (classData.break_start && classData.break_end) {
+        const breakSlot = `${classData.break_start.slice(0, 5)} - ${classData.break_end.slice(0, 5)}`;
+        if (!organized[breakSlot]) {
+          organized[breakSlot] = { isBreak: true };
+        } else {
+          organized[breakSlot].isBreak = true;
+        }
+      }
+      if (classData.lunch_start && classData.lunch_end) {
+        const lunchSlot = `${classData.lunch_start.slice(0, 5)} - ${classData.lunch_end.slice(0, 5)}`;
+        if (!organized[lunchSlot]) {
+          organized[lunchSlot] = { isLunch: true };
+        } else {
+          organized[lunchSlot].isLunch = true;
+        }
+      }
+    }
+    
+    const sortedEntries = Object.entries(organized).sort((a, b) => {
+      const timeA = timeToMinutes(a[0].split(' - ')[0]);
+      const timeB = timeToMinutes(b[0].split(' - ')[0]);
+      return timeA - timeB;
+    });
+    
+    return sortedEntries;
   };
 
   const primaryClasses = classes.filter(c => {
@@ -109,12 +142,34 @@ export default function AdminTimetable() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {Object.entries(organizeTimetable(getClassTimetable(selectedClass.id))).map(([timeSlot, dayEntries]) => (
-                        <tr key={timeSlot} className="hover:bg-gray-50">
+                      {organizeTimetable(getClassTimetable(selectedClass.id), selectedClass).map(([timeSlot, dayEntries]) => (
+                        <tr key={timeSlot} className={`${dayEntries.isBreak ? 'bg-yellow-50' : dayEntries.isLunch ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
                           <td className="px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
                             {timeSlot}
                           </td>
                           {days.map((day) => {
+                            if (dayEntries.isBreak) {
+                              return (
+                                <td key={day} className="px-4 py-3 text-center">
+                                  <div className="bg-yellow-100 p-2 rounded border-l-4 border-yellow-500">
+                                    <p className="font-semibold text-yellow-800 text-sm">
+                                      <i className="fas fa-coffee mr-1"></i>Break
+                                    </p>
+                                  </div>
+                                </td>
+                              );
+                            }
+                            if (dayEntries.isLunch) {
+                              return (
+                                <td key={day} className="px-4 py-3 text-center">
+                                  <div className="bg-orange-100 p-2 rounded border-l-4 border-orange-500">
+                                    <p className="font-semibold text-orange-800 text-sm">
+                                      <i className="fas fa-utensils mr-1"></i>Lunch
+                                    </p>
+                                  </div>
+                                </td>
+                              );
+                            }
                             const entry = dayEntries[day];
                             return (
                               <td key={day} className="px-4 py-3">
