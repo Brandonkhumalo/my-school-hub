@@ -37,47 +37,108 @@ export default function AdminTimetable() {
 
   const timeToMinutes = (timeStr) => {
     if (!timeStr) return 0;
-    const [hours, mins] = timeStr.split(':').map(Number);
+    const cleanTime = timeStr.slice(0, 5);
+    const [hours, mins] = cleanTime.split(':').map(Number);
     return hours * 60 + mins;
   };
 
-  const organizeTimetable = (entries, classData) => {
-    const organized = {};
+  const minutesToTime = (mins) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  const generateAllTimeSlots = (classData) => {
+    if (!classData) return [];
     
-    entries.forEach(entry => {
-      const timeSlot = `${entry.start_time} - ${entry.end_time}`;
-      if (!organized[timeSlot]) {
-        organized[timeSlot] = { isBreak: false, isLunch: false };
+    const slots = [];
+    const firstStart = classData.first_period_start ? timeToMinutes(classData.first_period_start) : 7 * 60 + 30;
+    const lastEnd = classData.last_period_end ? timeToMinutes(classData.last_period_end) : 16 * 60;
+    const duration = classData.period_duration_minutes || 45;
+    const transition = classData.include_transition_time ? 5 : 0;
+    const effectiveDuration = duration - transition;
+    
+    const breakStart = classData.break_start ? timeToMinutes(classData.break_start) : null;
+    const breakEnd = classData.break_end ? timeToMinutes(classData.break_end) : null;
+    const lunchStart = classData.lunch_start ? timeToMinutes(classData.lunch_start) : null;
+    const lunchEnd = classData.lunch_end ? timeToMinutes(classData.lunch_end) : null;
+    
+    let current = firstStart;
+    let iterations = 0;
+    
+    while (current < lastEnd && iterations < 50) {
+      iterations++;
+      
+      if (breakStart && breakEnd && current >= breakStart && current < breakEnd) {
+        slots.push({ start: minutesToTime(breakStart), end: minutesToTime(breakEnd), isBreak: true });
+        current = breakEnd;
+        continue;
       }
-      organized[timeSlot][entry.day_of_week] = entry;
-    });
-    
-    if (classData) {
-      if (classData.break_start && classData.break_end) {
-        const breakSlot = `${classData.break_start.slice(0, 5)} - ${classData.break_end.slice(0, 5)}`;
-        if (!organized[breakSlot]) {
-          organized[breakSlot] = { isBreak: true };
+      
+      if (lunchStart && lunchEnd && current >= lunchStart && current < lunchEnd) {
+        slots.push({ start: minutesToTime(lunchStart), end: minutesToTime(lunchEnd), isLunch: true });
+        current = lunchEnd;
+        continue;
+      }
+      
+      let periodEnd = current + effectiveDuration;
+      
+      if (breakStart && current < breakStart && periodEnd > breakStart) {
+        if (breakStart - current >= 10) {
+          periodEnd = breakStart;
         } else {
-          organized[breakSlot].isBreak = true;
+          slots.push({ start: minutesToTime(breakStart), end: minutesToTime(breakEnd), isBreak: true });
+          current = breakEnd;
+          continue;
         }
       }
-      if (classData.lunch_start && classData.lunch_end) {
-        const lunchSlot = `${classData.lunch_start.slice(0, 5)} - ${classData.lunch_end.slice(0, 5)}`;
-        if (!organized[lunchSlot]) {
-          organized[lunchSlot] = { isLunch: true };
+      
+      if (lunchStart && current < lunchStart && periodEnd > lunchStart) {
+        if (lunchStart - current >= 10) {
+          periodEnd = lunchStart;
         } else {
-          organized[lunchSlot].isLunch = true;
+          slots.push({ start: minutesToTime(lunchStart), end: minutesToTime(lunchEnd), isLunch: true });
+          current = lunchEnd;
+          continue;
         }
       }
+      
+      if (periodEnd > lastEnd) {
+        if (lastEnd - current >= 10) {
+          periodEnd = lastEnd;
+        } else {
+          break;
+        }
+      }
+      
+      slots.push({ start: minutesToTime(current), end: minutesToTime(periodEnd), isBreak: false, isLunch: false });
+      current = periodEnd + transition;
     }
     
-    const sortedEntries = Object.entries(organized).sort((a, b) => {
-      const timeA = timeToMinutes(a[0].split(' - ')[0]);
-      const timeB = timeToMinutes(b[0].split(' - ')[0]);
-      return timeA - timeB;
+    return slots;
+  };
+
+  const organizeTimetable = (entries, classData) => {
+    const allSlots = generateAllTimeSlots(classData);
+    
+    const entryMap = {};
+    entries.forEach(entry => {
+      const startClean = entry.start_time?.slice(0, 5) || '';
+      const endClean = entry.end_time?.slice(0, 5) || '';
+      const key = `${startClean} - ${endClean}`;
+      if (!entryMap[key]) {
+        entryMap[key] = {};
+      }
+      entryMap[key][entry.day_of_week] = entry;
     });
     
-    return sortedEntries;
+    const result = allSlots.map(slot => {
+      const key = `${slot.start} - ${slot.end}`;
+      const dayEntries = entryMap[key] || {};
+      return [key, { ...dayEntries, isBreak: slot.isBreak, isLunch: slot.isLunch }];
+    });
+    
+    return result;
   };
 
   const primaryClasses = classes.filter(c => {
