@@ -72,6 +72,10 @@ class CustomUser(AbstractUser):
     school = models.ForeignKey(School, on_delete=models.CASCADE, null=True, blank=True, related_name='users')
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
 
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip() or self.email
+
 class BlacklistedToken(models.Model):
     token = models.TextField(unique=True)
     blacklisted_at = models.DateTimeField(auto_now_add=True)
