@@ -239,18 +239,18 @@ def student_timetable(request):
     
     try:
         student = request.user.student
+        student_class = student.student_class
+        
         timetable_entries = Timetable.objects.filter(
-            class_assigned=student.student_class
+            class_assigned=student_class
         ).order_by('day_of_week', 'start_time')
         
-        # Get week start date (Monday of current week)
         today = datetime.now().date()
         week_start = today - timedelta(days=today.weekday())
         
-        # Build schedule structure
         schedule = {}
         for entry in timetable_entries:
-            time_slot = f"{entry.start_time.strftime('%I:%M %p')} - {entry.end_time.strftime('%I:%M %p')}"
+            time_slot = f"{entry.start_time.strftime('%H:%M')} - {entry.end_time.strftime('%H:%M')}"
             
             if time_slot not in schedule:
                 schedule[time_slot] = {}
@@ -261,10 +261,24 @@ def student_timetable(request):
                 'room': entry.room or ''
             }
         
+        class_config = None
+        if student_class:
+            class_config = {
+                'first_period_start': student_class.first_period_start.strftime('%H:%M') if student_class.first_period_start else None,
+                'last_period_end': student_class.last_period_end.strftime('%H:%M') if student_class.last_period_end else None,
+                'period_duration_minutes': student_class.period_duration_minutes or 45,
+                'break_start': student_class.break_start.strftime('%H:%M') if student_class.break_start else None,
+                'break_end': student_class.break_end.strftime('%H:%M') if student_class.break_end else None,
+                'lunch_start': student_class.lunch_start.strftime('%H:%M') if student_class.lunch_start else None,
+                'lunch_end': student_class.lunch_end.strftime('%H:%M') if student_class.lunch_end else None,
+                'include_transition_time': student_class.include_transition_time or False
+            }
+        
         data = {
             'week_start_date': week_start.strftime('%Y-%m-%d'),
             'notes': 'Current timetable',
-            'schedule': schedule
+            'schedule': schedule,
+            'class_config': class_config
         }
         
         return Response(data)
