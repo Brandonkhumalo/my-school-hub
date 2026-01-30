@@ -160,12 +160,22 @@ export default function AdminDashboard() {
                 <span className="font-bold text-orange-600">{stats?.pending_invoices || 0}</span>
               </div>
 
-              <Link
-                to="/admin/invoices"
-                className="block w-full mt-4 text-center bg-blue-500 hover:bg-blue-600 text-white py-2 rounded transition"
-              >
-                View All Invoices
-              </Link>
+              <div className="flex gap-2 mt-4">
+                <Link
+                  to="/admin/payments"
+                  className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white py-2 rounded transition"
+                >
+                  <i className="fas fa-credit-card mr-2"></i>
+                  Payments
+                </Link>
+                <Link
+                  to="/admin/invoices"
+                  className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white py-2 rounded transition"
+                >
+                  <i className="fas fa-file-invoice mr-2"></i>
+                  Invoices
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -261,6 +271,17 @@ export default function AdminDashboard() {
                 <div className="flex items-center">
                   <i className="fas fa-chart-bar text-red-500 text-xl mr-3"></i>
                   <span className="text-gray-700">Class Performance</span>
+                </div>
+                <i className="fas fa-chevron-right text-gray-400"></i>
+              </Link>
+
+              <Link
+                to="/admin/payments"
+                className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition"
+              >
+                <div className="flex items-center">
+                  <i className="fas fa-credit-card text-green-500 text-xl mr-3"></i>
+                  <span className="text-gray-700">Fee Payments</span>
                 </div>
                 <i className="fas fa-chevron-right text-gray-400"></i>
               </Link>
