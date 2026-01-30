@@ -69,6 +69,8 @@ class Invoice(models.Model):
     due_date = models.DateField()
     is_paid = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
+    payment_record = models.ForeignKey('StudentPaymentRecord', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     
     def __str__(self):
         return f"Invoice {self.invoice_number} - {self.student.user.full_name}"
@@ -76,6 +78,97 @@ class Invoice(models.Model):
     @property
     def balance(self):
         return self.total_amount - self.amount_paid
+
+
+class StudentPaymentRecord(models.Model):
+    PAYMENT_TYPE_CHOICES = [
+        ('school_fees', 'School Fees'),
+        ('other', 'Other Payment'),
+    ]
+    
+    PAYMENT_PLAN_CHOICES = [
+        ('full_year', 'Full Year Payment'),
+        ('two_terms', 'Two Terms Payment'),
+        ('one_term', 'One Term Payment'),
+        ('batch', 'Batch Payment'),
+    ]
+    
+    PAYMENT_STATUS_CHOICES = [
+        ('unpaid', 'Unpaid'),
+        ('partial', 'Partially Paid'),
+        ('paid', 'Fully Paid'),
+    ]
+    
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('card', 'Card'),
+        ('mobile_money', 'Mobile Money'),
+        ('ecocash', 'EcoCash'),
+        ('innbucks', 'InnBucks'),
+        ('other', 'Other'),
+    ]
+    
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='payment_records')
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='payment_records')
+    payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES, default='school_fees')
+    payment_plan = models.CharField(max_length=20, choices=PAYMENT_PLAN_CHOICES, default='one_term')
+    description = models.CharField(max_length=255, blank=True)
+    
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=20, blank=True)
+    
+    total_amount_due = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    currency = models.CharField(max_length=10, default='USD')
+    
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    
+    due_date = models.DateField(null=True, blank=True)
+    next_payment_due = models.DateField(null=True, blank=True)
+    
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='recorded_payments')
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-date_created']
+    
+    @property
+    def balance(self):
+        return self.total_amount_due - self.amount_paid
+    
+    @property
+    def is_fully_paid(self):
+        return self.amount_paid >= self.total_amount_due
+    
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.payment_type} ({self.payment_status})"
+
+
+class PaymentTransaction(models.Model):
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('card', 'Card'),
+        ('mobile_money', 'Mobile Money'),
+        ('ecocash', 'EcoCash'),
+        ('innbucks', 'InnBucks'),
+        ('other', 'Other'),
+    ]
+    
+    payment_record = models.ForeignKey(StudentPaymentRecord, on_delete=models.CASCADE, related_name='transactions')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    transaction_reference = models.CharField(max_length=100, blank=True)
+    payment_date = models.DateTimeField(auto_now_add=True)
+    processed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    notes = models.TextField(blank=True)
+    
+    def __str__(self):
+        return f"{self.payment_record.student.user.full_name} - {self.amount}"
 
 
 class FinancialReport(models.Model):

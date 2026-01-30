@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction
 from academics.models import Student
+import uuid
+from datetime import date
 
 
 class FeeTypeSerializer(serializers.ModelSerializer):
@@ -134,3 +136,224 @@ class SchoolFeesSerializer(serializers.ModelSerializer):
             'date_created', 'date_updated', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['created_by', 'date_created', 'date_updated']
+
+
+class PaymentTransactionSerializer(serializers.ModelSerializer):
+    processed_by_name = serializers.CharField(source='processed_by.full_name', read_only=True)
+    
+    class Meta:
+        model = PaymentTransaction
+        fields = [
+            'id', 'payment_record', 'amount', 'payment_method', 
+            'transaction_reference', 'payment_date', 'processed_by',
+            'processed_by_name', 'notes'
+        ]
+        read_only_fields = ['processed_by', 'payment_date']
+
+
+class StudentPaymentRecordSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    class_name = serializers.CharField(source='student.student_class.name', read_only=True)
+    balance = serializers.ReadOnlyField()
+    is_fully_paid = serializers.ReadOnlyField()
+    recorded_by_name = serializers.CharField(source='recorded_by.full_name', read_only=True)
+    transactions = PaymentTransactionSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = StudentPaymentRecord
+        fields = [
+            'id', 'student', 'student_name', 'student_number', 'class_name', 'school',
+            'payment_type', 'payment_plan', 'description',
+            'academic_year', 'academic_term',
+            'total_amount_due', 'amount_paid', 'balance', 'currency',
+            'payment_status', 'payment_method', 'is_fully_paid',
+            'due_date', 'next_payment_due',
+            'date_created', 'date_updated', 'recorded_by', 'recorded_by_name',
+            'notes', 'transactions'
+        ]
+        read_only_fields = ['recorded_by', 'date_created', 'date_updated', 'school']
+
+
+class CreatePaymentRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentPaymentRecord
+        fields = [
+            'student', 'payment_type', 'payment_plan', 'description',
+            'academic_year', 'academic_term',
+            'total_amount_due', 'amount_paid', 'currency',
+            'payment_method', 'due_date', 'next_payment_due', 'notes'
+        ]
+    
+    def validate(self, attrs):
+        amount_paid = attrs.get('amount_paid', 0)
+        total_due = attrs['total_amount_due']
+        
+        if amount_paid < 0:
+            raise serializers.ValidationError("Amount paid cannot be negative.")
+        if amount_paid > total_due:
+            raise serializers.ValidationError("Amount paid cannot exceed total amount due.")
+        
+        return attrs
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['recorded_by'] = user
+        validated_data['school'] = user.school
+        
+        amount_paid = validated_data.get('amount_paid', 0)
+        total_due = validated_data['total_amount_due']
+        
+        if amount_paid >= total_due:
+            validated_data['payment_status'] = 'paid'
+        elif amount_paid > 0:
+            validated_data['payment_status'] = 'partial'
+        else:
+            validated_data['payment_status'] = 'unpaid'
+        
+        payment_record = super().create(validated_data)
+        
+        if amount_paid > 0:
+            PaymentTransaction.objects.create(
+                payment_record=payment_record,
+                amount=amount_paid,
+                payment_method=validated_data.get('payment_method', 'cash'),
+                processed_by=user,
+                notes='Initial payment'
+            )
+            
+            self._create_invoice(payment_record, amount_paid, user)
+        
+        return payment_record
+    
+    def _create_invoice(self, payment_record, amount, user):
+        invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
+        Invoice.objects.create(
+            student=payment_record.student,
+            school=payment_record.school,
+            invoice_number=invoice_number,
+            total_amount=payment_record.total_amount_due,
+            amount_paid=amount,
+            due_date=payment_record.due_date or date.today(),
+            is_paid=payment_record.payment_status == 'paid',
+            payment_record=payment_record,
+            notes=f"Payment for {payment_record.get_payment_type_display()} - {payment_record.academic_year}"
+        )
+
+
+class AddPaymentSerializer(serializers.Serializer):
+    payment_record_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = serializers.ChoiceField(choices=StudentPaymentRecord.PAYMENT_METHOD_CHOICES)
+    transaction_reference = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    next_payment_due = serializers.DateField(required=False, allow_null=True)
+    
+    def validate(self, attrs):
+        payment_record_id = attrs['payment_record_id']
+        amount = attrs['amount']
+        
+        try:
+            payment_record = StudentPaymentRecord.objects.get(id=payment_record_id)
+        except StudentPaymentRecord.DoesNotExist:
+            raise serializers.ValidationError("Payment record not found.")
+        
+        if amount <= 0:
+            raise serializers.ValidationError("Payment amount must be greater than zero.")
+        
+        if amount > payment_record.balance:
+            raise serializers.ValidationError("Payment amount cannot exceed remaining balance.")
+        
+        attrs['payment_record'] = payment_record
+        return attrs
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        payment_record = validated_data['payment_record']
+        amount = validated_data['amount']
+        
+        PaymentTransaction.objects.create(
+            payment_record=payment_record,
+            amount=amount,
+            payment_method=validated_data['payment_method'],
+            transaction_reference=validated_data.get('transaction_reference', ''),
+            processed_by=user,
+            notes=validated_data.get('notes', '')
+        )
+        
+        payment_record.amount_paid += amount
+        if validated_data.get('next_payment_due'):
+            payment_record.next_payment_due = validated_data['next_payment_due']
+        
+        if payment_record.amount_paid >= payment_record.total_amount_due:
+            payment_record.payment_status = 'paid'
+        else:
+            payment_record.payment_status = 'partial'
+        
+        payment_record.save()
+        
+        invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
+        Invoice.objects.create(
+            student=payment_record.student,
+            school=payment_record.school,
+            invoice_number=invoice_number,
+            total_amount=payment_record.total_amount_due,
+            amount_paid=payment_record.amount_paid,
+            due_date=payment_record.due_date or date.today(),
+            is_paid=payment_record.payment_status == 'paid',
+            payment_record=payment_record,
+            notes=f"Payment of {payment_record.currency}{amount} for {payment_record.get_payment_type_display()}"
+        )
+        
+        return payment_record
+
+
+class ClassFeesReportSerializer(serializers.Serializer):
+    class_id = serializers.IntegerField()
+    class_name = serializers.CharField()
+    total_students = serializers.IntegerField()
+    paid_count = serializers.IntegerField()
+    partial_count = serializers.IntegerField()
+    unpaid_count = serializers.IntegerField()
+    total_due = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_collected = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_outstanding = serializers.DecimalField(max_digits=12, decimal_places=2)
+    students = serializers.ListField(child=serializers.DictField())
+
+
+class InvoiceDetailSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    class_name = serializers.SerializerMethodField()
+    balance = serializers.ReadOnlyField()
+    school_name = serializers.CharField(source='school.name', read_only=True)
+    school_address = serializers.CharField(source='school.address', read_only=True)
+    school_phone = serializers.CharField(source='school.phone_number', read_only=True)
+    school_email = serializers.CharField(source='school.email', read_only=True)
+    payment_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'student', 'student_name', 'student_number', 'class_name',
+            'invoice_number', 'total_amount', 'amount_paid', 'balance',
+            'issue_date', 'due_date', 'is_paid', 'notes',
+            'school_name', 'school_address', 'school_phone', 'school_email',
+            'payment_details'
+        ]
+    
+    def get_class_name(self, obj):
+        if obj.student and obj.student.student_class:
+            return obj.student.student_class.name
+        return ''
+    
+    def get_payment_details(self, obj):
+        if obj.payment_record:
+            return {
+                'payment_type': obj.payment_record.get_payment_type_display(),
+                'payment_plan': obj.payment_record.get_payment_plan_display(),
+                'academic_year': obj.payment_record.academic_year,
+                'academic_term': obj.payment_record.academic_term,
+                'currency': obj.payment_record.currency,
+            }
+        return None

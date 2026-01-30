@@ -1,13 +1,15 @@
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Sum, Q
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees
+from django.db.models import Sum, Q, Count
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction
 from academics.models import Student, Class
 from .serializers import (
     FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
     InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
-    StudentFinancialSummarySerializer, SchoolFeesSerializer
+    StudentFinancialSummarySerializer, SchoolFeesSerializer,
+    StudentPaymentRecordSerializer, CreatePaymentRecordSerializer,
+    AddPaymentSerializer, InvoiceDetailSerializer, PaymentTransactionSerializer
 )
 
 
@@ -438,3 +440,270 @@ def get_all_grades(request):
             })
     
     return Response({'grades': grade_list})
+
+
+class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return CreatePaymentRecordSerializer
+        return StudentPaymentRecordSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.role not in ['admin', 'accountant']:
+            return StudentPaymentRecord.objects.none()
+        
+        if user.school:
+            queryset = StudentPaymentRecord.objects.filter(school=user.school)
+        else:
+            queryset = StudentPaymentRecord.objects.none()
+        
+        student_id = self.request.query_params.get('student')
+        class_id = self.request.query_params.get('class_id')
+        payment_status = self.request.query_params.get('status')
+        payment_type = self.request.query_params.get('type')
+        academic_year = self.request.query_params.get('academic_year')
+        
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        if class_id:
+            queryset = queryset.filter(student__student_class_id=class_id)
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        if payment_type:
+            queryset = queryset.filter(payment_type=payment_type)
+        if academic_year:
+            queryset = queryset.filter(academic_year=academic_year)
+            
+        return queryset.order_by('-date_created')
+
+
+class StudentPaymentRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = StudentPaymentRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return StudentPaymentRecord.objects.filter(school=user.school)
+        return StudentPaymentRecord.objects.none()
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def add_payment_to_record(request):
+    """Add a payment to an existing payment record"""
+    if request.user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = AddPaymentSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        payment_record = serializer.save()
+        return Response({
+            'message': 'Payment added successfully',
+            'payment_record': StudentPaymentRecordSerializer(payment_record).data
+        })
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def update_payment_status(request, record_id):
+    """Mark a payment record as paid/unpaid/partial"""
+    if request.user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        record = StudentPaymentRecord.objects.get(id=record_id, school=request.user.school)
+        new_status = request.data.get('status')
+        
+        if new_status not in ['unpaid', 'partial', 'paid']:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if new_status == 'paid':
+            record.amount_paid = record.total_amount_due
+        elif new_status == 'unpaid':
+            record.amount_paid = 0
+        
+        record.payment_status = new_status
+        record.save()
+        
+        return Response({
+            'message': 'Status updated successfully',
+            'payment_record': StudentPaymentRecordSerializer(record).data
+        })
+    except StudentPaymentRecord.DoesNotExist:
+        return Response({'error': 'Payment record not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def class_fees_report(request):
+    """Get class-based fees report showing paid/unpaid students"""
+    if request.user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    class_id = request.query_params.get('class_id')
+    academic_year = request.query_params.get('academic_year')
+    
+    if request.user.school:
+        classes = Class.objects.filter(school=request.user.school)
+    else:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if class_id:
+        classes = classes.filter(id=class_id)
+    
+    reports = []
+    for cls in classes:
+        students = Student.objects.filter(student_class=cls)
+        
+        paid_count = 0
+        partial_count = 0
+        unpaid_count = 0
+        total_due = 0
+        total_collected = 0
+        student_data = []
+        
+        for student in students:
+            records = StudentPaymentRecord.objects.filter(
+                student=student,
+                school=request.user.school
+            )
+            if academic_year:
+                records = records.filter(academic_year=academic_year)
+            
+            student_due = sum(r.total_amount_due for r in records)
+            student_paid = sum(r.amount_paid for r in records)
+            student_balance = student_due - student_paid
+            
+            if records.exists():
+                latest_record = records.first()
+                if latest_record.payment_status == 'paid':
+                    paid_count += 1
+                    status_text = 'Paid'
+                elif latest_record.payment_status == 'partial':
+                    partial_count += 1
+                    status_text = 'Partial'
+                else:
+                    unpaid_count += 1
+                    status_text = 'Unpaid'
+            else:
+                unpaid_count += 1
+                status_text = 'No Record'
+            
+            total_due += student_due
+            total_collected += student_paid
+            
+            student_data.append({
+                'student_id': student.id,
+                'student_name': student.user.full_name,
+                'student_number': student.user.student_number,
+                'total_due': float(student_due),
+                'total_paid': float(student_paid),
+                'balance': float(student_balance),
+                'status': status_text
+            })
+        
+        reports.append({
+            'class_id': cls.id,
+            'class_name': cls.name,
+            'total_students': students.count(),
+            'paid_count': paid_count,
+            'partial_count': partial_count,
+            'unpaid_count': unpaid_count,
+            'total_due': float(total_due),
+            'total_collected': float(total_collected),
+            'total_outstanding': float(total_due - total_collected),
+            'students': student_data
+        })
+    
+    return Response({'reports': reports})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_invoice_detail(request, invoice_id):
+    """Get detailed invoice for PDF generation"""
+    try:
+        if request.user.school:
+            invoice = Invoice.objects.get(id=invoice_id, school=request.user.school)
+        else:
+            invoice = Invoice.objects.get(id=invoice_id, student__user__school=request.user.school)
+        
+        if request.user.role == 'parent':
+            from academics.models import ParentChildLink
+            links = ParentChildLink.objects.filter(parent=request.user.parent, is_confirmed=True)
+            child_ids = [link.student_id for link in links]
+            if invoice.student_id not in child_ids:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response(InvoiceDetailSerializer(invoice).data)
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def parent_invoices(request):
+    """Get all invoices for parent's children"""
+    if request.user.role != 'parent':
+        return Response({'error': 'Parent access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        from academics.models import ParentChildLink
+        links = ParentChildLink.objects.filter(parent=request.user.parent, is_confirmed=True)
+        child_ids = [link.student_id for link in links]
+        
+        invoices = Invoice.objects.filter(student_id__in=child_ids).order_by('-issue_date')
+        
+        return Response(InvoiceDetailSerializer(invoices, many=True).data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_students_for_payment(request):
+    """Get list of students for payment recording"""
+    if request.user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    class_id = request.query_params.get('class_id')
+    
+    students = Student.objects.filter(user__school=request.user.school)
+    if class_id:
+        students = students.filter(student_class_id=class_id)
+    
+    student_list = []
+    for student in students:
+        grade_level = student.student_class.grade_level if student.student_class else None
+        
+        school_fee = None
+        if grade_level:
+            fee = SchoolFees.objects.filter(
+                school=request.user.school,
+                grade_level=grade_level
+            ).order_by('-academic_year', '-academic_term').first()
+            if fee:
+                school_fee = {
+                    'total_fee': float(fee.total_fee),
+                    'currency': fee.currency,
+                    'academic_year': fee.academic_year,
+                    'academic_term': fee.academic_term
+                }
+        
+        student_list.append({
+            'id': student.id,
+            'name': student.user.full_name,
+            'student_number': student.user.student_number,
+            'class_name': student.student_class.name if student.student_class else 'Not Assigned',
+            'class_id': student.student_class.id if student.student_class else None,
+            'grade_level': grade_level,
+            'school_fee': school_fee
+        })
+    
+    return Response({'students': student_list})
