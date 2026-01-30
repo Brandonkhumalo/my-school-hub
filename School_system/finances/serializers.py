@@ -170,10 +170,39 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     class_name = serializers.CharField(source='student.student_class.name', read_only=True)
-    balance = serializers.ReadOnlyField()
-    is_fully_paid = serializers.ReadOnlyField()
+    balance = serializers.SerializerMethodField()
+    is_fully_paid = serializers.SerializerMethodField()
     recorded_by_name = serializers.CharField(source='recorded_by.full_name', read_only=True)
     transactions = PaymentTransactionSerializer(many=True, read_only=True)
+    total_amount_due = serializers.SerializerMethodField()
+    base_school_fee = serializers.DecimalField(source='total_amount_due', max_digits=12, decimal_places=2, read_only=True)
+    additional_fees_list = serializers.SerializerMethodField()
+    
+    def get_additional_fees_total(self, obj):
+        from django.db.models import Q
+        additional_fees = AdditionalFee.objects.filter(
+            school=obj.school,
+            is_paid=False
+        ).filter(Q(student=obj.student) | Q(student_class=obj.student.student_class))
+        return sum(float(f.amount) for f in additional_fees)
+    
+    def get_total_amount_due(self, obj):
+        return float(obj.total_amount_due) + self.get_additional_fees_total(obj)
+    
+    def get_balance(self, obj):
+        total = self.get_total_amount_due(obj)
+        return total - float(obj.amount_paid)
+    
+    def get_is_fully_paid(self, obj):
+        return self.get_balance(obj) <= 0
+    
+    def get_additional_fees_list(self, obj):
+        from django.db.models import Q
+        additional_fees = AdditionalFee.objects.filter(
+            school=obj.school,
+            is_paid=False
+        ).filter(Q(student=obj.student) | Q(student_class=obj.student.student_class))
+        return [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
     
     class Meta:
         model = StudentPaymentRecord
@@ -181,11 +210,11 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
             'id', 'student', 'student_name', 'student_number', 'class_name', 'school',
             'payment_type', 'payment_plan', 'description',
             'academic_year', 'academic_term',
-            'total_amount_due', 'amount_paid', 'balance', 'currency',
+            'total_amount_due', 'base_school_fee', 'amount_paid', 'balance', 'currency',
             'payment_status', 'payment_method', 'is_fully_paid',
             'due_date', 'next_payment_due',
             'date_created', 'date_updated', 'recorded_by', 'recorded_by_name',
-            'notes', 'transactions'
+            'notes', 'transactions', 'additional_fees_list'
         ]
         read_only_fields = ['recorded_by', 'date_created', 'date_updated', 'school']
 
