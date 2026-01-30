@@ -40,4 +40,7 @@ urlpatterns = [
     path('payment-records/<int:record_id>/update-status/', views.update_payment_status, name='update-payment-status'),
     path('payment-records/class-report/', views.class_fees_report, name='class-fees-report'),
     path('payment-records/students/', views.get_students_for_payment, name='students-for-payment'),
+    
+    # Auto-generated invoices endpoint
+    path('invoices/by-class/', views.student_invoices_by_class, name='student-invoices-by-class'),
 ]

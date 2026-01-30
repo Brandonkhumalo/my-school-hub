@@ -105,10 +105,13 @@ export default function AdminPayments() {
 
   const loadInvoices = async () => {
     try {
-      const params = {};
-      if (selectedClass) params.class_id = selectedClass;
-      const data = await apiService.getInvoices(params);
-      setInvoices(data || []);
+      if (!selectedClass) {
+        setInvoices([]);
+        return;
+      }
+      const params = { class_id: selectedClass };
+      const data = await apiService.getInvoicesByClass(params);
+      setInvoices(data?.invoices || []);
     } catch (error) {
       console.error("Error loading invoices:", error);
     }
@@ -468,59 +471,79 @@ export default function AdminPayments() {
 
             {activeTab === "invoices" && (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Invoice #</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Issue Date</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Paid</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {invoices.map((invoice) => (
-                      <tr key={invoice.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-mono text-sm">{invoice.invoice_number}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{invoice.student_name}</div>
-                          <div className="text-xs text-gray-500">{invoice.student_number}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{invoice.issue_date}</td>
-                        <td className="px-4 py-3 text-right font-medium">${parseFloat(invoice.total_amount).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-green-600">${parseFloat(invoice.amount_paid).toFixed(2)}</td>
-                        <td className="px-4 py-3">{getStatusBadge(invoice.is_paid ? 'paid' : 'unpaid')}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2 justify-center">
-                            <button
-                              onClick={() => openInvoiceModal(invoice)}
-                              className="text-blue-600 hover:text-blue-800"
-                              title="View Invoice"
-                            >
-                              <i className="fas fa-eye"></i>
-                            </button>
-                            <button
-                              onClick={() => openInvoiceModal(invoice)}
-                              className="text-green-600 hover:text-green-800"
-                              title="Download PDF"
-                            >
-                              <i className="fas fa-download"></i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {invoices.length === 0 && (
+                {!selectedClass ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <i className="fas fa-filter text-4xl mb-3 text-gray-300"></i>
+                    <p>Please select a class to view invoices</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
                       <tr>
-                        <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
-                          No invoices found
-                        </td>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Invoice #</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Issue Date</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Paid</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Balance</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {invoices.map((invoice) => (
+                        <tr key={invoice.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-mono text-sm">
+                            {invoice.invoice_number}
+                            {invoice.is_auto_generated && (
+                              <span className="ml-2 text-xs text-gray-400">(Auto)</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900">{invoice.student_name}</div>
+                            <div className="text-xs text-gray-500">{invoice.student_number}</div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{invoice.issue_date}</td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            {invoice.currency || '$'}{parseFloat(invoice.total_amount).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-600">
+                            {invoice.currency || '$'}{parseFloat(invoice.amount_paid).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-red-600">
+                            {invoice.currency || '$'}{parseFloat(invoice.balance).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3">{getStatusBadge(invoice.status)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2 justify-center">
+                              <button
+                                onClick={() => openInvoiceModal(invoice)}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="View Invoice"
+                              >
+                                <i className="fas fa-eye"></i>
+                              </button>
+                              <button
+                                onClick={() => openInvoiceModal(invoice)}
+                                className="text-green-600 hover:text-green-800"
+                                title="Download PDF"
+                              >
+                                <i className="fas fa-download"></i>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {invoices.length === 0 && (
+                        <tr>
+                          <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                            No students found with school fees in this class
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </div>

@@ -720,3 +720,115 @@ def get_students_for_payment(request):
         })
     
     return Response({'students': student_list})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_invoices_by_class(request):
+    """
+    Auto-generate invoices for all students in a class based on their school fees.
+    Shows both outstanding (unpaid) and paid invoices.
+    """
+    user = request.user
+    if user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    class_id = request.query_params.get('class_id')
+    if not class_id:
+        return Response({'invoices': []})
+    
+    from datetime import date, timedelta
+    import uuid
+    
+    # Get all students in the class
+    students = Student.objects.filter(
+        user__school=user.school,
+        student_class_id=class_id
+    ).select_related('user', 'student_class')
+    
+    invoices_data = []
+    
+    for student in students:
+        grade_level = student.student_class.grade_level if student.student_class else None
+        
+        # Check if student has an existing invoice (from payment record)
+        existing_invoice = Invoice.objects.filter(
+            student=student,
+            school=user.school
+        ).order_by('-issue_date').first()
+        
+        if existing_invoice:
+            # Use existing invoice
+            invoices_data.append({
+                'id': existing_invoice.id,
+                'invoice_number': existing_invoice.invoice_number,
+                'student_id': student.id,
+                'student_name': student.user.full_name,
+                'student_number': student.user.student_number,
+                'class_name': student.student_class.name if student.student_class else 'N/A',
+                'issue_date': existing_invoice.issue_date.strftime('%Y-%m-%d'),
+                'due_date': existing_invoice.due_date.strftime('%Y-%m-%d'),
+                'total_amount': float(existing_invoice.total_amount),
+                'amount_paid': float(existing_invoice.amount_paid),
+                'balance': float(existing_invoice.balance),
+                'status': 'paid' if existing_invoice.is_paid else ('partial' if existing_invoice.amount_paid > 0 else 'unpaid'),
+                'is_auto_generated': False,
+                'currency': 'USD'
+            })
+        else:
+            # Auto-generate invoice from school fees
+            if grade_level:
+                school_fee = SchoolFees.objects.filter(
+                    school=user.school,
+                    grade_level=grade_level
+                ).order_by('-academic_year', '-academic_term').first()
+                
+                if school_fee:
+                    # Check if there's a payment record for this student
+                    payment_record = StudentPaymentRecord.objects.filter(
+                        student=student,
+                        school=user.school
+                    ).order_by('-created_at').first()
+                    
+                    total_amount = float(school_fee.total_fee)
+                    amount_paid = float(payment_record.amount_paid) if payment_record else 0
+                    balance = total_amount - amount_paid
+                    
+                    # Determine status
+                    if balance <= 0:
+                        invoice_status = 'paid'
+                    elif amount_paid > 0:
+                        invoice_status = 'partial'
+                    else:
+                        invoice_status = 'unpaid'
+                    
+                    # Generate invoice number
+                    invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
+                    
+                    invoices_data.append({
+                        'id': f"auto-{student.id}",
+                        'invoice_number': invoice_number,
+                        'student_id': student.id,
+                        'student_name': student.user.full_name,
+                        'student_number': student.user.student_number,
+                        'class_name': student.student_class.name if student.student_class else 'N/A',
+                        'issue_date': date.today().strftime('%Y-%m-%d'),
+                        'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                        'total_amount': total_amount,
+                        'amount_paid': amount_paid,
+                        'balance': balance,
+                        'status': invoice_status,
+                        'is_auto_generated': True,
+                        'currency': school_fee.currency,
+                        'fee_breakdown': {
+                            'tuition': float(school_fee.tuition_fee),
+                            'levy': float(school_fee.levy_fee),
+                            'sports': float(school_fee.sports_fee),
+                            'computer': float(school_fee.computer_fee),
+                            'other': float(school_fee.other_fees)
+                        },
+                        'academic_year': school_fee.academic_year,
+                        'academic_term': school_fee.academic_term
+                    })
+    
+    return Response({'invoices': invoices_data})

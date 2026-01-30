@@ -258,6 +258,10 @@ const apiService = {
     const query = new URLSearchParams(params).toString();
     return request(`/finances/invoices/${query ? '?' + query : ''}`, "GET");
   },
+  getInvoicesByClass: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/invoices/by-class/${query ? '?' + query : ''}`, "GET");
+  },
   getInvoiceDetail: (id) => request(`/finances/invoices/${id}/detail/`, "GET"),
   getParentInvoices: () => request("/finances/invoices/parent/", "GET"),
   
