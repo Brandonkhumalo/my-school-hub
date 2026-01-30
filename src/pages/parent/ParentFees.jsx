@@ -29,7 +29,7 @@ export default function ParentFees() {
       ]);
       const confirmedChildren = childrenData.filter(c => c.is_confirmed);
       setChildren(confirmedChildren);
-      setInvoices(invoicesData || []);
+      setInvoices(invoicesData?.invoices || invoicesData || []);
       
       if (confirmedChildren.length > 0) {
         setSelectedChild(confirmedChildren[0]);
@@ -280,6 +280,7 @@ export default function ParentFees() {
                         <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Issue Date</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Paid</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Balance</th>
                         <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                         <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                       </tr>
@@ -287,31 +288,50 @@ export default function ParentFees() {
                     <tbody className="divide-y divide-gray-200">
                       {invoices.map((invoice) => (
                         <tr key={invoice.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-mono text-sm">{invoice.invoice_number}</td>
+                          <td className="px-4 py-3 font-mono text-sm">
+                            {invoice.invoice_number}
+                            {invoice.is_auto_generated && (
+                              <span className="ml-2 text-xs text-gray-400">(Auto)</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">{invoice.student_name}</div>
+                            <div className="text-xs text-gray-500">{invoice.class_name}</div>
                           </td>
                           <td className="px-4 py-3 text-gray-700">{invoice.issue_date}</td>
-                          <td className="px-4 py-3 text-right font-medium">${parseFloat(invoice.total_amount).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right text-green-600">${parseFloat(invoice.amount_paid).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            {invoice.currency || '$'}{parseFloat(invoice.total_amount).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-600">
+                            {invoice.currency || '$'}{parseFloat(invoice.amount_paid).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-red-600">
+                            {invoice.currency || '$'}{parseFloat(invoice.balance || 0).toFixed(2)}
+                          </td>
                           <td className="px-4 py-3">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${invoice.is_paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {invoice.is_paid ? 'Paid' : 'Unpaid'}
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              invoice.status === 'paid' ? 'bg-green-100 text-green-800' : 
+                              invoice.status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {invoice.status === 'paid' ? 'Paid' : invoice.status === 'partial' ? 'Partial' : 'Unpaid'}
                             </span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex gap-2 justify-center">
                               <button
-                                onClick={() => openInvoiceModal(invoice)}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="View Invoice"
+                                onClick={() => !invoice.is_auto_generated && openInvoiceModal(invoice)}
+                                className={`${invoice.is_auto_generated ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800'}`}
+                                title={invoice.is_auto_generated ? "Auto-generated invoice" : "View Invoice"}
+                                disabled={invoice.is_auto_generated}
                               >
                                 <i className="fas fa-eye"></i>
                               </button>
                               <button
-                                onClick={() => openInvoiceModal(invoice)}
-                                className="text-green-600 hover:text-green-800"
-                                title="Download PDF"
+                                onClick={() => !invoice.is_auto_generated && openInvoiceModal(invoice)}
+                                className={`${invoice.is_auto_generated ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:text-green-800'}`}
+                                title={invoice.is_auto_generated ? "Auto-generated invoice" : "Download PDF"}
+                                disabled={invoice.is_auto_generated}
                               >
                                 <i className="fas fa-download"></i>
                               </button>

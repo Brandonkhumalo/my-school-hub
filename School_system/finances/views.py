@@ -662,18 +662,97 @@ def get_invoice_detail(request, invoice_id):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def parent_invoices(request):
-    """Get all invoices for parent's children"""
+    """Get all invoices for parent's children - includes auto-generated from school fees"""
     if request.user.role != 'parent':
         return Response({'error': 'Parent access required'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
         from academics.models import ParentChildLink
+        from datetime import date, timedelta
+        
         links = ParentChildLink.objects.filter(parent=request.user.parent, is_confirmed=True)
-        child_ids = [link.student_id for link in links]
         
-        invoices = Invoice.objects.filter(student_id__in=child_ids).order_by('-issue_date')
+        invoices_data = []
         
-        return Response(InvoiceDetailSerializer(invoices, many=True).data)
+        for link in links:
+            student = link.student
+            grade_level = student.student_class.grade_level if student.student_class else None
+            
+            # Get existing invoices for this student
+            existing_invoices = Invoice.objects.filter(student=student).order_by('-issue_date')
+            
+            for inv in existing_invoices:
+                invoices_data.append({
+                    'id': inv.id,
+                    'invoice_number': inv.invoice_number,
+                    'student_id': student.id,
+                    'student_name': student.user.full_name,
+                    'student_number': student.user.student_number,
+                    'class_name': student.student_class.name if student.student_class else 'N/A',
+                    'issue_date': inv.issue_date.strftime('%Y-%m-%d'),
+                    'due_date': inv.due_date.strftime('%Y-%m-%d'),
+                    'total_amount': float(inv.total_amount),
+                    'amount_paid': float(inv.amount_paid),
+                    'balance': float(inv.balance),
+                    'status': 'paid' if inv.is_paid else ('partial' if inv.amount_paid > 0 else 'unpaid'),
+                    'is_auto_generated': False,
+                    'currency': 'USD'
+                })
+            
+            # If no invoices exist, auto-generate from school fees
+            if not existing_invoices.exists() and grade_level:
+                school_fee = SchoolFees.objects.filter(
+                    school=request.user.school,
+                    grade_level=grade_level
+                ).order_by('-academic_year', '-academic_term').first()
+                
+                if school_fee:
+                    # Check if there's a payment record
+                    payment_record = StudentPaymentRecord.objects.filter(
+                        student=student,
+                        school=request.user.school
+                    ).order_by('-created_at').first()
+                    
+                    total_amount = float(school_fee.total_fee)
+                    amount_paid = float(payment_record.amount_paid) if payment_record else 0
+                    balance = total_amount - amount_paid
+                    
+                    if balance <= 0:
+                        invoice_status = 'paid'
+                    elif amount_paid > 0:
+                        invoice_status = 'partial'
+                    else:
+                        invoice_status = 'unpaid'
+                    
+                    invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
+                    
+                    invoices_data.append({
+                        'id': f"auto-{student.id}",
+                        'invoice_number': invoice_number,
+                        'student_id': student.id,
+                        'student_name': student.user.full_name,
+                        'student_number': student.user.student_number,
+                        'class_name': student.student_class.name if student.student_class else 'N/A',
+                        'issue_date': date.today().strftime('%Y-%m-%d'),
+                        'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                        'total_amount': total_amount,
+                        'amount_paid': amount_paid,
+                        'balance': balance,
+                        'status': invoice_status,
+                        'is_auto_generated': True,
+                        'currency': school_fee.currency,
+                        'fee_breakdown': {
+                            'tuition': float(school_fee.tuition_fee),
+                            'levy': float(school_fee.levy_fee),
+                            'sports': float(school_fee.sports_fee),
+                            'computer': float(school_fee.computer_fee),
+                            'other': float(school_fee.other_fees)
+                        },
+                        'academic_year': school_fee.academic_year,
+                        'academic_term': school_fee.academic_term
+                    })
+        
+        return Response({'invoices': invoices_data})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
