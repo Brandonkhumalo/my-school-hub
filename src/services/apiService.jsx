@@ -233,6 +233,34 @@ const apiService = {
   getMySchoolFees: () => request("/finances/school-fees/my-fees/", "GET"),
   getAllGrades: () => request("/finances/grades/", "GET"),
   
+  // Payment Records endpoints
+  getPaymentRecords: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/payment-records/${query ? '?' + query : ''}`, "GET");
+  },
+  createPaymentRecord: (data) => request("/finances/payment-records/", "POST", data),
+  getPaymentRecordDetail: (id) => request(`/finances/payment-records/${id}/`, "GET"),
+  updatePaymentRecord: (id, data) => request(`/finances/payment-records/${id}/`, "PATCH", data),
+  deletePaymentRecord: (id) => request(`/finances/payment-records/${id}/`, "DELETE"),
+  addPaymentToRecord: (data) => request("/finances/payment-records/add-payment/", "POST", data),
+  updatePaymentStatus: (recordId, status) => request(`/finances/payment-records/${recordId}/update-status/`, "POST", { status }),
+  getClassFeesReport: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/payment-records/class-report/${query ? '?' + query : ''}`, "GET");
+  },
+  getStudentsForPayment: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/payment-records/students/${query ? '?' + query : ''}`, "GET");
+  },
+  
+  // Invoice endpoints
+  getInvoices: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/invoices/${query ? '?' + query : ''}`, "GET");
+  },
+  getInvoiceDetail: (id) => request(`/finances/invoices/${id}/detail/`, "GET"),
+  getParentInvoices: () => request("/finances/invoices/parent/", "GET"),
+  
   // Timetable generation endpoints
   generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
   getTimetableStats: () => request("/academics/timetables/stats/", "GET"),

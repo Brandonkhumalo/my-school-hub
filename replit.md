@@ -37,6 +37,8 @@ The system provides tailored experiences for four roles: Admin, Teacher, Student
 -   Database models support core functionalities like `ParentChildLink`, `WeeklyMessage`, `SchoolEvent`, `Assignment`, `Attendance`, `ParentTeacherMessage`, and `Homework`.
 -   **Parent-Child Linking:** A secure, two-step process requiring school and student search, followed by admin approval of link requests to protect student data and privacy.
 -   **Admin Extras:** Includes timetable generation using a CSP algorithm and comprehensive school fees management supporting multiple currencies and academic structures.
+-   **Payment Management System:** Comprehensive payment tracking with `StudentPaymentRecord` and `PaymentTransaction` models. Supports multiple payment plans (full year, two terms, one term, batch payments). Includes class-based fee reports showing paid/partial/unpaid students, manual payment entry with auto-populated fee amounts, and invoice generation with PDF print/download. Payment status can be manually updated by admins.
+-   **Parent Invoice Access:** Parents can view and download invoices for their linked children, with detailed payment breakdowns and print functionality.
 -   **Teacher Features:** Intelligent filtering for marks entry, detailed attendance options, comprehensive subject analytics, and a bidirectional parent-teacher messaging system.
 -   **Tishanyq Developer Admin Portal:** A hidden superadmin portal for Tishanyq Digital team members to manage schools, create new schools, and reset admin passwords, accessible via a secret key.
 -   **Dashboard Data:** Admin dashboard displays real-time statistics filtered by the logged-in user's school, including student count, teacher count, parent count, classes, subjects, invoices, and payments.
