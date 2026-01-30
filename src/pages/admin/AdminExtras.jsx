@@ -17,6 +17,23 @@ export default function AdminExtras() {
   const [schoolType, setSchoolType] = useState('combined');
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [editingFee, setEditingFee] = useState(null);
+  
+  const [additionalFees, setAdditionalFees] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [showAdditionalFeeForm, setShowAdditionalFeeForm] = useState(false);
+  const [additionalFeeForm, setAdditionalFeeForm] = useState({
+    fee_name: '',
+    amount: '',
+    reason: '',
+    student: '',
+    student_class: '',
+    apply_to: 'class',
+    academic_year: new Date().getFullYear().toString(),
+    academic_term: 'term_1',
+    currency: 'USD'
+  });
+  
   const [feeForm, setFeeForm] = useState({
     grade_level: '',
     grade_name: '',
@@ -168,6 +185,78 @@ export default function AdminExtras() {
     });
   };
 
+  const loadAdditionalFees = async () => {
+    try {
+      setLoading(true);
+      const [feesData, classesData, studentsData] = await Promise.all([
+        apiService.getAdditionalFees(),
+        apiService.fetchClasses(),
+        apiService.getStudentsForPayment()
+      ]);
+      setAdditionalFees(Array.isArray(feesData) ? feesData : []);
+      setClasses(Array.isArray(classesData) ? classesData : []);
+      setStudents(studentsData?.students || []);
+    } catch (error) {
+      console.error("Error loading additional fees:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateAdditionalFee = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        fee_name: additionalFeeForm.fee_name,
+        amount: additionalFeeForm.amount,
+        reason: additionalFeeForm.reason,
+        currency: additionalFeeForm.currency,
+        academic_year: additionalFeeForm.academic_year,
+        academic_term: additionalFeeForm.academic_term,
+      };
+      
+      if (additionalFeeForm.apply_to === 'student' && additionalFeeForm.student) {
+        payload.student = additionalFeeForm.student;
+      } else if (additionalFeeForm.apply_to === 'class' && additionalFeeForm.student_class) {
+        payload.student_class = additionalFeeForm.student_class;
+      }
+      
+      await apiService.createAdditionalFee(payload);
+      setMessage({ type: 'success', text: 'Additional fee created successfully!' });
+      setShowAdditionalFeeForm(false);
+      resetAdditionalFeeForm();
+      await loadAdditionalFees();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message || 'Failed to create additional fee' });
+    }
+  };
+
+  const handleDeleteAdditionalFee = async (feeId) => {
+    if (!window.confirm('Are you sure you want to delete this additional fee?')) return;
+    
+    try {
+      await apiService.deleteAdditionalFee(feeId);
+      setMessage({ type: 'success', text: 'Additional fee deleted successfully!' });
+      await loadAdditionalFees();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message || 'Failed to delete additional fee' });
+    }
+  };
+
+  const resetAdditionalFeeForm = () => {
+    setAdditionalFeeForm({
+      fee_name: '',
+      amount: '',
+      reason: '',
+      student: '',
+      student_class: '',
+      apply_to: 'class',
+      academic_year: new Date().getFullYear().toString(),
+      academic_term: 'term_1',
+      currency: 'USD'
+    });
+  };
+
   const getGradeName = (level) => {
     const l = parseInt(level);
     if (l === -1) return 'ECD B';
@@ -249,6 +338,31 @@ export default function AdminExtras() {
                   <div className="mt-3 flex items-center text-xs text-gray-500">
                     <i className="fas fa-eye mr-1"></i>
                     Visible to parents & students
+                  </div>
+                </div>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => { setActiveSection('additional'); loadAdditionalFees(); }}
+              className={`p-6 rounded-xl border-2 transition-all text-left ${
+                activeSection === 'additional' 
+                  ? 'border-purple-500 bg-purple-50' 
+                  : 'border-gray-200 hover:border-purple-300 bg-white'
+              }`}
+            >
+              <div className="flex items-start space-x-4">
+                <div className="w-14 h-14 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i className="fas fa-plus-circle text-purple-600 text-2xl"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Other Fees</h3>
+                  <p className="text-gray-600 mt-1 text-sm">
+                    Add extra charges like trip fees, uniforms, or special levies for classes or individual students.
+                  </p>
+                  <div className="mt-3 flex items-center text-xs text-gray-500">
+                    <i className="fas fa-receipt mr-1"></i>
+                    Added to student invoices
                   </div>
                 </div>
               </div>
@@ -552,6 +666,239 @@ export default function AdminExtras() {
                             </button>
                             <button
                               onClick={() => handleDeleteFee(fee.id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'additional' && (
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Other Fees / Additional Charges</h3>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAdditionalFeeForm(true)}
+                  className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                >
+                  <i className="fas fa-plus mr-2"></i>
+                  Add Other Fee
+                </button>
+                <button
+                  onClick={() => setActiveSection(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 border-l-4 border-purple-500 p-4 mb-6">
+              <p className="text-purple-800 text-sm">
+                <i className="fas fa-info-circle mr-2"></i>
+                Add extra charges for trips, uniforms, books, or any special levies. These will be added to student invoices and visible to parents with the reason you provide.
+              </p>
+            </div>
+
+            {showAdditionalFeeForm && (
+              <div className="bg-gray-50 rounded-lg p-6 mb-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4">
+                  Add New Fee
+                </h4>
+                <form onSubmit={handleCreateAdditionalFee} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fee Name *</label>
+                      <input
+                        type="text"
+                        value={additionalFeeForm.fee_name}
+                        onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, fee_name: e.target.value})}
+                        placeholder="e.g., School Trip, Uniform Fee"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
+                      <div className="flex">
+                        <select
+                          value={additionalFeeForm.currency}
+                          onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, currency: e.target.value})}
+                          className="px-3 py-2 border rounded-l-lg bg-gray-100"
+                        >
+                          <option value="USD">USD</option>
+                          <option value="ZWL">ZWL</option>
+                          <option value="ZAR">ZAR</option>
+                        </select>
+                        <input
+                          type="number"
+                          value={additionalFeeForm.amount}
+                          onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, amount: e.target.value})}
+                          placeholder="0.00"
+                          step="0.01"
+                          min="0"
+                          className="flex-1 px-3 py-2 border-t border-r border-b rounded-r-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Reason / Description *</label>
+                      <textarea
+                        value={additionalFeeForm.reason}
+                        onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, reason: e.target.value})}
+                        placeholder="Explain to parents what this fee is for..."
+                        rows="2"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Apply To *</label>
+                      <select
+                        value={additionalFeeForm.apply_to}
+                        onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, apply_to: e.target.value, student: '', student_class: ''})}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="class">Entire Class</option>
+                        <option value="student">Specific Student</option>
+                      </select>
+                    </div>
+                    {additionalFeeForm.apply_to === 'class' ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Class *</label>
+                        <select
+                          value={additionalFeeForm.student_class}
+                          onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, student_class: e.target.value})}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          required
+                        >
+                          <option value="">-- Select Class --</option>
+                          {classes.map((cls) => (
+                            <option key={cls.id} value={cls.id}>{cls.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Student *</label>
+                        <select
+                          value={additionalFeeForm.student}
+                          onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, student: e.target.value})}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          required
+                        >
+                          <option value="">-- Select Student --</option>
+                          {students.map((s) => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.class_name})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Academic Year</label>
+                      <input
+                        type="text"
+                        value={additionalFeeForm.academic_year}
+                        onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, academic_year: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
+                      <select
+                        value={additionalFeeForm.academic_term}
+                        onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, academic_term: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="term_1">Term 1</option>
+                        <option value="term_2">Term 2</option>
+                        <option value="term_3">Term 3</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      type="submit"
+                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                    >
+                      Add Fee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowAdditionalFeeForm(false); resetAdditionalFeeForm(); }}
+                      className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {loading && !showAdditionalFeeForm ? (
+              <LoadingSpinner />
+            ) : (
+              <div className="overflow-x-auto">
+                {additionalFees.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <i className="fas fa-plus-circle text-4xl mb-4 opacity-50"></i>
+                    <p>No additional fees added yet.</p>
+                    <p className="text-sm">Click "Add Other Fee" to create extra charges for students.</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fee Name</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Applied To</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Reason</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Term/Year</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Status</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {additionalFees.map((fee) => (
+                        <tr key={fee.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium">{fee.fee_name}</td>
+                          <td className="px-4 py-3">
+                            {fee.student_name ? (
+                              <span className="text-blue-600">{fee.student_name}</span>
+                            ) : fee.class_name ? (
+                              <span className="text-green-600">{fee.class_name} (Class)</span>
+                            ) : (
+                              <span className="text-gray-400">Not specified</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-purple-600">
+                            {fee.currency} {parseFloat(fee.amount).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-sm max-w-xs truncate" title={fee.reason}>
+                            {fee.reason}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {fee.academic_term?.replace('_', ' ')} {fee.academic_year}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${fee.is_paid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {fee.is_paid ? 'Paid' : 'Unpaid'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleDeleteAdditionalFee(fee.id)}
                               className="text-red-600 hover:text-red-800"
                               title="Delete"
                             >

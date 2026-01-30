@@ -218,3 +218,26 @@ class SchoolFees(models.Model):
     
     def __str__(self):
         return f"{self.grade_name} - {self.academic_term} {self.academic_year}: {self.currency}{self.total_fee}"
+
+
+class AdditionalFee(models.Model):
+    """Additional one-time fees that admin can add for students (e.g., trip fees, uniform, books)"""
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='additional_fees')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='additional_fees', null=True, blank=True)
+    student_class = models.ForeignKey('academics.Class', on_delete=models.CASCADE, related_name='additional_fees', null=True, blank=True)
+    fee_name = models.CharField(max_length=100)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.TextField()
+    currency = models.CharField(max_length=10, default='USD')
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=20, default='term_1')
+    is_paid = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        target = self.student.user.full_name if self.student else (self.student_class.name if self.student_class else 'All Students')
+        return f"{self.fee_name} - {self.currency}{self.amount} ({target})"

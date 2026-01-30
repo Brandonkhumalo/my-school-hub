@@ -265,6 +265,15 @@ const apiService = {
   getInvoiceDetail: (id) => request(`/finances/invoices/${id}/detail/`, "GET"),
   getParentInvoices: () => request("/finances/invoices/parent/", "GET"),
   
+  // Additional Fees endpoints
+  getAdditionalFees: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/additional-fees/${query ? '?' + query : ''}`, "GET");
+  },
+  createAdditionalFee: (data) => request("/finances/additional-fees/", "POST", data),
+  updateAdditionalFee: (id, data) => request(`/finances/additional-fees/${id}/`, "PATCH", data),
+  deleteAdditionalFee: (id) => request(`/finances/additional-fees/${id}/`, "DELETE"),
+  
   // Timetable generation endpoints
   generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
   getTimetableStats: () => request("/academics/timetables/stats/", "GET"),

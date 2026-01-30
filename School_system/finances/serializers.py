@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
 from academics.models import Student
 import uuid
 from datetime import date
@@ -136,6 +136,21 @@ class SchoolFeesSerializer(serializers.ModelSerializer):
             'date_created', 'date_updated', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['created_by', 'date_created', 'date_updated']
+
+
+class AdditionalFeeSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    class_name = serializers.CharField(source='student_class.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    
+    class Meta:
+        model = AdditionalFee
+        fields = [
+            'id', 'student', 'student_name', 'student_class', 'class_name',
+            'fee_name', 'amount', 'reason', 'currency', 'academic_year',
+            'academic_term', 'is_paid', 'created_at', 'created_by', 'created_by_name'
+        ]
+        read_only_fields = ['created_by', 'created_at']
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):

@@ -2,14 +2,15 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Sum, Q, Count
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction
+from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
 from academics.models import Student, Class
 from .serializers import (
     FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
     InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
     StudentFinancialSummarySerializer, SchoolFeesSerializer,
     StudentPaymentRecordSerializer, CreatePaymentRecordSerializer,
-    AddPaymentSerializer, InvoiceDetailSerializer, PaymentTransactionSerializer
+    AddPaymentSerializer, InvoiceDetailSerializer, PaymentTransactionSerializer,
+    AdditionalFeeSerializer
 )
 
 
@@ -713,7 +714,14 @@ def parent_invoices(request):
                         school=request.user.school
                     ).order_by('-created_at').first()
                     
-                    total_amount = float(school_fee.total_fee)
+                    # Get additional fees for this student
+                    additional_fees = AdditionalFee.objects.filter(
+                        school=request.user.school,
+                        is_paid=False
+                    ).filter(Q(student=student) | Q(student_class=student.student_class))
+                    additional_fees_total = sum(float(f.amount) for f in additional_fees)
+                    
+                    total_amount = float(school_fee.total_fee) + additional_fees_total
                     amount_paid = float(payment_record.amount_paid) if payment_record else 0
                     balance = total_amount - amount_paid
                     
@@ -725,6 +733,9 @@ def parent_invoices(request):
                         invoice_status = 'unpaid'
                     
                     invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
+                    
+                    # Build additional fees list for breakdown
+                    additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
                     
                     invoices_data.append({
                         'id': f"auto-{student.id}",
@@ -746,7 +757,8 @@ def parent_invoices(request):
                             'levy': float(school_fee.levy_fee),
                             'sports': float(school_fee.sports_fee),
                             'computer': float(school_fee.computer_fee),
-                            'other': float(school_fee.other_fees)
+                            'other': float(school_fee.other_fees),
+                            'additional_fees': additional_fees_list
                         },
                         'academic_year': school_fee.academic_year,
                         'academic_term': school_fee.academic_term
@@ -869,7 +881,14 @@ def student_invoices_by_class(request):
                         school=user.school
                     ).order_by('-created_at').first()
                     
-                    total_amount = float(school_fee.total_fee)
+                    # Get additional fees for this student
+                    additional_fees = AdditionalFee.objects.filter(
+                        school=user.school,
+                        is_paid=False
+                    ).filter(Q(student=student) | Q(student_class=student.student_class))
+                    additional_fees_total = sum(float(f.amount) for f in additional_fees)
+                    
+                    total_amount = float(school_fee.total_fee) + additional_fees_total
                     amount_paid = float(payment_record.amount_paid) if payment_record else 0
                     balance = total_amount - amount_paid
                     
@@ -883,6 +902,9 @@ def student_invoices_by_class(request):
                     
                     # Generate invoice number
                     invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
+                    
+                    # Build additional fees list for breakdown
+                    additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
                     
                     invoices_data.append({
                         'id': f"auto-{student.id}",
@@ -904,10 +926,63 @@ def student_invoices_by_class(request):
                             'levy': float(school_fee.levy_fee),
                             'sports': float(school_fee.sports_fee),
                             'computer': float(school_fee.computer_fee),
-                            'other': float(school_fee.other_fees)
+                            'other': float(school_fee.other_fees),
+                            'additional_fees': additional_fees_list
                         },
                         'academic_year': school_fee.academic_year,
                         'academic_term': school_fee.academic_term
                     })
     
     return Response({'invoices': invoices_data})
+
+
+# Additional Fees Views
+class AdditionalFeeListCreateView(generics.ListCreateAPIView):
+    queryset = AdditionalFee.objects.all()
+    serializer_class = AdditionalFeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role not in ['admin', 'accountant']:
+            if user.role == 'parent':
+                from academics.models import ParentChildLink
+                links = ParentChildLink.objects.filter(parent=user.parent, is_confirmed=True)
+                child_ids = [link.student_id for link in links]
+                return AdditionalFee.objects.filter(
+                    Q(student_id__in=child_ids) | 
+                    Q(student_class__students__id__in=child_ids)
+                ).distinct()
+            return AdditionalFee.objects.none()
+        
+        if user.school:
+            queryset = AdditionalFee.objects.filter(school=user.school)
+        else:
+            queryset = AdditionalFee.objects.none()
+        
+        class_id = self.request.query_params.get('class_id')
+        student_id = self.request.query_params.get('student_id')
+        
+        if class_id:
+            queryset = queryset.filter(Q(student_class_id=class_id) | Q(student__student_class_id=class_id))
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        
+        return queryset.order_by('-created_at')
+    
+    def perform_create(self, serializer):
+        serializer.save(school=self.request.user.school, created_by=self.request.user)
+
+
+class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = AdditionalFee.objects.all()
+    serializer_class = AdditionalFeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role not in ['admin', 'accountant']:
+            return AdditionalFee.objects.none()
+        if user.school:
+            return AdditionalFee.objects.filter(school=user.school)
+        return AdditionalFee.objects.none()
