@@ -22,6 +22,9 @@ export default function AdminExtras() {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [showAdditionalFeeForm, setShowAdditionalFeeForm] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [selectedStudentName, setSelectedStudentName] = useState('');
   const [additionalFeeForm, setAdditionalFeeForm] = useState({
     fee_name: '',
     amount: '',
@@ -255,6 +258,22 @@ export default function AdminExtras() {
       academic_term: 'term_1',
       currency: 'USD'
     });
+    setStudentSearch('');
+    setSelectedStudentName('');
+    setShowStudentDropdown(false);
+  };
+
+  const filteredStudents = students.filter(s => 
+    s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
+    s.class_name?.toLowerCase().includes(studentSearch.toLowerCase()) ||
+    s.student_number?.toLowerCase().includes(studentSearch.toLowerCase())
+  );
+
+  const handleStudentSelect = (student) => {
+    setAdditionalFeeForm({...additionalFeeForm, student: student.id});
+    setSelectedStudentName(`${student.name} (${student.class_name})`);
+    setStudentSearch('');
+    setShowStudentDropdown(false);
   };
 
   const getGradeName = (level) => {
@@ -790,19 +809,64 @@ export default function AdminExtras() {
                         </select>
                       </div>
                     ) : (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Student *</label>
-                        <select
-                          value={additionalFeeForm.student}
-                          onChange={(e) => setAdditionalFeeForm({...additionalFeeForm, student: e.target.value})}
-                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          required
-                        >
-                          <option value="">-- Select Student --</option>
-                          {students.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name} ({s.class_name})</option>
-                          ))}
-                        </select>
+                      <div className="relative">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Search & Select Student *</label>
+                        {selectedStudentName ? (
+                          <div className="flex items-center justify-between px-3 py-2 border rounded-lg bg-purple-50">
+                            <span className="text-purple-700 font-medium">{selectedStudentName}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdditionalFeeForm({...additionalFeeForm, student: ''});
+                                setSelectedStudentName('');
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              type="text"
+                              value={studentSearch}
+                              onChange={(e) => {
+                                setStudentSearch(e.target.value);
+                                setShowStudentDropdown(true);
+                              }}
+                              onFocus={() => setShowStudentDropdown(true)}
+                              placeholder="Type to search by name, class or student number..."
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            />
+                            {showStudentDropdown && (
+                              <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {filteredStudents.length === 0 ? (
+                                  <div className="px-4 py-3 text-gray-500 text-sm">
+                                    {studentSearch ? 'No students found' : 'Start typing to search...'}
+                                  </div>
+                                ) : (
+                                  filteredStudents.slice(0, 50).map((s) => (
+                                    <button
+                                      key={s.id}
+                                      type="button"
+                                      onClick={() => handleStudentSelect(s)}
+                                      className="w-full px-4 py-2 text-left hover:bg-purple-50 flex justify-between items-center border-b last:border-b-0"
+                                    >
+                                      <span className="font-medium">{s.name}</span>
+                                      <span className="text-sm text-gray-500">{s.class_name}</span>
+                                    </button>
+                                  ))
+                                )}
+                                {filteredStudents.length > 50 && (
+                                  <div className="px-4 py-2 text-sm text-gray-500 bg-gray-50">
+                                    Showing first 50 results. Type more to narrow search.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                        <input type="hidden" value={additionalFeeForm.student} required={additionalFeeForm.apply_to === 'student'} />
                       </div>
                     )}
                     <div>
