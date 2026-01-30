@@ -549,79 +549,92 @@ def class_fees_report(request):
     class_id = request.query_params.get('class_id')
     academic_year = request.query_params.get('academic_year')
     
-    if request.user.school:
-        classes = Class.objects.filter(school=request.user.school)
-    else:
+    if not request.user.school:
         return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
     
-    if class_id:
-        classes = classes.filter(id=class_id)
+    if not class_id:
+        return Response({'reports': [], 'message': 'Please select a class'})
     
-    reports = []
-    for cls in classes:
-        students = Student.objects.filter(student_class=cls)
+    try:
+        cls = Class.objects.get(id=class_id, school=request.user.school)
+    except Class.DoesNotExist:
+        return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    students = Student.objects.filter(student_class=cls)
+    
+    paid_count = 0
+    partial_count = 0
+    unpaid_count = 0
+    total_due = 0
+    total_collected = 0
+    student_data = []
+    
+    for student in students:
+        records = StudentPaymentRecord.objects.filter(
+            student=student,
+            school=request.user.school
+        )
+        if academic_year:
+            records = records.filter(academic_year=academic_year)
         
-        paid_count = 0
-        partial_count = 0
-        unpaid_count = 0
-        total_due = 0
-        total_collected = 0
-        student_data = []
-        
-        for student in students:
-            records = StudentPaymentRecord.objects.filter(
-                student=student,
-                school=request.user.school
-            )
-            if academic_year:
-                records = records.filter(academic_year=academic_year)
-            
+        if records.exists():
             student_due = sum(r.total_amount_due for r in records)
             student_paid = sum(r.amount_paid for r in records)
             student_balance = student_due - student_paid
             
-            if records.exists():
-                latest_record = records.first()
-                if latest_record.payment_status == 'paid':
-                    paid_count += 1
-                    status_text = 'Paid'
-                elif latest_record.payment_status == 'partial':
-                    partial_count += 1
-                    status_text = 'Partial'
-                else:
-                    unpaid_count += 1
-                    status_text = 'Unpaid'
+            latest_record = records.first()
+            if latest_record.payment_status == 'paid':
+                paid_count += 1
+                status_text = 'Paid'
+            elif latest_record.payment_status == 'partial':
+                partial_count += 1
+                status_text = 'Partial'
             else:
                 unpaid_count += 1
-                status_text = 'No Record'
+                status_text = 'Unpaid'
+        else:
+            school_fee = SchoolFees.objects.filter(
+                school=request.user.school,
+                grade_level=cls.grade_level
+            ).order_by('-academic_year', '-academic_term').first()
             
-            total_due += student_due
-            total_collected += student_paid
+            if school_fee:
+                student_due = float(school_fee.total_fee)
+            else:
+                student_due = 0
             
-            student_data.append({
-                'student_id': student.id,
-                'student_name': student.user.full_name,
-                'student_number': student.user.student_number,
-                'total_due': float(student_due),
-                'total_paid': float(student_paid),
-                'balance': float(student_balance),
-                'status': status_text
-            })
+            student_paid = 0
+            student_balance = student_due
+            unpaid_count += 1
+            status_text = 'No Record'
         
-        reports.append({
-            'class_id': cls.id,
-            'class_name': cls.name,
-            'total_students': students.count(),
-            'paid_count': paid_count,
-            'partial_count': partial_count,
-            'unpaid_count': unpaid_count,
-            'total_due': float(total_due),
-            'total_collected': float(total_collected),
-            'total_outstanding': float(total_due - total_collected),
-            'students': student_data
+        total_due += student_due
+        total_collected += student_paid
+        
+        student_data.append({
+            'student_id': student.id,
+            'student_name': student.user.full_name,
+            'student_number': student.user.student_number,
+            'total_due': float(student_due),
+            'total_paid': float(student_paid),
+            'balance': float(student_balance),
+            'status': status_text
         })
     
-    return Response({'reports': reports})
+    report = {
+        'class_id': cls.id,
+        'class_name': cls.name,
+        'total_students': students.count(),
+        'paid_count': paid_count,
+        'partial_count': partial_count,
+        'unpaid_count': unpaid_count,
+        'total_due': float(total_due),
+        'total_collected': float(total_collected),
+        'total_outstanding': float(total_due - total_collected),
+        'students': student_data
+    }
+    
+    return Response({'reports': [report]})
 
 
 @api_view(['GET'])

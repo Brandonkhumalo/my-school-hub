@@ -388,7 +388,14 @@ export default function AdminPayments() {
 
             {activeTab === "report" && (
               <div className="space-y-6">
-                {classReport.map((report) => (
+                {!selectedClass && (
+                  <div className="text-center py-12 bg-gray-50 rounded-lg">
+                    <i className="fas fa-search text-4xl text-gray-400 mb-4"></i>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Select a Class</h3>
+                    <p className="text-gray-500">Please select a class from the dropdown above to view the fees report</p>
+                  </div>
+                )}
+                {selectedClass && classReport.map((report) => (
                   <div key={report.class_id} className="border rounded-lg overflow-hidden">
                     <div className="bg-blue-50 p-4 flex justify-between items-center">
                       <div>
@@ -451,9 +458,9 @@ export default function AdminPayments() {
                     </table>
                   </div>
                 ))}
-                {classReport.length === 0 && (
+                {selectedClass && classReport.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
-                    No class fee reports available
+                    No students found in this class
                   </div>
                 )}
               </div>
