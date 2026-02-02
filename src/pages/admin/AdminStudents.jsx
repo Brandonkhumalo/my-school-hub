@@ -16,6 +16,7 @@ export default function AdminStudents() {
     last_name: "",
     student_class: "",
     admission_date: new Date().toISOString().split("T")[0],
+    student_email: "",
     student_contact: "",
     student_address: "",
     date_of_birth: "",
@@ -74,6 +75,7 @@ export default function AdminStudents() {
       },
       student_class: formData.student_class,
       admission_date: formData.admission_date,
+      student_email: formData.student_email,
       student_contact: formData.student_contact,
       student_address: formData.student_address,
       date_of_birth: formData.date_of_birth || null,
@@ -94,6 +96,7 @@ export default function AdminStudents() {
         last_name: "",
         student_class: "",
         admission_date: new Date().toISOString().split("T")[0],
+        student_email: "",
         student_contact: "",
         student_address: "",
         date_of_birth: "",
@@ -205,7 +208,11 @@ export default function AdminStudents() {
                 <input type="date" name="admission_date" value={formData.admission_date} onChange={handleInputChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Student Contact</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Student Email</label>
+                <input type="email" name="student_email" value={formData.student_email} onChange={handleInputChange} placeholder="student@example.com" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Student Phone Number</label>
                 <input type="tel" name="student_contact" value={formData.student_contact} onChange={handleInputChange} placeholder="+263..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>

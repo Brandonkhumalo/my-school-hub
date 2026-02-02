@@ -222,6 +222,7 @@ class CreateStudentSerializer(serializers.Serializer):
     user = UserSerializer()
     student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all())
     admission_date = serializers.DateField()
+    student_email = serializers.EmailField(required=False, allow_blank=True)
     student_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
     student_address = serializers.CharField(required=False, allow_blank=True)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
@@ -235,6 +236,7 @@ class CreateStudentSerializer(serializers.Serializer):
         password = user_data['password']
 
         admission_date = validated_data['admission_date']
+        student_email = validated_data.get('student_email', '')
         student_contact = validated_data.get('student_contact', '')
         student_address = validated_data.get('student_address', '')
         date_of_birth = validated_data.get('date_of_birth')
@@ -249,9 +251,11 @@ class CreateStudentSerializer(serializers.Serializer):
         enrollment_year = str(admission_date.year)[-2:]
         student_number = generate_unique_student_number(enrollment_year)
 
+        email = student_email if student_email else f"{student_number}@school.com"
+
         user = CustomUser.objects.create_user(
             username=student_number,
-            email=f"{student_number}@school.com",
+            email=email,
             password=password,
             first_name=first_name,
             last_name=last_name,
