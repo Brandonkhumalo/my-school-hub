@@ -18,6 +18,9 @@ export default function AdminStudents() {
     admission_date: new Date().toISOString().split("T")[0],
     student_contact: "",
     student_address: "",
+    date_of_birth: "",
+    gender: "",
+    emergency_contact: "",
     password: "",
   });
 
@@ -73,6 +76,9 @@ export default function AdminStudents() {
       admission_date: formData.admission_date,
       student_contact: formData.student_contact,
       student_address: formData.student_address,
+      date_of_birth: formData.date_of_birth || null,
+      gender: formData.gender,
+      emergency_contact: formData.emergency_contact,
     };
 
     try {
@@ -90,6 +96,9 @@ export default function AdminStudents() {
         admission_date: new Date().toISOString().split("T")[0],
         student_contact: "",
         student_address: "",
+        date_of_birth: "",
+        gender: "",
+        emergency_contact: "",
         password: "",
       });
       fetchData();
@@ -200,6 +209,23 @@ export default function AdminStudents() {
                 <input type="tel" name="student_contact" value={formData.student_contact} onChange={handleInputChange} placeholder="+263..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth *</label>
+                <input type="date" name="date_of_birth" value={formData.date_of_birth} onChange={handleInputChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                <select name="gender" value={formData.gender} onChange={handleInputChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contact Number</label>
+                <input type="tel" name="emergency_contact" value={formData.emergency_contact} onChange={handleInputChange} placeholder="Parent's number" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
                 <input type="password" name="password" value={formData.password} onChange={handleInputChange} required minLength="6" placeholder="Minimum 6 characters" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -245,7 +271,7 @@ export default function AdminStudents() {
                   </div>
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Address:</span>
-                    <span className="text-gray-800">{selectedStudent.student_address || '-'}</span>
+                    <span className="text-gray-800">{selectedStudent.address || '-'}</span>
                   </div>
                 </div>
               </div>
@@ -281,7 +307,7 @@ export default function AdminStudents() {
                 <div className="space-y-3">
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Parent Contact:</span>
-                    <span className="text-gray-800">{selectedStudent.parent_contact || '-'}</span>
+                    <span className="text-gray-800">{selectedStudent.parent_phone || selectedStudent.parent_contact || '-'}</span>
                   </div>
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Parent Email:</span>

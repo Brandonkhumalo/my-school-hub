@@ -51,13 +51,31 @@ class StudentSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     class_name = serializers.CharField(source='student_class.name', read_only=True)
     parent_names = serializers.SerializerMethodField()
+    parent_phone = serializers.SerializerMethodField()
+    parent_email = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
-        fields = ['id', 'user', 'student_class', 'class_name', 'admission_date', 'parent_contact', 'address', 'parent_names']
+        fields = [
+            'id', 'user', 'student_class', 'class_name', 'admission_date', 
+            'parent_contact', 'address', 'parent_names', 'date_of_birth', 
+            'gender', 'emergency_contact', 'parent_phone', 'parent_email'
+        ]
 
     def get_parent_names(self, obj):
         return [parent.user.full_name for parent in obj.parents.all()]
+
+    def get_parent_phone(self, obj):
+        parent = obj.parents.first()
+        if parent:
+            return parent.user.phone_number
+        return obj.parent_contact
+
+    def get_parent_email(self, obj):
+        parent = obj.parents.first()
+        if parent:
+            return parent.user.email
+        return None
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -206,6 +224,9 @@ class CreateStudentSerializer(serializers.Serializer):
     admission_date = serializers.DateField()
     student_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
     student_address = serializers.CharField(required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    emergency_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
     def create(self, validated_data):
         user_data = validated_data.pop("user")
@@ -216,6 +237,9 @@ class CreateStudentSerializer(serializers.Serializer):
         admission_date = validated_data['admission_date']
         student_contact = validated_data.get('student_contact', '')
         student_address = validated_data.get('student_address', '')
+        date_of_birth = validated_data.get('date_of_birth')
+        gender = validated_data.get('gender', '')
+        emergency_contact = validated_data.get('emergency_contact', '')
         student_class = validated_data['student_class']
         
         request = self.context.get('request')
@@ -243,7 +267,10 @@ class CreateStudentSerializer(serializers.Serializer):
             student_class=student_class,
             admission_date=admission_date,
             parent_contact=student_contact,
-            address=student_address
+            address=student_address,
+            date_of_birth=date_of_birth,
+            gender=gender,
+            emergency_contact=emergency_contact or student_contact
         )
 
         return student
