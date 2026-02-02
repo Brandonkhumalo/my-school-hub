@@ -229,6 +229,18 @@ class CreateStudentSerializer(serializers.Serializer):
     gender = serializers.CharField(max_length=20, required=False, allow_blank=True)
     emergency_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
+    def validate(self, data):
+        phone = data.get('student_contact', '').strip()
+        if phone and CustomUser.objects.filter(phone_number=phone).exists():
+            raise serializers.ValidationError({"student_contact": "This phone number is already registered to another user."})
+        
+        user_data = data.get('user', {})
+        email = data.get('student_email', '').strip()
+        if email and CustomUser.objects.filter(email=email).exists():
+            raise serializers.ValidationError({"student_email": "This email is already registered to another user."})
+            
+        return data
+
     def create(self, validated_data):
         user_data = validated_data.pop("user")
         first_name = user_data['first_name']
