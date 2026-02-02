@@ -53,7 +53,7 @@ export default function AdminTeachers() {
     return teachers.filter(teacher => {
       const fullName = teacher.user?.full_name?.toLowerCase() || '';
       const email = teacher.user?.email?.toLowerCase() || '';
-      const staffNumber = teacher.user?.staff_number?.toLowerCase() || '';
+      const staffNumber = teacher.user?.student_number?.toLowerCase() || '';
       return fullName.includes(query) || email.includes(query) || staffNumber.includes(query);
     });
   }, [teachers, searchQuery]);
@@ -268,7 +268,7 @@ export default function AdminTeachers() {
               <div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-4">{selectedTeacher.user?.full_name}</h3>
                 <div className="space-y-3">
-                  <p><i className="fas fa-id-badge text-blue-500 mr-2 w-5"></i><strong>Staff Number:</strong> {selectedTeacher.user?.staff_number || '-'}</p>
+                  <p><i className="fas fa-id-badge text-blue-500 mr-2 w-5"></i><strong>Staff Number:</strong> {selectedTeacher.user?.student_number || '-'}</p>
                   <p><i className="fas fa-envelope text-blue-500 mr-2 w-5"></i><strong>Email:</strong> {selectedTeacher.user?.email}</p>
                   <p><i className="fas fa-phone text-blue-500 mr-2 w-5"></i><strong>Phone:</strong> {selectedTeacher.user?.phone_number || '-'}</p>
                   <p><i className="fas fa-graduation-cap text-blue-500 mr-2 w-5"></i><strong>Qualification:</strong> {selectedTeacher.qualification || '-'}</p>

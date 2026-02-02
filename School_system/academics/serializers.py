@@ -382,6 +382,10 @@ class CreateParentSerializer(serializers.Serializer):
         from django.db import transaction
         import random
         
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+        created_by = request.user if request else None
+
         with transaction.atomic():
             # Generate username from email or random
             username = validated_data['email'].split('@')[0] + str(random.randint(100, 999))
@@ -393,7 +397,9 @@ class CreateParentSerializer(serializers.Serializer):
                 password=validated_data['password'],
                 full_name=validated_data['full_name'],
                 role='parent',
-                phone_number=validated_data['contact_number']
+                phone_number=validated_data['contact_number'],
+                school=school,
+                created_by=created_by
             )
             
             # Create parent profile
