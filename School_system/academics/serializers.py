@@ -265,9 +265,6 @@ class CreateStudentSerializer(serializers.Serializer):
 
         email = student_email if student_email else f"{student_number}@school.com"
 
-        # Separate student personal phone and parent contact
-        # student_contact is the student's personal number for the user profile
-        # parent_contact is stored in the Student model
         user = CustomUser.objects.create_user(
             username=student_number,
             email=email,
@@ -276,7 +273,7 @@ class CreateStudentSerializer(serializers.Serializer):
             last_name=last_name,
             role='student',
             student_number=student_number,
-            phone_number=student_contact or None,
+            phone_number=student_contact,
             school=school,
             created_by=created_by
         )
@@ -285,11 +282,11 @@ class CreateStudentSerializer(serializers.Serializer):
             user=user,
             student_class=student_class,
             admission_date=admission_date,
-            parent_contact=emergency_contact or "", # Keep parent_contact separate from student_contact
+            parent_contact=student_contact,
             address=student_address,
             date_of_birth=date_of_birth,
             gender=gender,
-            emergency_contact=emergency_contact or ""
+            emergency_contact=emergency_contact or student_contact
         )
 
         return student
