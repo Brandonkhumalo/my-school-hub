@@ -306,7 +306,7 @@ export default function AdminStudents() {
                 </h3>
                 <div className="space-y-3">
                   <div className="flex">
-                    <span className="w-40 text-gray-600 font-medium">Parent Contact:</span>
+                    <span className="w-40 text-gray-600 font-medium">Parent Phone Number:</span>
                     <span className="text-gray-800">{selectedStudent.parent_phone || selectedStudent.parent_contact || '-'}</span>
                   </div>
                   <div className="flex">

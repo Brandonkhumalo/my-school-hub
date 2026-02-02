@@ -213,7 +213,10 @@ class ParentListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Parent.objects.filter(user__school=user.school)
+            return Parent.objects.filter(
+                Q(user__school=user.school) | 
+                Q(children__user__school=user.school)
+            ).distinct()
         return Parent.objects.none()
 
 
