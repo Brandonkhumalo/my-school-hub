@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from .models import CustomUser, School
+from academics.models import Parent
 import random
 import secrets
 import string
@@ -146,6 +147,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             validated_data['whatsapp_pin'] = self.generate_whatsapp_pin()
 
         user = CustomUser.objects.create_user(**validated_data)
+        
+        # Create Parent profile for parent users
+        if role == 'parent':
+            Parent.objects.create(user=user)
+        
         return user
     
 class LoginSerializer(serializers.Serializer):
