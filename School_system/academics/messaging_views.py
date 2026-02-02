@@ -84,16 +84,22 @@ def send_message(request):
         
         if user.role == 'teacher':
             teacher = Teacher.objects.get(user=user)
+            # Find all students taught by this teacher through the Timetable
             class_ids = Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True)
             student_ids = Student.objects.filter(student_class_id__in=class_ids).values_list('id', flat=True)
+            
             parent = Parent.objects.get(user=recipient)
+            # Check if any of the parent's children are in the teacher's students
             if not parent.children.filter(id__in=student_ids).exists():
                 return Response({'error': 'You can only message parents of students you teach'}, 
                                status=status.HTTP_403_FORBIDDEN)
         else:
             parent = Parent.objects.get(user=user)
+            # Get classes of all children linked to this parent
             child_class_ids = parent.children.values_list('student_class_id', flat=True)
+            # Get all teachers who have entries in Timetable for these classes
             teacher_ids = Timetable.objects.filter(class_assigned_id__in=child_class_ids).values_list('teacher_id', flat=True)
+            
             teacher = Teacher.objects.get(user=recipient)
             if teacher.id not in teacher_ids:
                 return Response({'error': 'You can only message teachers who teach your children'}, 
@@ -133,14 +139,18 @@ def search_teachers(request):
     
     try:
         parent = Parent.objects.get(user=user)
+        # Get all children (Student records) linked to this parent
         children = parent.children.all()
+        # Get the IDs of classes these children belong to
         child_class_ids = children.values_list('student_class_id', flat=True)
         
         from .models import Timetable
+        # Find all teachers assigned to these classes in the Timetable
         teacher_ids = Timetable.objects.filter(
             class_assigned_id__in=child_class_ids
         ).values_list('teacher_id', flat=True).distinct()
         
+        # Filter Teacher objects by the discovered IDs
         teachers = Teacher.objects.filter(id__in=teacher_ids).select_related('user').prefetch_related('subjects_taught')
         
         if query:
@@ -173,14 +183,17 @@ def search_parents(request):
         teacher = Teacher.objects.get(user=user)
         
         from .models import Timetable
+        # Get all class IDs where this teacher has scheduled lessons
         class_ids = Timetable.objects.filter(
             teacher=teacher
         ).values_list('class_assigned_id', flat=True).distinct()
         
+        # Get all students enrolled in those classes
         student_ids = Student.objects.filter(
             student_class_id__in=class_ids
         ).values_list('id', flat=True)
         
+        # Get parents who have those students as children
         parents = Parent.objects.filter(
             children__id__in=student_ids
         ).distinct().select_related('user')
