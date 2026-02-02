@@ -9,4 +9,5 @@ dependencies = [
     "djangorestframework-simplejwt>=5.5.1",
     "djangorestframework>=3.16.1",
     "python-decouple>=3.8",
+    "pillow>=12.1.0",
 ]
