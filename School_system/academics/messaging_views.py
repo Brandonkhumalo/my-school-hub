@@ -150,8 +150,16 @@ def search_teachers(request):
             class_assigned_id__in=child_class_ids
         ).values_list('teacher_id', flat=True).distinct()
         
+        # ALSO include class teachers
+        from .models import Class
+        class_teacher_user_ids = Class.objects.filter(
+            id__in=child_class_ids
+        ).exclude(class_teacher__isnull=True).values_list('class_teacher_id', flat=True)
+        
         # Filter Teacher objects by the discovered IDs
-        teachers = Teacher.objects.filter(id__in=teacher_ids).select_related('user').prefetch_related('subjects_taught')
+        teachers = Teacher.objects.filter(
+            Q(id__in=teacher_ids) | Q(user_id__in=class_teacher_user_ids)
+        ).select_related('user').prefetch_related('subjects_taught').distinct()
         
         if query:
             teachers = teachers.filter(
@@ -182,15 +190,22 @@ def search_parents(request):
     try:
         teacher = Teacher.objects.get(user=user)
         
-        from .models import Timetable
+        from .models import Timetable, Class
         # Get all class IDs where this teacher has scheduled lessons
-        class_ids = Timetable.objects.filter(
+        class_ids = list(Timetable.objects.filter(
             teacher=teacher
-        ).values_list('class_assigned_id', flat=True).distinct()
+        ).values_list('class_assigned_id', flat=True).distinct())
+        
+        # Also include classes where this teacher is the class teacher
+        class_teacher_ids = list(Class.objects.filter(
+            class_teacher=user
+        ).values_list('id', flat=True))
+        
+        all_class_ids = set(class_ids + class_teacher_ids)
         
         # Get all students enrolled in those classes
         student_ids = Student.objects.filter(
-            student_class_id__in=class_ids
+            student_class_id__in=all_class_ids
         ).values_list('id', flat=True)
         
         # Get parents who have those students as children
