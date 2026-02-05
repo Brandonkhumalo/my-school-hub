@@ -571,6 +571,13 @@ def class_fees_report(request):
     student_data = []
     
     for student in students:
+        # Get additional fees for this student
+        additional_fees = AdditionalFee.objects.filter(
+            school=request.user.school,
+            is_paid=False
+        ).filter(Q(student=student) | Q(student_class=cls))
+        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        
         records = StudentPaymentRecord.objects.filter(
             student=student,
             school=request.user.school
@@ -579,15 +586,16 @@ def class_fees_report(request):
             records = records.filter(academic_year=academic_year)
         
         if records.exists():
-            student_due = sum(r.total_amount_due for r in records)
-            student_paid = sum(r.amount_paid for r in records)
+            base_due = sum(float(r.total_amount_due) for r in records)
+            student_due = base_due + additional_fees_total
+            student_paid = sum(float(r.amount_paid) for r in records)
             student_balance = student_due - student_paid
             
             latest_record = records.first()
-            if latest_record.payment_status == 'paid':
+            if student_balance <= 0:
                 paid_count += 1
                 status_text = 'Paid'
-            elif latest_record.payment_status == 'partial':
+            elif student_paid > 0:
                 partial_count += 1
                 status_text = 'Partial'
             else:
@@ -600,10 +608,11 @@ def class_fees_report(request):
             ).order_by('-academic_year', '-academic_term').first()
             
             if school_fee:
-                student_due = float(school_fee.total_fee)
+                base_due = float(school_fee.total_fee)
             else:
-                student_due = 0
+                base_due = 0
             
+            student_due = base_due + additional_fees_total
             student_paid = 0
             student_balance = student_due
             unpaid_count += 1
