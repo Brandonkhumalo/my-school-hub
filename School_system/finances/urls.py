@@ -44,6 +44,9 @@ urlpatterns = [
     # Auto-generated invoices endpoint
     path('invoices/by-class/', views.student_invoices_by_class, name='student-invoices-by-class'),
     
+    # Daily Transaction Report
+    path('reports/daily/', views.daily_transaction_report, name='daily-transaction-report'),
+    
     # Additional Fees endpoints
     path('additional-fees/', views.AdditionalFeeListCreateView.as_view(), name='additional-fees-list-create'),
     path('additional-fees/<int:pk>/', views.AdditionalFeeDetailView.as_view(), name='additional-fee-detail'),

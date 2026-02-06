@@ -1041,6 +1041,72 @@ class AdditionalFeeListCreateView(generics.ListCreateAPIView):
         serializer.save(school=self.request.user.school, created_by=self.request.user)
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def daily_transaction_report(request):
+    from datetime import datetime
+    
+    user = request.user
+    if user.role not in ['admin', 'accountant']:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    
+    date_str = request.query_params.get('date')
+    if date_str:
+        try:
+            report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        report_date = timezone.now().date()
+    
+    transactions = PaymentTransaction.objects.filter(
+        payment_record__school=user.school,
+        payment_date__date=report_date
+    ).select_related(
+        'payment_record__student__user',
+        'payment_record__student__student_class',
+        'processed_by'
+    ).order_by('-payment_date')
+    
+    transaction_list = []
+    total_collected = 0
+    method_totals = {}
+    
+    for txn in transactions:
+        amount = float(txn.amount)
+        total_collected += amount
+        method = txn.get_payment_method_display()
+        method_totals[method] = method_totals.get(method, 0) + amount
+        
+        student = txn.payment_record.student
+        transaction_list.append({
+            'id': txn.id,
+            'student_name': student.user.full_name,
+            'student_number': student.user.student_number or '',
+            'class_name': student.student_class.name if student.student_class else 'N/A',
+            'amount': amount,
+            'payment_method': method,
+            'payment_method_key': txn.payment_method,
+            'transaction_reference': txn.transaction_reference or '',
+            'notes': txn.notes or '',
+            'payment_time': txn.payment_date.strftime('%H:%M'),
+            'processed_by': txn.processed_by.full_name if txn.processed_by else 'System',
+        })
+    
+    method_breakdown = [
+        {'method': method, 'total': total}
+        for method, total in sorted(method_totals.items(), key=lambda x: -x[1])
+    ]
+    
+    return Response({
+        'date': report_date.isoformat(),
+        'total_collected': total_collected,
+        'transaction_count': len(transaction_list),
+        'transactions': transaction_list,
+        'method_breakdown': method_breakdown,
+    })
+
+
 class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = AdditionalFee.objects.all()
     serializer_class = AdditionalFeeSerializer

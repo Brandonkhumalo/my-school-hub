@@ -274,6 +274,12 @@ const apiService = {
   updateAdditionalFee: (id, data) => request(`/finances/additional-fees/${id}/`, "PATCH", data),
   deleteAdditionalFee: (id) => request(`/finances/additional-fees/${id}/`, "DELETE"),
   
+  // Daily Transaction Report
+  getDailyTransactionReport: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/reports/daily/${query ? '?' + query : ''}`, "GET");
+  },
+
   // Timetable generation endpoints
   generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
   getTimetableStats: () => request("/academics/timetables/stats/", "GET"),
