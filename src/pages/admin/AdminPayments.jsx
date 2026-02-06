@@ -147,6 +147,11 @@ export default function AdminPayments() {
   const handleAddPayment = async (e) => {
     e.preventDefault();
     try {
+      const paymentAmount = addPaymentData.amount;
+      const paymentMethod = addPaymentData.payment_method;
+      const paymentRef = addPaymentData.transaction_reference;
+      const recordForReceipt = selectedRecord;
+      
       await apiService.addPaymentToRecord(addPaymentData);
       setShowPaymentModal(false);
       setAddPaymentData({
@@ -159,6 +164,10 @@ export default function AdminPayments() {
       });
       loadPaymentRecords();
       loadInvoices();
+      
+      if (window.confirm('Payment recorded! Would you like to print a receipt?')) {
+        printPaymentReceipt(recordForReceipt, paymentAmount, paymentMethod, paymentRef);
+      }
     } catch (error) {
       console.error("Error adding payment:", error);
       alert("Failed to add payment: " + error.message);
@@ -215,8 +224,221 @@ export default function AdminPayments() {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const printReceipt = (invoice) => {
+    const inv = invoice || selectedInvoice;
+    if (!inv) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Receipt - ${inv.invoice_number || 'Invoice'}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 30px; color: #333; max-width: 800px; margin: 0 auto; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 3px solid #16a34a; padding-bottom: 20px; }
+          .school-info h1 { font-size: 22px; color: #1e3a5f; margin-bottom: 4px; }
+          .school-info p { font-size: 12px; color: #666; line-height: 1.5; }
+          .invoice-label { text-align: right; }
+          .invoice-label h2 { font-size: 28px; color: #16a34a; font-weight: 800; letter-spacing: 2px; }
+          .invoice-label p { font-size: 12px; color: #555; margin-top: 4px; }
+          .invoice-label .inv-num { font-family: monospace; font-size: 14px; font-weight: 600; color: #333; }
+          .bill-to { background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 24px; }
+          .bill-to h3 { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+          .bill-to .name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
+          .bill-to p { font-size: 13px; color: #555; margin-top: 2px; }
+          .details-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+          .details-table th { background: #f1f5f9; text-align: left; padding: 10px 14px; font-size: 12px; text-transform: uppercase; color: #555; letter-spacing: 0.5px; }
+          .details-table td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 13px; }
+          .details-table td:last-child { text-align: right; }
+          .totals { border-top: 2px solid #e5e7eb; padding-top: 12px; }
+          .totals .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+          .totals .row.total { font-size: 18px; font-weight: 700; border-top: 2px solid #333; padding-top: 10px; margin-top: 6px; }
+          .totals .row.total.paid { color: #16a34a; }
+          .totals .row.total.due { color: #dc2626; }
+          .status-badge { text-align: center; padding: 10px; border-radius: 6px; font-size: 16px; font-weight: 700; margin-top: 20px; letter-spacing: 1px; }
+          .status-paid { background: #dcfce7; color: #166534; }
+          .status-unpaid { background: #fee2e2; color: #991b1b; }
+          .notes { margin-top: 16px; padding: 12px; background: #fffbeb; border-left: 3px solid #f59e0b; font-size: 12px; color: #92400e; }
+          .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
+          @media print {
+            body { padding: 15px; }
+            @page { margin: 10mm; size: A4; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="school-info">
+            <h1>${inv.school_name || 'MySchoolHub'}</h1>
+            ${inv.school_address ? `<p>${inv.school_address}</p>` : ''}
+            ${inv.school_phone ? `<p>Tel: ${inv.school_phone}</p>` : ''}
+            ${inv.school_email ? `<p>${inv.school_email}</p>` : ''}
+          </div>
+          <div class="invoice-label">
+            <h2>RECEIPT</h2>
+            <p class="inv-num">${inv.invoice_number || ''}</p>
+            <p>Date: ${inv.issue_date || new Date().toLocaleDateString()}</p>
+            ${inv.due_date ? `<p>Due: ${inv.due_date}</p>` : ''}
+          </div>
+        </div>
+
+        <div class="bill-to">
+          <h3>Issued To</h3>
+          <p class="name">${inv.student_name || ''}</p>
+          ${inv.student_number ? `<p>Student #: ${inv.student_number}</p>` : ''}
+          ${inv.class_name ? `<p>Class: ${inv.class_name}</p>` : ''}
+        </div>
+
+        ${inv.payment_details ? `
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th style="text-align:right">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Payment Type</td><td>${inv.payment_details.payment_type || ''}</td></tr>
+              <tr><td>Payment Plan</td><td>${inv.payment_details.payment_plan || ''}</td></tr>
+              <tr><td>Academic Year</td><td>${inv.payment_details.academic_year || ''}</td></tr>
+              ${inv.payment_details.academic_term ? `<tr><td>Term</td><td>${inv.payment_details.academic_term}</td></tr>` : ''}
+            </tbody>
+          </table>
+        ` : ''}
+
+        <div class="totals">
+          <div class="row"><span>Total Amount:</span><span>$${parseFloat(inv.total_amount || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Amount Paid:</span><span style="color:#16a34a">$${parseFloat(inv.amount_paid || 0).toFixed(2)}</span></div>
+          <div class="row total ${inv.is_paid ? 'paid' : 'due'}">
+            <span>Balance Due:</span>
+            <span>$${parseFloat(inv.balance || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="status-badge ${inv.is_paid ? 'status-paid' : 'status-unpaid'}">
+          ${inv.is_paid ? 'PAID IN FULL' : 'BALANCE OUTSTANDING'}
+        </div>
+
+        ${inv.notes ? `<div class="notes"><strong>Notes:</strong> ${inv.notes}</div>` : ''}
+
+        <div class="footer">
+          <p>Thank you for your payment</p>
+          <p>Generated by MySchoolHub &bull; ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.focus(); printWindow.print(); }, 300);
+  };
+
+  const printPaymentReceipt = (record, paymentAmount, paymentMethod, reference) => {
+    if (!record || !paymentAmount) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const amount = parseFloat(paymentAmount) || 0;
+    const student = students.find(s => s.id === record.student);
+    const studentName = record.student_name || student?.name || 'Student';
+    const studentNumber = record.student_number || student?.student_number || '';
+    const className = record.class_name || student?.class_name || '';
+    const now = new Date();
+    const receiptNo = `RCP-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+    
+    const methodLabels = { cash: 'Cash', bank_transfer: 'Bank Transfer', card: 'Card', mobile_money: 'Mobile Money', ecocash: 'EcoCash', innbucks: 'InnBucks', other: 'Other' };
+    
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Payment Receipt - ${receiptNo}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 30px; color: #333; max-width: 800px; margin: 0 auto; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 3px solid #16a34a; padding-bottom: 20px; }
+          .school-info h1 { font-size: 22px; color: #1e3a5f; margin-bottom: 4px; }
+          .school-info p { font-size: 12px; color: #666; line-height: 1.5; }
+          .receipt-label { text-align: right; }
+          .receipt-label h2 { font-size: 28px; color: #16a34a; font-weight: 800; letter-spacing: 2px; }
+          .receipt-label p { font-size: 12px; color: #555; margin-top: 4px; }
+          .receipt-label .rec-num { font-family: monospace; font-size: 14px; font-weight: 600; color: #333; }
+          .student-info { background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 24px; }
+          .student-info h3 { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+          .student-info .name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
+          .student-info p { font-size: 13px; color: #555; margin-top: 2px; }
+          .payment-box { background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0; }
+          .payment-box .amount { font-size: 36px; font-weight: 800; color: #16a34a; }
+          .payment-box .label { font-size: 14px; color: #555; margin-bottom: 8px; }
+          .details { margin: 20px 0; }
+          .details .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+          .details .row .label { color: #666; }
+          .details .row .value { font-weight: 600; }
+          .balance-section { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 16px; margin-top: 20px; }
+          .balance-section .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+          .balance-section .remaining { font-size: 18px; font-weight: 700; color: #dc2626; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f59e0b; }
+          .balance-section .remaining.clear { color: #16a34a; }
+          .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
+          @media print {
+            body { padding: 15px; }
+            @page { margin: 10mm; size: A4; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="school-info">
+            <h1>MySchoolHub</h1>
+            <p>School Fee Payment Receipt</p>
+          </div>
+          <div class="receipt-label">
+            <h2>RECEIPT</h2>
+            <p class="rec-num">${receiptNo}</p>
+            <p>Date: ${now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p>Time: ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+        </div>
+
+        <div class="student-info">
+          <h3>Received From</h3>
+          <p class="name">${studentName}</p>
+          ${studentNumber ? `<p>Student #: ${studentNumber}</p>` : ''}
+          ${className ? `<p>Class: ${className}</p>` : ''}
+        </div>
+
+        <div class="payment-box">
+          <div class="label">Amount Received</div>
+          <div class="amount">${record.currency || 'USD'} ${amount.toFixed(2)}</div>
+        </div>
+
+        <div class="details">
+          <div class="row"><span class="label">Payment Method:</span><span class="value">${methodLabels[paymentMethod] || paymentMethod}</span></div>
+          ${reference ? `<div class="row"><span class="label">Reference:</span><span class="value">${reference}</span></div>` : ''}
+          <div class="row"><span class="label">Academic Year:</span><span class="value">${record.academic_year || ''}</span></div>
+          <div class="row"><span class="label">Term:</span><span class="value">${(record.academic_term || '').replace('_', ' ')}</span></div>
+        </div>
+
+        <div class="balance-section">
+          <div class="row"><span>Total Fees Due:</span><span>${record.currency || 'USD'} ${parseFloat(record.total_amount_due || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Previously Paid:</span><span>${record.currency || 'USD'} ${parseFloat(record.amount_paid || 0).toFixed(2)}</span></div>
+          <div class="row"><span>This Payment:</span><span>${record.currency || 'USD'} ${amount.toFixed(2)}</span></div>
+          <div class="row remaining ${(parseFloat(record.total_amount_due || 0) - parseFloat(record.amount_paid || 0) - amount) <= 0 ? 'clear' : ''}">
+            <span>Remaining Balance:</span>
+            <span>${record.currency || 'USD'} ${Math.max(0, parseFloat(record.total_amount_due || 0) - parseFloat(record.amount_paid || 0) - amount).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>Thank you for your payment</p>
+          <p>Generated by MySchoolHub &bull; ${now.toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.focus(); printWindow.print(); }, 300);
   };
 
   const getStatusBadge = (status) => {
@@ -922,7 +1144,7 @@ export default function AdminPayments() {
               )}
             </div>
 
-            <div className="border-t px-6 py-4 flex justify-end gap-3 print:hidden">
+            <div className="border-t px-6 py-4 flex justify-end gap-3">
               <button
                 onClick={() => setShowInvoiceModal(false)}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-50"
@@ -930,18 +1152,11 @@ export default function AdminPayments() {
                 Close
               </button>
               <button
-                onClick={handlePrint}
+                onClick={() => printReceipt()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 <i className="fas fa-print mr-2"></i>
-                Print
-              </button>
-              <button
-                onClick={handlePrint}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                <i className="fas fa-download mr-2"></i>
-                Download PDF
+                Print Receipt
               </button>
             </div>
           </div>

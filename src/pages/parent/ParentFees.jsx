@@ -53,8 +53,115 @@ export default function ParentFees() {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const printReceipt = (invoice) => {
+    const inv = invoice || selectedInvoice;
+    if (!inv) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Receipt - ${inv.invoice_number || 'Invoice'}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 30px; color: #333; max-width: 800px; margin: 0 auto; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; border-bottom: 3px solid #16a34a; padding-bottom: 20px; }
+          .school-info h1 { font-size: 22px; color: #1e3a5f; margin-bottom: 4px; }
+          .school-info p { font-size: 12px; color: #666; line-height: 1.5; }
+          .invoice-label { text-align: right; }
+          .invoice-label h2 { font-size: 28px; color: #16a34a; font-weight: 800; letter-spacing: 2px; }
+          .invoice-label p { font-size: 12px; color: #555; margin-top: 4px; }
+          .invoice-label .inv-num { font-family: monospace; font-size: 14px; font-weight: 600; color: #333; }
+          .bill-to { background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 24px; }
+          .bill-to h3 { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+          .bill-to .name { font-size: 16px; font-weight: 700; color: #1e3a5f; }
+          .bill-to p { font-size: 13px; color: #555; margin-top: 2px; }
+          .details-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+          .details-table th { background: #f1f5f9; text-align: left; padding: 10px 14px; font-size: 12px; text-transform: uppercase; color: #555; letter-spacing: 0.5px; }
+          .details-table td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 13px; }
+          .details-table td:last-child { text-align: right; }
+          .totals { border-top: 2px solid #e5e7eb; padding-top: 12px; }
+          .totals .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+          .totals .row.total { font-size: 18px; font-weight: 700; border-top: 2px solid #333; padding-top: 10px; margin-top: 6px; }
+          .totals .row.total.paid { color: #16a34a; }
+          .totals .row.total.due { color: #dc2626; }
+          .status-badge { text-align: center; padding: 10px; border-radius: 6px; font-size: 16px; font-weight: 700; margin-top: 20px; letter-spacing: 1px; }
+          .status-paid { background: #dcfce7; color: #166534; }
+          .status-unpaid { background: #fee2e2; color: #991b1b; }
+          .notes { margin-top: 16px; padding: 12px; background: #fffbeb; border-left: 3px solid #f59e0b; font-size: 12px; color: #92400e; }
+          .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
+          @media print {
+            body { padding: 15px; }
+            @page { margin: 10mm; size: A4; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="school-info">
+            <h1>${inv.school_name || 'MySchoolHub'}</h1>
+            ${inv.school_address ? `<p>${inv.school_address}</p>` : ''}
+            ${inv.school_phone ? `<p>Tel: ${inv.school_phone}</p>` : ''}
+            ${inv.school_email ? `<p>${inv.school_email}</p>` : ''}
+          </div>
+          <div class="invoice-label">
+            <h2>RECEIPT</h2>
+            <p class="inv-num">${inv.invoice_number || ''}</p>
+            <p>Date: ${inv.issue_date || new Date().toLocaleDateString()}</p>
+            ${inv.due_date ? `<p>Due: ${inv.due_date}</p>` : ''}
+          </div>
+        </div>
+
+        <div class="bill-to">
+          <h3>Issued To</h3>
+          <p class="name">${inv.student_name || ''}</p>
+          ${inv.student_number ? `<p>Student #: ${inv.student_number}</p>` : ''}
+          ${inv.class_name ? `<p>Class: ${inv.class_name}</p>` : ''}
+        </div>
+
+        ${inv.payment_details ? `
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th style="text-align:right">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Payment Type</td><td>${inv.payment_details.payment_type || ''}</td></tr>
+              <tr><td>Payment Plan</td><td>${inv.payment_details.payment_plan || ''}</td></tr>
+              <tr><td>Academic Year</td><td>${inv.payment_details.academic_year || ''}</td></tr>
+              ${inv.payment_details.academic_term ? `<tr><td>Term</td><td>${inv.payment_details.academic_term}</td></tr>` : ''}
+            </tbody>
+          </table>
+        ` : ''}
+
+        <div class="totals">
+          <div class="row"><span>Total Amount:</span><span>$${parseFloat(inv.total_amount || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Amount Paid:</span><span style="color:#16a34a">$${parseFloat(inv.amount_paid || 0).toFixed(2)}</span></div>
+          <div class="row total ${inv.is_paid ? 'paid' : 'due'}">
+            <span>Balance Due:</span>
+            <span>$${parseFloat(inv.balance || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="status-badge ${inv.is_paid ? 'status-paid' : 'status-unpaid'}">
+          ${inv.is_paid ? 'PAID IN FULL' : 'BALANCE OUTSTANDING'}
+        </div>
+
+        ${inv.notes ? `<div class="notes"><strong>Notes:</strong> ${inv.notes}</div>` : ''}
+
+        <div class="footer">
+          <p>Thank you for your payment</p>
+          <p>Generated by MySchoolHub &bull; ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.focus(); printWindow.print(); }, 300);
   };
 
   const handleChildChange = async (childId) => {
@@ -475,7 +582,7 @@ export default function ParentFees() {
                 )}
               </div>
 
-              <div className="border-t px-6 py-4 flex justify-end gap-3 print:hidden">
+              <div className="border-t px-6 py-4 flex justify-end gap-3">
                 <button
                   onClick={() => setShowInvoiceModal(false)}
                   className="px-4 py-2 border rounded-lg hover:bg-gray-50"
@@ -483,18 +590,11 @@ export default function ParentFees() {
                   Close
                 </button>
                 <button
-                  onClick={handlePrint}
+                  onClick={() => printReceipt()}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   <i className="fas fa-print mr-2"></i>
-                  Print
-                </button>
-                <button
-                  onClick={handlePrint}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  <i className="fas fa-download mr-2"></i>
-                  Download PDF
+                  Print Receipt
                 </button>
               </div>
             </div>
