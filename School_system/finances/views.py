@@ -2,6 +2,7 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Sum, Q, Count
+from django.utils import timezone
 from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
 from academics.models import Student, Class
 from .serializers import (
@@ -230,7 +231,17 @@ def student_financial_summary(request, student_id):
         
         total_fees_due = fees.aggregate(total=Sum('amount_due'))['total'] or 0
         total_fees_paid = fees.aggregate(total=Sum('amount_paid'))['total'] or 0
-        total_balance = total_fees_due - total_fees_paid
+        
+        # Include additional fees
+        additional_fees = AdditionalFee.objects.filter(
+            school=student.user.school,
+            is_paid=False
+        ).filter(Q(student=student) | Q(student_class=student.student_class))
+        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
+        
+        total_fees_due = float(total_fees_due) + additional_fees_total
+        total_balance = total_fees_due - float(total_fees_paid)
         unpaid_fees_count = fees.filter(is_paid=False).count()
         
         # Get recent payments and pending fees
@@ -246,7 +257,9 @@ def student_financial_summary(request, student_id):
             'total_balance': total_balance,
             'unpaid_fees_count': unpaid_fees_count,
             'recent_payments': PaymentSerializer(recent_payments, many=True).data,
-            'pending_fees': StudentFeeSerializer(pending_fees, many=True).data
+            'pending_fees': StudentFeeSerializer(pending_fees, many=True).data,
+            'additional_fees': additional_fees_list,
+            'additional_fees_total': additional_fees_total
         }
         
         return Response(summary_data)
@@ -378,12 +391,21 @@ def get_my_school_fees(request):
             
             fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
             
+            additional_fees = AdditionalFee.objects.filter(
+                school=user.school,
+                is_paid=False
+            ).filter(Q(student=student) | Q(student_class=student_class))
+            additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency} for f in additional_fees]
+            additional_fees_total = sum(float(f.amount) for f in additional_fees)
+            
             return Response({
                 'student_name': user.full_name,
                 'student_number': user.student_number,
                 'class_name': student_class.name,
                 'grade_level': grade_level,
-                'fees': SchoolFeesSerializer(fees, many=True).data
+                'fees': SchoolFeesSerializer(fees, many=True).data,
+                'additional_fees': additional_fees_list,
+                'additional_fees_total': additional_fees_total
             })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -405,13 +427,22 @@ def get_my_school_fees(request):
                 
                 fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
                 
+                additional_fees = AdditionalFee.objects.filter(
+                    school=user.school,
+                    is_paid=False
+                ).filter(Q(student=student) | Q(student_class=student_class))
+                additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency} for f in additional_fees]
+                additional_fees_total = sum(float(f.amount) for f in additional_fees)
+                
                 children_fees.append({
                     'student_id': student.id,
                     'student_name': student.user.full_name,
                     'student_number': student.user.student_number,
                     'class_name': student_class.name,
                     'grade_level': grade_level,
-                    'fees': SchoolFeesSerializer(fees, many=True).data
+                    'fees': SchoolFeesSerializer(fees, many=True).data,
+                    'additional_fees': additional_fees_list,
+                    'additional_fees_total': additional_fees_total
                 })
             
             return Response({'children_fees': children_fees})
@@ -795,6 +826,13 @@ def get_students_for_payment(request):
     for student in students:
         grade_level = student.student_class.grade_level if student.student_class else None
         
+        # Get additional fees for this student
+        additional_fees = AdditionalFee.objects.filter(
+            school=request.user.school,
+            is_paid=False
+        ).filter(Q(student=student) | Q(student_class=student.student_class))
+        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        
         school_fee = None
         if grade_level:
             fee = SchoolFees.objects.filter(
@@ -803,11 +841,31 @@ def get_students_for_payment(request):
             ).order_by('-academic_year', '-academic_term').first()
             if fee:
                 school_fee = {
-                    'total_fee': float(fee.total_fee),
+                    'total_fee': float(fee.total_fee) + additional_fees_total,
+                    'base_fee': float(fee.total_fee),
+                    'additional_fees_total': additional_fees_total,
                     'currency': fee.currency,
                     'academic_year': fee.academic_year,
                     'academic_term': fee.academic_term
                 }
+            elif additional_fees_total > 0:
+                school_fee = {
+                    'total_fee': additional_fees_total,
+                    'base_fee': 0,
+                    'additional_fees_total': additional_fees_total,
+                    'currency': 'USD',
+                    'academic_year': str(timezone.now().year),
+                    'academic_term': 'term_1'
+                }
+        elif additional_fees_total > 0:
+            school_fee = {
+                'total_fee': additional_fees_total,
+                'base_fee': 0,
+                'additional_fees_total': additional_fees_total,
+                'currency': 'USD',
+                'academic_year': str(timezone.now().year),
+                'academic_term': 'term_1'
+            }
         
         student_list.append({
             'id': student.id,

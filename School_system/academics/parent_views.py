@@ -495,7 +495,18 @@ def child_fees(request, child_id):
         # Calculate totals
         total_fees = sum(fee.amount_due for fee in student_fees)
         total_paid = sum(fee.amount_paid for fee in student_fees)
-        outstanding = total_fees - total_paid
+        
+        # Include additional fees
+        from finances.models import AdditionalFee
+        from django.db.models import Q
+        additional_fees = AdditionalFee.objects.filter(
+            school=request.user.school,
+            is_paid=False
+        ).filter(Q(student=student) | Q(student_class=student.student_class))
+        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        
+        total_fees = float(total_fees) + additional_fees_total
+        outstanding = total_fees - float(total_paid)
         
         # Build fees list
         fees_list = []
@@ -510,6 +521,17 @@ def child_fees(request, child_id):
                 'amount': float(fee.amount_due),
                 'due_date': fee.due_date.strftime('%Y-%m-%d'),
                 'status': fee_status
+            })
+        
+        # Add additional fees to the fees list
+        for af in additional_fees:
+            fees_list.append({
+                'id': f'af-{af.id}',
+                'type': af.fee_name,
+                'amount': float(af.amount),
+                'due_date': af.created_at.strftime('%Y-%m-%d') if af.created_at else None,
+                'status': 'pending',
+                'reason': af.reason
             })
         
         # Get payment history
@@ -532,7 +554,8 @@ def child_fees(request, child_id):
             'total_paid': float(total_paid),
             'outstanding': float(outstanding),
             'fees': fees_list,
-            'payment_history': payment_history
+            'payment_history': payment_history,
+            'additional_fees_total': additional_fees_total
         }
         
         return Response(data)
