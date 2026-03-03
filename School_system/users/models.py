@@ -4,6 +4,19 @@ import secrets
 import string
 
 
+class TenantAwareManager(models.Manager):
+    """
+    Drop-in manager that enforces school-scoped queries.
+    Usage:  Model.objects.for_school(school)
+    Falls back to the normal manager for non-tenant access (e.g. superadmin).
+    """
+
+    def for_school(self, school):
+        if school is None:
+            return self.none()
+        return self.filter(school=school)
+
+
 class School(models.Model):
     """Multi-tenant School entity - each school is a separate tenant"""
     SCHOOL_TYPE_CHOICES = [
@@ -66,10 +79,10 @@ class CustomUser(AbstractUser):
     last_name = models.CharField(max_length=255)
     email=models.EmailField()
     phone_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, db_index=True)
     student_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     whatsapp_pin = models.CharField(max_length=6, null=True, blank=True)
-    school = models.ForeignKey(School, on_delete=models.CASCADE, null=True, blank=True, related_name='users')
+    school = models.ForeignKey(School, on_delete=models.CASCADE, null=True, blank=True, related_name='users', db_index=True)
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
 
     @property

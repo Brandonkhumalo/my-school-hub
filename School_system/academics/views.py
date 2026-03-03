@@ -1,7 +1,7 @@
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Prefetch
 from django.utils import timezone
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
@@ -24,7 +24,7 @@ class SubjectListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Subject.objects.filter(school=user.school)
+            return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
         return Subject.objects.none()
 
     def perform_create(self, serializer):
@@ -39,7 +39,7 @@ class SubjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Subject.objects.filter(school=user.school)
+            return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
         return Subject.objects.none()
 
 
@@ -52,7 +52,9 @@ class ClassListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Class.objects.filter(school=user.school)
+            queryset = Class.objects.filter(school=user.school).select_related('class_teacher').annotate(
+                _student_count=Count('students', distinct=True)
+            )
         else:
             queryset = Class.objects.none()
         level_type = self.request.query_params.get('level', None)
@@ -74,7 +76,9 @@ class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Class.objects.filter(school=user.school)
+            return Class.objects.filter(school=user.school).select_related('class_teacher').annotate(
+                _student_count=Count('students', distinct=True)
+            )
         return Class.objects.none()
 
 
@@ -91,7 +95,9 @@ class StudentListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Student.objects.filter(user__school=user.school)
+            queryset = Student.objects.filter(user__school=user.school).select_related(
+                'user', 'student_class'
+            ).prefetch_related('parents__user')
         else:
             queryset = Student.objects.none()
         class_id = self.request.query_params.get('class', None)
@@ -108,7 +114,9 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Student.objects.filter(user__school=user.school)
+            return Student.objects.filter(user__school=user.school).select_related(
+                'user', 'student_class'
+            ).prefetch_related('parents__user')
         return Student.objects.none()
 
 
@@ -196,7 +204,7 @@ class TeacherListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Teacher.objects.filter(user__school=user.school)
+            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught')
         return Teacher.objects.none()
 
 
@@ -214,9 +222,8 @@ class ParentListView(generics.ListCreateAPIView):
         user = self.request.user
         if user.school:
             return Parent.objects.filter(
-                Q(user__school=user.school) | 
-                Q(children__user__school=user.school)
-            ).distinct()
+                user__school=user.school
+            ).select_related('user').prefetch_related('children__user', 'children__student_class')
         return Parent.objects.none()
 
 
@@ -233,27 +240,29 @@ class ResultListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Result.objects.filter(student__user__school=user.school)
+            queryset = Result.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'subject', 'teacher__user'
+            )
         else:
             queryset = Result.objects.none()
-        
+
         # Filter by teacher if teacher is making request
         if self.request.user.role == 'teacher':
             queryset = queryset.filter(teacher__user=self.request.user)
-        
+
         # Filter by student if student/parent is making request
         if self.request.user.role == 'student':
             queryset = queryset.filter(student__user=self.request.user)
         elif self.request.user.role == 'parent':
             children_ids = self.request.user.parent.children.values_list('id', flat=True)
             queryset = queryset.filter(student_id__in=children_ids)
-        
+
         # Additional filters
         student_id = self.request.query_params.get('student')
         subject_id = self.request.query_params.get('subject')
         academic_year = self.request.query_params.get('academic_year')
         academic_term = self.request.query_params.get('academic_term')
-        
+
         if student_id:
             queryset = queryset.filter(student_id=student_id)
         if subject_id:
@@ -262,7 +271,7 @@ class ResultListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(academic_year=academic_year)
         if academic_term:
             queryset = queryset.filter(academic_term=academic_term)
-            
+
         return queryset.order_by('-date_recorded')
 
 
@@ -274,7 +283,9 @@ class ResultDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Result.objects.filter(student__user__school=user.school)
+            queryset = Result.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'subject', 'teacher__user'
+            )
         else:
             queryset = Result.objects.none()
         if user.role == 'teacher':
@@ -291,10 +302,12 @@ class TimetableListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Timetable.objects.filter(class_assigned__school=user.school)
+            queryset = Timetable.objects.filter(class_assigned__school=user.school).select_related(
+                'class_assigned', 'subject', 'teacher__user'
+            )
         else:
             queryset = Timetable.objects.none()
-        
+
         if user.role == 'student':
             queryset = queryset.filter(class_assigned=user.student.student_class)
         elif user.role == 'teacher':
@@ -302,15 +315,15 @@ class TimetableListView(generics.ListAPIView):
         elif user.role == 'parent':
             children_classes = user.parent.children.values_list('student_class', flat=True)
             queryset = queryset.filter(class_assigned_id__in=children_classes)
-        
+
         class_id = self.request.query_params.get('class')
         day = self.request.query_params.get('day')
-        
+
         if class_id:
             queryset = queryset.filter(class_assigned_id=class_id)
         if day:
             queryset = queryset.filter(day_of_week=day)
-            
+
         return queryset.order_by('day_of_week', 'start_time')
 
 
@@ -323,15 +336,17 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Announcement.objects.filter(is_active=True, author__school=user.school)
+            queryset = Announcement.objects.filter(
+                is_active=True, author__school=user.school
+            ).select_related('author')
         else:
             queryset = Announcement.objects.none()
         user_role = user.role
-        
+
         queryset = queryset.filter(
             Q(target_audience='all') | Q(target_audience=user_role)
         )
-        
+
         return queryset.order_by('-date_posted')
 
     def perform_create(self, serializer):
@@ -347,10 +362,12 @@ class ComplaintListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Complaint.objects.filter(student__user__school=user.school)
+            queryset = Complaint.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'submitted_by'
+            )
         else:
             queryset = Complaint.objects.none()
-        
+
         if user.role == 'student':
             queryset = queryset.filter(student__user=user)
         elif user.role == 'parent':
@@ -358,7 +375,7 @@ class ComplaintListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(student_id__in=children_ids)
         elif user.role == 'teacher':
             queryset = queryset.filter(submitted_by=user)
-        
+
         return queryset.order_by('-date_submitted')
 
     def perform_create(self, serializer):
@@ -386,10 +403,12 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Suspension.objects.filter(student__user__school=user.school)
+            queryset = Suspension.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'teacher__user'
+            )
         else:
             queryset = Suspension.objects.none()
-        
+
         if user.role == 'student':
             queryset = queryset.filter(student__user=user)
         elif user.role == 'parent':
@@ -397,7 +416,7 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(student_id__in=children_ids)
         elif user.role == 'teacher':
             queryset = queryset.filter(teacher__user=user)
-        
+
         return queryset.order_by('-date_created')
 
     def perform_create(self, serializer):

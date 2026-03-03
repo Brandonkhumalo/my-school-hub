@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from users.models import TenantAwareManager
 
 
 class Subject(models.Model):
@@ -7,10 +8,12 @@ class Subject(models.Model):
     code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='subjects')
-    
+
+    objects = TenantAwareManager()
+
     class Meta:
         unique_together = ('code', 'school')
-    
+
     def __str__(self):
         return f"{self.code} - {self.name}"
 
@@ -21,6 +24,8 @@ class Class(models.Model):
     academic_year = models.CharField(max_length=20)
     class_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='taught_classes')
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='classes')
+
+    objects = TenantAwareManager()
     
     first_period_start = models.TimeField(null=True, blank=True, help_text="Time first period starts (24hr format, e.g., 07:30)")
     last_period_end = models.TimeField(null=True, blank=True, help_text="Time last period ends (24hr format, e.g., 16:00)")
@@ -89,16 +94,21 @@ class ParentChildLink(models.Model):
 
 
 class Result(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='results')
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='results', db_index=True)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, db_index=True)
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, db_index=True)
     exam_type = models.CharField(max_length=50)  # Midterm, Final, Quiz, etc.
     score = models.FloatField()
     max_score = models.FloatField()
     date_recorded = models.DateTimeField(auto_now_add=True)
-    academic_term = models.CharField(max_length=50)
-    academic_year = models.CharField(max_length=20)
-    
+    academic_term = models.CharField(max_length=50, db_index=True)
+    academic_year = models.CharField(max_length=20, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['student', 'academic_year', 'academic_term']),
+        ]
+
     def __str__(self):
         return f"{self.student.user.full_name} - {self.subject.name}: {self.score}/{self.max_score}"
 
@@ -219,13 +229,13 @@ class Attendance(models.Model):
         ('excused', 'Excused'),
     ]
     
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_records')
-    date = models.DateField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_records', db_index=True)
+    date = models.DateField(db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, db_index=True)
     remarks = models.TextField(blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     date_recorded = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         unique_together = ('student', 'date')
     

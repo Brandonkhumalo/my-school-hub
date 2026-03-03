@@ -58,18 +58,14 @@ def student_dashboard_stats(request):
     try:
         student = request.user.student
         
-        # Calculate overall average from results
-        results = Result.objects.filter(student=student)
+        # Calculate overall average from results using DB aggregation (no Python loop)
+        from django.db.models import Avg
+        agg = Result.objects.filter(student=student).aggregate(
+            avg_score=Avg('score'), avg_max=Avg('max_score')
+        )
         avg_percentage = 0
-        if results.exists():
-            total_percentage = 0
-            count = 0
-            for result in results:
-                if result.max_score > 0:
-                    total_percentage += (result.score / result.max_score) * 100
-                    count += 1
-            if count > 0:
-                avg_percentage = round(total_percentage / count, 1)
+        if agg['avg_score'] is not None and agg['avg_max'] and agg['avg_max'] > 0:
+            avg_percentage = round((agg['avg_score'] / agg['avg_max']) * 100, 1)
         
         # Get total subjects
         total_subjects = student.student_class.timetable.values('subject').distinct().count() if student.student_class else 0
@@ -113,7 +109,7 @@ def student_submissions(request):
         student = request.user.student
         assignments = Assignment.objects.filter(
             assigned_class=student.student_class
-        ).order_by('deadline')
+        ).select_related('subject').order_by('deadline')
         
         data = []
         for assignment in assignments:
@@ -147,8 +143,8 @@ def student_marks(request):
     
     try:
         student = request.user.student
-        results = Result.objects.filter(student=student)
-        
+        results = Result.objects.filter(student=student).select_related('subject')
+
         # Group results by subject
         subjects_data = {}
         for result in results:
@@ -212,7 +208,8 @@ def school_calendar(request):
         return Response({'error': 'Only students can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
-    events = SchoolEvent.objects.all().order_by('start_date')
+    school = request.user.school
+    events = SchoolEvent.objects.filter(created_by__school=school).select_related('created_by').order_by('start_date')
     data = []
     
     for event in events:
@@ -243,7 +240,7 @@ def student_timetable(request):
         
         timetable_entries = Timetable.objects.filter(
             class_assigned=student_class
-        ).order_by('day_of_week', 'start_time')
+        ).select_related('subject', 'teacher__user').order_by('day_of_week', 'start_time')
         
         today = datetime.now().date()
         week_start = today - timedelta(days=today.weekday())
@@ -332,7 +329,7 @@ def student_announcements(request):
     announcements = Announcement.objects.filter(
         Q(target_audience='all') | Q(target_audience='students'),
         is_active=True
-    ).order_by('-date_posted')
+    ).select_related('author').order_by('-date_posted')
     
     data = []
     for announcement in announcements:

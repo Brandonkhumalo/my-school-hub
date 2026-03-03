@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from academics.models import Student
+from users.models import TenantAwareManager
 
 
 class FeeType(models.Model):
@@ -8,20 +9,22 @@ class FeeType(models.Model):
     description = models.TextField(blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     academic_year = models.CharField(max_length=20)
-    
+
+    objects = TenantAwareManager()
+
     def __str__(self):
         return f"{self.name} - ${self.amount}"
 
 
 class StudentFee(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fees')
-    fee_type = models.ForeignKey(FeeType, on_delete=models.CASCADE)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fees', db_index=True)
+    fee_type = models.ForeignKey(FeeType, on_delete=models.CASCADE, db_index=True)
     amount_due = models.DecimalField(max_digits=10, decimal_places=2)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     due_date = models.DateField()
-    academic_term = models.CharField(max_length=50)
-    academic_year = models.CharField(max_length=20)
-    is_paid = models.BooleanField(default=False)
+    academic_term = models.CharField(max_length=50, db_index=True)
+    academic_year = models.CharField(max_length=20, db_index=True)
+    is_paid = models.BooleanField(default=False, db_index=True)
     
     def __str__(self):
         return f"{self.student.user.full_name} - {self.fee_type.name}"
@@ -50,7 +53,7 @@ class Payment(models.Model):
     student_fee = models.ForeignKey(StudentFee, on_delete=models.CASCADE, related_name='payments')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending', db_index=True)
     transaction_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
     payment_date = models.DateTimeField(auto_now_add=True)
     processed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -61,6 +64,8 @@ class Payment(models.Model):
 
 
 class Invoice(models.Model):
+    objects = TenantAwareManager()
+
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='invoices')
     invoice_number = models.CharField(max_length=50, unique=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -109,8 +114,10 @@ class StudentPaymentRecord(models.Model):
         ('other', 'Other'),
     ]
     
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='payment_records')
-    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='payment_records')
+    objects = TenantAwareManager()
+
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='payment_records', db_index=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='payment_records', db_index=True)
     payment_type = models.CharField(max_length=20, choices=PAYMENT_TYPE_CHOICES, default='school_fees')
     payment_plan = models.CharField(max_length=20, choices=PAYMENT_PLAN_CHOICES, default='one_term')
     description = models.CharField(max_length=255, blank=True)
@@ -122,7 +129,7 @@ class StudentPaymentRecord(models.Model):
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     currency = models.CharField(max_length=10, default='USD')
     
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid')
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='unpaid', db_index=True)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True)
     
     due_date = models.DateField(null=True, blank=True)
@@ -187,6 +194,8 @@ class FinancialReport(models.Model):
 
 
 class SchoolFees(models.Model):
+    objects = TenantAwareManager()
+
     TERM_CHOICES = [
         ('term_1', 'Term 1'),
         ('term_2', 'Term 2'),
@@ -222,6 +231,8 @@ class SchoolFees(models.Model):
 
 class AdditionalFee(models.Model):
     """Additional one-time fees that admin can add for students (e.g., trip fees, uniform, books)"""
+    objects = TenantAwareManager()
+
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='additional_fees')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='additional_fees', null=True, blank=True)
     student_class = models.ForeignKey('academics.Class', on_delete=models.CASCADE, related_name='additional_fees', null=True, blank=True)

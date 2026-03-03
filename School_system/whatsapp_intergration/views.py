@@ -126,24 +126,25 @@ def whatsapp_webhook(request):
             return HttpResponse('Error, wrong validation token', status=403)
     
     elif request.method == 'POST':
-        # Handle incoming messages
+        # Handle incoming messages — enqueue to Celery so we return 200 immediately
+        # (Meta's webhook has a 20-second timeout; processing must not block here)
         try:
             data = json.loads(request.body)
-            
-            # Process webhook data
+
             if 'entry' in data:
+                from .tasks import process_whatsapp_message_task
                 for entry in data['entry']:
                     if 'changes' in entry:
                         for change in entry['changes']:
                             if change.get('field') == 'messages':
                                 value = change.get('value', {})
-                                messages = value.get('messages', [])
-                                
-                                for message in messages:
-                                    process_incoming_message(message, value.get('contacts', []))
-            
+                                for message in value.get('messages', []):
+                                    process_whatsapp_message_task.delay(
+                                        message, value.get('contacts', [])
+                                    )
+
             return Response({'status': 'success'})
-            
+
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
@@ -446,42 +447,14 @@ def handle_complaint_submission(whatsapp_user, message_content, session):
 
 
 def send_whatsapp_message(to_phone, message_text):
-    """Send WhatsApp message using Meta Business API"""
-    try:
-        url = f"{settings.WHATSAPP_API_URL}/messages"
-        headers = {
-            'Authorization': f'Bearer {settings.WHATSAPP_ACCESS_TOKEN}',
-            'Content-Type': 'application/json'
-        }
-        
-        data = {
-            'messaging_product': 'whatsapp',
-            'to': to_phone,
-            'type': 'text',
-            'text': {'body': message_text}
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        
-        if response.status_code == 200:
-            # Save outgoing message
-            try:
-                whatsapp_user = WhatsAppUser.objects.get(phone_number=to_phone)
-                WhatsAppMessage.objects.create(
-                    whatsapp_user=whatsapp_user,
-                    message_id=f"out_{whatsapp_user.id}_{response.json().get('messages', [{}])[0].get('id', '')}",
-                    direction='outgoing',
-                    message_type='text',
-                    content=message_text
-                )
-            except:
-                pass
-                
-        return response.status_code == 200
-        
-    except Exception as e:
-        print(f"Error sending WhatsApp message: {str(e)}")
-        return False
+    """
+    Send a WhatsApp message.
+    When called from the normal sync flow (e.g. admin send endpoint), enqueue
+    as a Celery task so the HTTP caller is not blocked by the Meta API call.
+    """
+    from .tasks import send_whatsapp_message_task
+    send_whatsapp_message_task.delay(to_phone, message_text)
+    return True
 
 
 @api_view(['POST'])

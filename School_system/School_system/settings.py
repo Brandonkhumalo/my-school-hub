@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework.authtoken',
+    'django_celery_results',
     'users',
     'academics',
     'staff',
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # serve static files
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -129,6 +131,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # collectstatic output dir (used by whitenoise)
+
+# Serve static files via whitenoise in production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files (User uploads)
 MEDIA_URL = '/media/'
@@ -148,3 +154,29 @@ ALLOWED_HOSTS = ['*']
 WHATSAPP_API_URL = config('WHATSAPP_API_URL', default='')
 WHATSAPP_ACCESS_TOKEN = config('WHATSAPP_ACCESS_TOKEN', default='')
 WHATSAPP_VERIFY_TOKEN = config('WHATSAPP_VERIFY_TOKEN', default='webhook_verify_token')
+
+# ---------------------------------------------------------------------------
+# Celery Configuration
+# ---------------------------------------------------------------------------
+# Broker: Redis (run: redis-server on port 6379, or use Redis Cloud)
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+
+# Store task results in the Django DB (django_celery_results)
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_CACHE_BACKEND = 'default'
+
+# Serialization
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Timezone
+CELERY_TIMEZONE = TIME_ZONE
+
+# Retry configuration defaults
+CELERY_TASK_MAX_RETRIES = 3
+CELERY_TASK_DEFAULT_RETRY_DELAY = 30  # seconds
+
+# Optional: cap task runtime to prevent runaway jobs
+CELERY_TASK_SOFT_TIME_LIMIT = 300   # 5 minutes warning
+CELERY_TASK_TIME_LIMIT = 600        # 10 minutes hard kill

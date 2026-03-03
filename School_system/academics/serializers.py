@@ -19,9 +19,9 @@ class SubjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'description', 'teachers', 'teacher_names']
     
     def get_teachers(self, obj):
-        teachers = obj.teachers.all()
-        return [{'id': t.id, 'name': t.user.get_full_name()} for t in teachers]
-    
+        # prefetch_related('teachers__user') in the view makes this a single query
+        return [{'id': t.id, 'name': t.user.get_full_name()} for t in obj.teachers.all()]
+
     def get_teacher_names(self, obj):
         teachers = obj.teachers.all()
         if teachers:
@@ -44,6 +44,10 @@ class ClassSerializer(serializers.ModelSerializer):
         ]
 
     def get_student_count(self, obj):
+        # If the view annotated the queryset with student_count, use that value.
+        # Otherwise fall back to a direct count (single-object detail views).
+        if hasattr(obj, '_student_count'):
+            return obj._student_count
         return obj.students.count()
 
 

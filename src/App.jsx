@@ -1,81 +1,87 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 
-// Landing Page
-import Index from "./pages/Index";
-import AboutUs from "./pages/AboutUs";
-import ContactUs from "./pages/ContactUs";
-
-// Layout
+// Layout (loaded eagerly — always needed for the authenticated shell)
 import Layout from "./components/Layout";
 
-// Dashboards
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import TeacherDashboard from "./pages/teacher/TeacherDashboard";
-import StudentDashboard from "./pages/student/StudentDashboard";
-import ParentDashboard from "./pages/parent/ParentDashboard";
+// Loading fallback shown while lazy chunks download
+const PageLoader = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+    <div>Loading...</div>
+  </div>
+);
 
-// Teacher Pages
-import TeacherMarks from "./pages/teacher/TeacherMarks";
-import TeacherAttendance from "./pages/teacher/TeacherAttendance";
-import TeacherPerformance from "./pages/teacher/TeacherPerformance";
-import TeacherMessages from "./pages/teacher/TeacherMessages";
-import TeacherHomework from "./pages/teacher/TeacherHomework";
-
-// Admin Pages
-import AdminStudents from "./pages/admin/AdminStudents";
-import AdminTeachers from "./pages/admin/AdminTeachers";
-import AdminParents from "./pages/admin/AdminParents";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminClasses from "./pages/admin/AdminClasses";
-import AdminTimetable from "./pages/admin/AdminTimetable";
-import AdminSubjects from "./pages/admin/AdminSubjects";
-import AdminResults from "./pages/admin/AdminResults";
-import AdminInvoices from "./pages/admin/AdminInvoices";
-import AdminPayments from "./pages/admin/AdminPayments";
-import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
-import AdminComplaints from "./pages/admin/AdminComplaints";
-import AdminParentLinkRequests from "./pages/admin/AdminParentLinkRequests";
-import AdminExtras from "./pages/admin/AdminExtras";
-
-// Student Pages
-import StudentProfile from "./pages/student/StudentProfile";
-import StudentSubmissions from "./pages/student/StudentSubmissions";
-import StudentMarks from "./pages/student/StudentMarks";
-import StudentHomework from "./pages/student/StudentHomework";
-import StudentCalendar from "./pages/student/StudentCalendar";
-import StudentTimetable from "./pages/student/StudentTimetable";
-import StudentTeachers from "./pages/student/StudentTeachers";
-import StudentAnnouncements from "./pages/student/StudentAnnouncements";
-
-// Parent Pages
-import ParentChildren from "./pages/parent/ParentChildren";
-import ParentPerformance from "./pages/parent/ParentPerformance";
-import ParentWeeklyMessages from "./pages/parent/ParentWeeklyMessages";
-import ParentFees from "./pages/parent/ParentFees";
-import ParentMessages from "./pages/parent/ParentMessages";
-import ParentHomework from "./pages/parent/ParentHomework";
+// Landing Pages
+const Index = lazy(() => import("./pages/Index"));
+const AboutUs = lazy(() => import("./pages/AboutUs"));
+const ContactUs = lazy(() => import("./pages/ContactUs"));
 
 // Auth Pages
-import LoginPage from "./pages/auth/Login";
-import AdminLogin from "./pages/auth/AdminLogin";
-import ParentRegister from "./pages/auth/ParentRegister";
-import Logout from "./pages/auth/Logout";
+const LoginPage = lazy(() => import("./pages/auth/Login"));
+const AdminLogin = lazy(() => import("./pages/auth/AdminLogin"));
+const ParentRegister = lazy(() => import("./pages/auth/ParentRegister"));
+const Logout = lazy(() => import("./pages/auth/Logout"));
 
 // Tishanyq Admin Pages
-import TishanyqLogin from "./pages/tishanyq/TishanyqLogin";
-import TishanyqRegister from "./pages/tishanyq/TishanyqRegister";
-import TishanyqDashboard from "./pages/tishanyq/TishanyqDashboard";
-import TishanyqHome from "./pages/tishanyq/TishanyqHome";
-import CreateSchool from "./pages/tishanyq/CreateSchool";
-import SchoolsList from "./pages/tishanyq/SchoolsList";
+const TishanyqLogin = lazy(() => import("./pages/tishanyq/TishanyqLogin"));
+const TishanyqRegister = lazy(() => import("./pages/tishanyq/TishanyqRegister"));
+const TishanyqDashboard = lazy(() => import("./pages/tishanyq/TishanyqDashboard"));
+const TishanyqHome = lazy(() => import("./pages/tishanyq/TishanyqHome"));
+const CreateSchool = lazy(() => import("./pages/tishanyq/CreateSchool"));
+const SchoolsList = lazy(() => import("./pages/tishanyq/SchoolsList"));
+
+// Admin Pages
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminStudents = lazy(() => import("./pages/admin/AdminStudents"));
+const AdminTeachers = lazy(() => import("./pages/admin/AdminTeachers"));
+const AdminParents = lazy(() => import("./pages/admin/AdminParents"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminClasses = lazy(() => import("./pages/admin/AdminClasses"));
+const AdminTimetable = lazy(() => import("./pages/admin/AdminTimetable"));
+const AdminSubjects = lazy(() => import("./pages/admin/AdminSubjects"));
+const AdminResults = lazy(() => import("./pages/admin/AdminResults"));
+const AdminInvoices = lazy(() => import("./pages/admin/AdminInvoices"));
+const AdminPayments = lazy(() => import("./pages/admin/AdminPayments"));
+const AdminAnnouncements = lazy(() => import("./pages/admin/AdminAnnouncements"));
+const AdminComplaints = lazy(() => import("./pages/admin/AdminComplaints"));
+const AdminParentLinkRequests = lazy(() => import("./pages/admin/AdminParentLinkRequests"));
+const AdminExtras = lazy(() => import("./pages/admin/AdminExtras"));
+
+// Teacher Pages
+const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
+const TeacherMarks = lazy(() => import("./pages/teacher/TeacherMarks"));
+const TeacherAttendance = lazy(() => import("./pages/teacher/TeacherAttendance"));
+const TeacherPerformance = lazy(() => import("./pages/teacher/TeacherPerformance"));
+const TeacherMessages = lazy(() => import("./pages/teacher/TeacherMessages"));
+const TeacherHomework = lazy(() => import("./pages/teacher/TeacherHomework"));
+
+// Student Pages
+const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard"));
+const StudentProfile = lazy(() => import("./pages/student/StudentProfile"));
+const StudentSubmissions = lazy(() => import("./pages/student/StudentSubmissions"));
+const StudentMarks = lazy(() => import("./pages/student/StudentMarks"));
+const StudentHomework = lazy(() => import("./pages/student/StudentHomework"));
+const StudentCalendar = lazy(() => import("./pages/student/StudentCalendar"));
+const StudentTimetable = lazy(() => import("./pages/student/StudentTimetable"));
+const StudentTeachers = lazy(() => import("./pages/student/StudentTeachers"));
+const StudentAnnouncements = lazy(() => import("./pages/student/StudentAnnouncements"));
+
+// Parent Pages
+const ParentDashboard = lazy(() => import("./pages/parent/ParentDashboard"));
+const ParentChildren = lazy(() => import("./pages/parent/ParentChildren"));
+const ParentPerformance = lazy(() => import("./pages/parent/ParentPerformance"));
+const ParentWeeklyMessages = lazy(() => import("./pages/parent/ParentWeeklyMessages"));
+const ParentFees = lazy(() => import("./pages/parent/ParentFees"));
+const ParentMessages = lazy(() => import("./pages/parent/ParentMessages"));
+const ParentHomework = lazy(() => import("./pages/parent/ParentHomework"));
 
 // 404
-import NotFound from "./pages/notfound/NotFound";
+const NotFound = lazy(() => import("./pages/notfound/NotFound"));
 
 function App() {
   return (
-    <Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
       {/* Landing page */}
       <Route path="/" element={<Index />} />
       <Route path="/about" element={<AboutUs />} />
@@ -146,7 +152,8 @@ function App() {
         {/* Catch all */}
         <Route path="*" element={<NotFound />} />
       </Route>
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
 

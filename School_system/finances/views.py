@@ -50,13 +50,15 @@ class StudentFeeListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        
+
         # Filter by school first
         if user.school:
-            queryset = StudentFee.objects.filter(student__user__school=user.school)
+            queryset = StudentFee.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'fee_type'
+            )
         else:
             queryset = StudentFee.objects.none()
-        
+
         # Filter by user role
         if user.role == 'student':
             queryset = queryset.filter(student__user=user)
@@ -100,13 +102,15 @@ class PaymentListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        
+
         # Filter by school first
         if user.school:
-            queryset = Payment.objects.filter(student_fee__student__user__school=user.school)
+            queryset = Payment.objects.filter(student_fee__student__user__school=user.school).select_related(
+                'student_fee__student__user', 'student_fee__fee_type', 'processed_by'
+            )
         else:
             queryset = Payment.objects.none()
-        
+
         # Filter by user role
         if user.role == 'student':
             queryset = queryset.filter(student_fee__student__user=user)
@@ -149,7 +153,9 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
         
         # Filter by school first
         if user.school:
-            queryset = Invoice.objects.filter(student__user__school=user.school)
+            queryset = Invoice.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'school'
+            )
         else:
             queryset = Invoice.objects.none()
         
@@ -208,7 +214,10 @@ class FinancialReportListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_generated')
 
     def perform_create(self, serializer):
-        serializer.save(generated_by=self.request.user)
+        report = serializer.save(generated_by=self.request.user)
+        # Enqueue heavy aggregation as a background task — do not block the request
+        from .tasks import generate_financial_report_task
+        generate_financial_report_task.delay(report.id)
 
 
 @api_view(['GET'])
