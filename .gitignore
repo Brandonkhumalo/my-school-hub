@@ -26,3 +26,22 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Django migrations (auto-generated, not tracked)
+*/migrations/*.py
+!*/migrations/__init__.py
+
+# Django runtime files
+db.sqlite3
+*.sqlite3
+/School_system/staticfiles/
+/School_system/media/
+
+# Claude memory
+.claude/
