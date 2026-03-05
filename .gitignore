@@ -2,8 +2,8 @@
 .env
 *.env
 
-# Logs
-logs
+# Logs — keep the directory, ignore log files
+School_system/logs/*.log
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -1,8 +1,12 @@
+import logging
+
+from django.db import models
+from django.db.models import Q
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db import models
-from django.db.models import Q
+
+logger = logging.getLogger(__name__)
 from .models import CustomUser, School
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,

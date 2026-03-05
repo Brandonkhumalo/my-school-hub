@@ -4,16 +4,19 @@ Uses backtracking with MRV (Minimum Remaining Values) heuristic
 
 Constraints enforced:
 1. Teachers don't clash - No teacher teaches two classes at the same time
-2. Classes don't overlap - No class has two subjects at the same time  
+2. Classes don't overlap - No class has two subjects at the same time
 3. Rooms aren't double-booked - No room hosts two classes at the same time
 4. Subject periods per week - Each subject gets required number of periods
 5. Teacher availability - Teachers only assigned during available times
 6. Class-specific scheduling - Uses each class's schedule configuration
 """
 
+import logging
 import random
 from datetime import datetime, timedelta
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 from .models import Class, Subject, Teacher, Timetable
 
 
@@ -356,7 +359,7 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
                 )
                 timetable_entries.append(entry)
             except Exception as e:
-                print(f"Error creating timetable entry: {e}")
+                logger.error("Error creating timetable entry: %s", e, exc_info=True)
                 continue
     
     return True, f"Successfully generated timetable with {len(timetable_entries)} entries", timetable_entries

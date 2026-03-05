@@ -1,12 +1,15 @@
+import json
+import logging
+import requests
+from django.conf import settings
+from django.http import HttpResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.http import HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
-from django.conf import settings
-import json
-import requests
+
+logger = logging.getLogger(__name__)
 from .models import WhatsAppUser, WhatsAppSession, WhatsAppMessage, WhatsAppPayment, WhatsAppMenu
 from .serializers import (
     WhatsAppUserSerializer, WhatsAppSessionSerializer, WhatsAppMessageSerializer,
@@ -191,7 +194,7 @@ def process_incoming_message(message_data, contacts_data):
             send_whatsapp_message(from_phone, response_message)
             
     except Exception as e:
-        print(f"Error processing message: {str(e)}")
+        logger.exception("Error processing incoming WhatsApp message: %s", e)
 
 
 def handle_user_message(whatsapp_user, message_content):

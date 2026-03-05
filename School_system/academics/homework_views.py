@@ -1,8 +1,12 @@
+import logging
+
+from django.http import FileResponse
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
-from django.http import FileResponse
+
+logger = logging.getLogger(__name__)
 from django.shortcuts import get_object_or_404
 from .models import Homework, Teacher, Student, Subject, Class, Parent, ParentChildLink
 import os

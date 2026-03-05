@@ -1,8 +1,12 @@
+import logging
+
+from django.db.models import Avg, Count, Q, Sum
+from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Avg, Count, Q, Sum
-from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 from .models import (
     Parent, Student, ParentChildLink, Result, WeeklyMessage, Attendance

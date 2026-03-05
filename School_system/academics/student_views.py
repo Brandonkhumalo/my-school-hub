@@ -1,8 +1,12 @@
+import logging
+
+from django.db.models import Avg, Count, Q
+from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Avg, Count, Q
-from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 from datetime import timedelta, datetime
 from .models import (
     Student, Subject, Result, Timetable, Teacher, 
