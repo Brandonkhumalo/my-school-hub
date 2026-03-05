@@ -43,7 +43,7 @@ scikit-learn==1.5.2
 numpy==1.26.4
 
 # PayNow Zimbabwe payments
-paynow==1.1.7
+paynow==1.0.8
 
 # Rate limiting
 django-ratelimit==4.1.0
