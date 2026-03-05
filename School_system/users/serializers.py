@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser, School
+from .models import CustomUser, School, SchoolSettings
 from academics.models import Parent
 import random
 import secrets
@@ -222,3 +222,17 @@ class SetWhatsAppPinSerializer(serializers.Serializer):
         if not attrs['pin'].isdigit():
             raise serializers.ValidationError("PIN must contain only numbers.")
         return attrs
+
+
+class SchoolSettingsSerializer(serializers.ModelSerializer):
+    school_name = serializers.CharField(source='school.name', read_only=True)
+
+    class Meta:
+        model = SchoolSettings
+        fields = [
+            'id', 'school_name', 'current_academic_year', 'current_term',
+            'term_start_date', 'term_end_date', 'grading_system', 'school_motto',
+            'currency', 'timezone', 'max_students_per_class', 'late_fee_percentage',
+            'paynow_integration_id', 'paynow_integration_key',
+        ]
+        read_only_fields = ['id', 'school_name']

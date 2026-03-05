@@ -1,24 +1,24 @@
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+# ---------------------------------------------------------------
+# Core settings — loaded from .env
+# ---------------------------------------------------------------
+SECRET_KEY = config('SECRET_KEY')
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-u@d99m4vg$97%d0-y_@4bq#=yjer5%s7i4x21s116b!g&ki@x4'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['*']
+# ALLOWED_HOSTS — Railway auto-assigns a domain; '*' is safe because
+# CORS and authentication guard the actual API.
+# Override with a comma-separated list in .env for stricter production configs.
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
 
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework.authtoken',
     'django_celery_results',
+    'drf_spectacular',
     'users',
     'academics',
     'staff',
@@ -39,7 +40,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # serve static files
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -47,6 +48,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'School_system.middleware.AuditMiddleware',  # audit trail
 ]
 
 ROOT_URLCONF = 'School_system.urls'
@@ -72,36 +74,32 @@ WSGI_APPLICATION = 'School_system.wsgi.application'
 AUTH_USER_MODEL = 'users.CustomUser'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# ---------------------------------------------------------------
+# Database — SQLite by default, PostgreSQL via DATABASE_URL
+# ---------------------------------------------------------------
+_db_url = config('DATABASE_URL', default='')
+if _db_url:
+    DATABASES = {'default': dj_database_url.parse(_db_url, conn_max_age=600)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
 
 # Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# Django REST Framework settings
+# ---------------------------------------------------------------
+# Django REST Framework
+# ---------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'users.token.JWTAuthentication',
@@ -111,83 +109,155 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20
+    'PAGE_SIZE': 20,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# ---------------------------------------------------------------
+# drf-spectacular (Swagger / OpenAPI)
+# ---------------------------------------------------------------
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'My School Hub API',
+    'DESCRIPTION': 'Multi-tenant SaaS school management platform API (v1)',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+TIME_ZONE = 'Africa/Harare'
 USE_I18N = True
-
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
+# ---------------------------------------------------------------
+# Static & Media files
+# ---------------------------------------------------------------
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # collectstatic output dir (used by whitenoise)
-
-# Serve static files via whitenoise in production
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media files (User uploads)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+# ---------------------------------------------------------------
+# CORS — allow the frontend origin (cPanel) + dev origins
+# ---------------------------------------------------------------
+_cors_origins = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:5000,http://127.0.0.1:5000,https://myschoolhub.co.zw,https://www.myschoolhub.co.zw',
+    cast=Csv(),
+)
+CORS_ALLOWED_ORIGINS = list(_cors_origins)
 CORS_ALLOW_CREDENTIALS = True
-ALLOWED_HOSTS = ['*']
+CORS_ALLOW_ALL_ORIGINS = False
 
+# ---------------------------------------------------------------
+# Security Headers
+# Railway terminates SSL at their edge proxy and forwards plain
+# HTTP to the container — do NOT use SECURE_SSL_REDIRECT or every
+# request will loop forever.  Instead trust the X-Forwarded-Proto
+# header Railway injects so Django knows the original request was HTTPS.
+# ---------------------------------------------------------------
+if not DEBUG:
+    # Tell Django that HTTPS was used if Railway's proxy says so
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Do NOT set SECURE_SSL_REDIRECT — Railway handles the redirect
+    SECURE_HSTS_SECONDS = 31536000       # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+
+# ---------------------------------------------------------------
+# Redis Cache — optional
+# If REDIS_URL is set (Railway Redis plugin or external), use Redis.
+# Otherwise fall back to in-memory cache so the app starts without Redis.
+# ---------------------------------------------------------------
+_redis_url = config('REDIS_URL', default='')
+
+if _redis_url:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': _redis_url,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            },
+            'TIMEOUT': 300,
+            'KEY_PREFIX': 'schoolhub',
+        }
+    }
+    # Use Redis for sessions when Redis is available
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
+else:
+    # No Redis — use Django's database-backed sessions and local memory cache
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'schoolhub-locmem',
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+
+# Rate limiting storage (uses Django's cache backend)
+RATELIMIT_USE_CACHE = 'default'
+
+# ---------------------------------------------------------------
 # WhatsApp API settings
+# ---------------------------------------------------------------
 WHATSAPP_API_URL = config('WHATSAPP_API_URL', default='')
 WHATSAPP_ACCESS_TOKEN = config('WHATSAPP_ACCESS_TOKEN', default='')
 WHATSAPP_VERIFY_TOKEN = config('WHATSAPP_VERIFY_TOKEN', default='webhook_verify_token')
+WHATSAPP_APP_SECRET = config('WHATSAPP_APP_SECRET', default='')
 
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------
+# PayNow Zimbabwe
+# ---------------------------------------------------------------
+PAYNOW_INTEGRATION_ID = config('PAYNOW_INTEGRATION_ID', default='')
+PAYNOW_INTEGRATION_KEY = config('PAYNOW_INTEGRATION_KEY', default='')
+PAYNOW_RETURN_URL = config('PAYNOW_RETURN_URL', default='http://localhost:5000/payment/return')
+PAYNOW_RESULT_URL = config('PAYNOW_RESULT_URL', default='')
+
+# ---------------------------------------------------------------
+# Email — Resend (https://resend.com)
+# ---------------------------------------------------------------
+RESEND_API_KEY     = config('ResendEmailApiKey', default='')
+RESEND_FROM_EMAIL  = config('ResendFromEmail', default='noreply@myschoolhub.co.zw')
+RESEND_DESTINATION = config('Destination', default='')
+
+# ---------------------------------------------------------------
 # Celery Configuration
-# ---------------------------------------------------------------------------
-# Broker: Redis (run: redis-server on port 6379, or use Redis Cloud)
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-
-# Store task results in the Django DB (django_celery_results)
-CELERY_RESULT_BACKEND = 'django-db'
+# Falls back to memory broker when Redis is not available so the
+# Django app boots without a Celery worker (tasks run synchronously).
+# ---------------------------------------------------------------
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=_redis_url or 'memory://')
+CELERY_RESULT_BACKEND = 'django-db' if _redis_url else 'cache+memory://'
 CELERY_CACHE_BACKEND = 'default'
-
-# Serialization
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-
-# Timezone
 CELERY_TIMEZONE = TIME_ZONE
-
-# Retry configuration defaults
 CELERY_TASK_MAX_RETRIES = 3
-CELERY_TASK_DEFAULT_RETRY_DELAY = 30  # seconds
+CELERY_TASK_DEFAULT_RETRY_DELAY = 30
+CELERY_TASK_SOFT_TIME_LIMIT = 300
+CELERY_TASK_TIME_LIMIT = 600
 
-# Optional: cap task runtime to prevent runaway jobs
-CELERY_TASK_SOFT_TIME_LIMIT = 300   # 5 minutes warning
-CELERY_TASK_TIME_LIMIT = 600        # 10 minutes hard kill
-
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------
 # Logging
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------
+_log_level = 'DEBUG' if DEBUG else 'INFO'
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-
     'formatters': {
         'verbose': {
             'format': '[{asctime}] {levelname} {name} {process:d} {thread:d} — {message}',
@@ -200,74 +270,42 @@ LOGGING = {
             'datefmt': '%Y-%m-%d %H:%M:%S',
         },
     },
-
     'handlers': {
-        # Always log to console (Docker / systemd captures stdout/stderr)
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
-        # Rotating file for all INFO+ messages
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'app.log',
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'formatter': 'verbose',
         },
-        # Separate rotating file for errors only
         'error_file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'errors.log',
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'maxBytes': 10 * 1024 * 1024,
             'backupCount': 5,
             'level': 'ERROR',
             'formatter': 'verbose',
         },
     },
-
     'root': {
         'handlers': ['console', 'file', 'error_file'],
         'level': 'INFO',
     },
-
     'loggers': {
-        # Django internals — warnings and above only
         'django': {
             'handlers': ['console', 'file', 'error_file'],
             'level': 'WARNING',
             'propagate': False,
         },
-        # Our apps — DEBUG in dev, INFO in production
-        'academics': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'finances': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'users': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'staff': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'whatsapp_intergration': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        'celery': {
-            'handlers': ['console', 'file', 'error_file'],
-            'level': 'INFO',
-            'propagate': False,
-        },
+        'academics': {'handlers': ['console', 'file', 'error_file'], 'level': _log_level, 'propagate': False},
+        'finances': {'handlers': ['console', 'file', 'error_file'], 'level': _log_level, 'propagate': False},
+        'users': {'handlers': ['console', 'file', 'error_file'], 'level': _log_level, 'propagate': False},
+        'staff': {'handlers': ['console', 'file', 'error_file'], 'level': _log_level, 'propagate': False},
+        'whatsapp_intergration': {'handlers': ['console', 'file', 'error_file'], 'level': _log_level, 'propagate': False},
+        'celery': {'handlers': ['console', 'file', 'error_file'], 'level': 'INFO', 'propagate': False},
     },
 }

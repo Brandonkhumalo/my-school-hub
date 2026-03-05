@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
-from users.models import TenantAwareManager
+from django.utils import timezone
+from users.models import TenantAwareManager, TenantSoftDeleteManager
 
 
 class Subject(models.Model):
@@ -8,11 +9,25 @@ class Subject(models.Model):
     code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True, related_name='subjects')
+    # Grade weighting for CA vs Final Exam (must sum to 1.0)
+    ca_weight = models.FloatField(default=0.4, help_text='Continuous Assessment weight (e.g. 0.4 = 40%)')
+    exam_weight = models.FloatField(default=0.6, help_text='Final Exam weight (e.g. 0.6 = 60%)')
+    # Soft delete
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
-    objects = TenantAwareManager()
+    objects = TenantSoftDeleteManager()
 
     class Meta:
         unique_together = ('code', 'school')
+
+    def delete(self, using=None, keep_parents=False):
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.save()
+
+    def hard_delete(self):
+        super().delete()
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -97,9 +112,10 @@ class Result(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='results', db_index=True)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, db_index=True)
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, db_index=True)
-    exam_type = models.CharField(max_length=50)  # Midterm, Final, Quiz, etc.
+    exam_type = models.CharField(max_length=50)  # Midterm, Final, Quiz, CA, etc.
     score = models.FloatField()
     max_score = models.FloatField()
+    weight = models.FloatField(default=1.0, help_text='Weight for weighted average (e.g. 0.4 for CA, 0.6 for Exam)')
     date_recorded = models.DateTimeField(auto_now_add=True)
     academic_term = models.CharField(max_length=50, db_index=True)
     academic_year = models.CharField(max_length=20, db_index=True)
@@ -108,6 +124,12 @@ class Result(models.Model):
         indexes = [
             models.Index(fields=['student', 'academic_year', 'academic_term']),
         ]
+
+    @property
+    def percentage(self):
+        if self.max_score and self.max_score > 0:
+            return round((self.score / self.max_score) * 100, 2)
+        return 0.0
 
     def __str__(self):
         return f"{self.student.user.full_name} - {self.subject.name}: {self.score}/{self.max_score}"
@@ -274,9 +296,38 @@ class Homework(models.Model):
     file = models.FileField(upload_to=homework_file_path, blank=True, null=True)
     due_date = models.DateField()
     date_created = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-date_created']
-    
+
     def __str__(self):
         return f"{self.subject.name} Homework - {self.title} ({self.assigned_class.name})"
+
+
+def submission_file_path(instance, filename):
+    return f'submissions/{instance.assignment.subject.code}/{filename}'
+
+
+class AssignmentSubmission(models.Model):
+    """Student submission for an Assignment."""
+    STATUS_CHOICES = [
+        ('submitted', 'Submitted'),
+        ('late', 'Late Submission'),
+        ('graded', 'Graded'),
+    ]
+
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='submissions')
+    submitted_file = models.FileField(upload_to=submission_file_path, blank=True, null=True)
+    text_submission = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    grade = models.FloatField(null=True, blank=True)
+    feedback = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
+
+    class Meta:
+        unique_together = ('assignment', 'student')
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} → {self.assignment.title}"

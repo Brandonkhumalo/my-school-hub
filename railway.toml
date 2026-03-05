@@ -1,0 +1,18 @@
+# ──────────────────────────────────────────────────────────────
+# MySchoolHub — Railway configuration
+# https://docs.railway.com/reference/config-as-code
+# ──────────────────────────────────────────────────────────────
+
+[build]
+# Use the root-level Dockerfile (build context = repo root)
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway health check — verifies the API is responding
+healthcheckPath = "/api/v1/"
+healthcheckTimeout = 300
+
+# Restart on failure (not on every deploy)
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

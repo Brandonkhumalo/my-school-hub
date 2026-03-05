@@ -1,4 +1,5 @@
 import logging
+import os
 
 from django.http import FileResponse
 from rest_framework import status, permissions
@@ -9,7 +10,8 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from django.shortcuts import get_object_or_404
 from .models import Homework, Teacher, Student, Subject, Class, Parent, ParentChildLink
-import os
+
+from email_service import send_homework_uploaded_email, get_parents_of_student
 
 
 @api_view(['GET'])
@@ -107,6 +109,37 @@ def teacher_create_homework(request):
             file=file
         )
         
+        # Notify parents of all students in the class
+        try:
+            school = request.user.school
+            school_name = school.name if school else "Your School"
+            teacher_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+            students_in_class = Student.objects.filter(
+                student_class=assigned_class
+            ).select_related('user', 'student_class')
+            notified = set()
+            for student in students_in_class:
+                student_name = f"{student.user.first_name} {student.user.last_name}".strip()
+                class_name = assigned_class.name
+                for p in get_parents_of_student(student):
+                    if p['email'] in notified:
+                        continue
+                    notified.add(p['email'])
+                    send_homework_uploaded_email(
+                        parent_email=p['email'],
+                        parent_name=p['name'],
+                        school_name=school_name,
+                        student_name=student_name,
+                        class_name=class_name,
+                        teacher_name=teacher_name,
+                        subject_name=subject.name,
+                        homework_title=title,
+                        description=description,
+                        due_date=str(due_date),
+                    )
+        except Exception as exc:
+            logger.error("Homework email notification failed: %s", exc)
+
         return Response({
             'message': 'Homework created successfully',
             'id': homework.id,

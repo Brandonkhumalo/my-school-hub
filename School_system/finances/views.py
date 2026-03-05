@@ -7,6 +7,13 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
+
+from email_service import (
+    send_payment_received_email,
+    send_fee_assigned_to_student_email,
+    send_grade_fee_notice_email,
+    get_parents_of_student,
+)
 from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
 from academics.models import Student, Class
 from .serializers import (
@@ -137,7 +144,26 @@ class PaymentListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-payment_date')
 
     def perform_create(self, serializer):
-        serializer.save(processed_by=self.request.user)
+        payment = serializer.save(processed_by=self.request.user)
+        # Notify parents of the student that a payment was recorded
+        try:
+            student = payment.student_fee.student
+            school_name = student.user.school.name if student.user.school else "Your School"
+            class_name = student.student_class.name if student.student_class else "N/A"
+            student_name = f"{student.user.first_name} {student.user.last_name}".strip()
+            for p in get_parents_of_student(student):
+                send_payment_received_email(
+                    parent_email=p['email'],
+                    parent_name=p['name'],
+                    school_name=school_name,
+                    student_name=student_name,
+                    class_name=class_name,
+                    amount_usd=str(payment.amount),
+                    payment_method=payment.payment_method or "cash",
+                    reference=payment.transaction_id or "",
+                )
+        except Exception as exc:
+            logger.error("Payment email notification failed: %s", exc)
 
 
 class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -363,7 +389,37 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can create school fees")
-        serializer.save(created_by=self.request.user, school=self.request.user.school)
+        fee = serializer.save(created_by=self.request.user, school=self.request.user.school)
+        # Notify parents of all students in this grade
+        try:
+            from academics.models import Student
+            school = self.request.user.school
+            school_name = school.name if school else "Your School"
+            students_in_grade = Student.objects.filter(
+                user__school=school,
+                student_class__grade_level=fee.grade_level,
+            ).select_related('user', 'student_class')
+            for student in students_in_grade:
+                student_name = f"{student.user.first_name} {student.user.last_name}".strip()
+                class_name = student.student_class.name if student.student_class else "N/A"
+                for p in get_parents_of_student(student):
+                    send_grade_fee_notice_email(
+                        parent_email=p['email'],
+                        parent_name=p['name'],
+                        school_name=school_name,
+                        student_name=student_name,
+                        class_name=class_name,
+                        grade_level=str(fee.grade_level),
+                        academic_year=fee.academic_year or "",
+                        academic_term=fee.academic_term or "",
+                        tuition_fee=str(fee.tuition_fee or 0),
+                        levy_fee=str(fee.levy_fee or 0),
+                        sports_fee=str(fee.sports_fee or 0),
+                        computer_fee=str(fee.computer_fee or 0),
+                        other_fees=str(fee.other_fees or 0),
+                    )
+        except Exception as exc:
+            logger.error("Grade fee notice email failed: %s", exc)
 
 
 class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -524,6 +580,28 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(academic_year=academic_year)
             
         return queryset.order_by('-date_created')
+
+    def perform_create(self, serializer):
+        record = serializer.save()
+        # Notify parents that a fee has been assigned to their child
+        try:
+            student = record.student
+            school_name = student.user.school.name if student.user.school else "Your School"
+            class_name = student.student_class.name if student.student_class else "N/A"
+            student_name = f"{student.user.first_name} {student.user.last_name}".strip()
+            for p in get_parents_of_student(student):
+                send_fee_assigned_to_student_email(
+                    parent_email=p['email'],
+                    parent_name=p['name'],
+                    school_name=school_name,
+                    student_name=student_name,
+                    class_name=class_name,
+                    amount_usd=str(record.total_amount_due),
+                    academic_year=record.academic_year or "",
+                    payment_type=record.payment_type or "one_term",
+                )
+        except Exception as exc:
+            logger.error("Fee assignment email notification failed: %s", exc)
 
 
 class StudentPaymentRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -1124,7 +1202,7 @@ class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = AdditionalFee.objects.all()
     serializer_class = AdditionalFeeSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get_queryset(self):
         user = self.request.user
         if user.role not in ['admin', 'accountant']:
@@ -1132,3 +1210,209 @@ class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.school:
             return AdditionalFee.objects.filter(school=user.school)
         return AdditionalFee.objects.none()
+
+
+# ---------------------------------------------------------------
+# PayNow Zimbabwe Payments
+# ---------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def paynow_initiate_payment(request):
+    """
+    Initiate a PayNow payment for a student fee or invoice.
+    Body: { invoice_id or record_id, amount, mobile_number (optional), method: ecocash|onemoney|web }
+    """
+    if request.user.role not in ('parent', 'student', 'admin', 'accountant'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    from .paynow_service import initiate_web_payment, initiate_mobile_payment
+    from users.models import SchoolSettings
+
+    # Fetch per-school PayNow credentials
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with your account.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        school_settings = SchoolSettings.objects.get(school=school)
+        integration_id = school_settings.paynow_integration_id
+        integration_key = school_settings.paynow_integration_key
+    except SchoolSettings.DoesNotExist:
+        integration_id = ''
+        integration_key = ''
+
+    if not integration_id or not integration_key:
+        return Response(
+            {'error': 'PayNow credentials are not configured for your school. Please contact your administrator.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    amount = request.data.get('amount')
+    description = request.data.get('description', 'School Fees')
+    mobile_number = request.data.get('mobile_number', '').strip()
+    method = request.data.get('method', 'web').lower()
+    reference = request.data.get('reference', f'SchoolFees-{request.user.student_number or request.user.id}')
+    email = request.user.email
+
+    if not amount or float(amount) <= 0:
+        return Response({'error': 'Amount must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    items = [{'description': description, 'amount': float(amount)}]
+
+    if method in ('ecocash', 'onemoney', 'innbucks'):
+        if not mobile_number:
+            return Response({'error': 'Mobile number is required for mobile payments.'}, status=status.HTTP_400_BAD_REQUEST)
+        result = initiate_mobile_payment(reference, email, items, mobile_number, integration_id, integration_key, method)
+    else:
+        result = initiate_web_payment(reference, email, items, integration_id, integration_key)
+
+    if result['success']:
+        return Response({
+            'success': True,
+            'redirect_url': result.get('redirect_url'),
+            'poll_url': result.get('poll_url'),
+            'instructions': result.get('instructions'),
+            'message': 'Payment initiated. Follow the link to complete payment.' if method == 'web'
+                       else f'Check your {method.upper()} prompt to approve payment.',
+        })
+    return Response({'error': result.get('error', 'Payment initiation failed.')}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])  # PayNow server callback — no auth token
+def paynow_result_callback(request):
+    """
+    Server-to-server result URL callback from PayNow.
+    Updates the payment record status based on PayNow response.
+    """
+    reference = request.data.get('reference', '')
+    paynow_reference = request.data.get('paynowreference', '')
+    amount = request.data.get('amount', 0)
+    status_value = request.data.get('status', '').lower()
+
+    logger.info('PayNow callback: ref=%s paynow_ref=%s status=%s amount=%s',
+                reference, paynow_reference, status_value, amount)
+
+    # Mark payment as completed if paid
+    if status_value in ('paid', 'awaiting delivery'):
+        try:
+            from .models import StudentPaymentRecord
+            # Try to find matching record by reference
+            record = StudentPaymentRecord.objects.filter(
+                student__user__school__isnull=False
+            ).filter(
+                # Store poll_url or paynow reference in notes field
+                notes__icontains=paynow_reference
+            ).first()
+            if record:
+                record.payment_status = 'fully paid'
+                record.save()
+                # Notify parents of successful PayNow payment
+                try:
+                    student = record.student
+                    school_name = student.user.school.name if student.user.school else "Your School"
+                    class_name = student.student_class.name if student.student_class else "N/A"
+                    student_name = f"{student.user.first_name} {student.user.last_name}".strip()
+                    for p in get_parents_of_student(student):
+                        send_payment_received_email(
+                            parent_email=p['email'],
+                            parent_name=p['name'],
+                            school_name=school_name,
+                            student_name=student_name,
+                            class_name=class_name,
+                            amount_usd=str(amount),
+                            payment_method="PayNow",
+                            reference=paynow_reference,
+                        )
+                except Exception as email_exc:
+                    logger.error("PayNow payment email failed: %s", email_exc)
+        except Exception as exc:
+            logger.error('PayNow callback update failed: %s', exc)
+
+    return Response({'status': 'received'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def paynow_check_status(request):
+    """Check payment status by poll URL."""
+    poll_url = request.query_params.get('poll_url')
+    if not poll_url:
+        return Response({'error': 'poll_url is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .paynow_service import check_payment_status
+    from users.models import SchoolSettings
+
+    school = request.user.school
+    try:
+        school_settings = SchoolSettings.objects.get(school=school)
+        integration_id = school_settings.paynow_integration_id
+        integration_key = school_settings.paynow_integration_key
+    except (SchoolSettings.DoesNotExist, AttributeError):
+        return Response({'error': 'PayNow not configured for your school.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    result = check_payment_status(poll_url, integration_id, integration_key)
+    return Response(result)
+
+
+# ---------------------------------------------------------------
+# Bulk CSV Import — Fees
+# ---------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_fees(request):
+    """
+    Import student fees from a CSV file.
+    CSV columns: student_number, fee_type_name, amount, academic_year, academic_term
+    """
+    import csv
+    import io
+
+    if request.user.role not in ('admin', 'accountant'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    csv_file = request.FILES.get('file')
+    if not csv_file:
+        return Response({'error': 'No CSV file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    from .models import StudentFee, FeeType
+    from academics.models import Student
+
+    decoded = csv_file.read().decode('utf-8')
+    reader = csv.DictReader(io.StringIO(decoded))
+
+    created_count = 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):
+        try:
+            student_number = row.get('student_number', '').strip()
+            fee_type_name = row.get('fee_type_name', '').strip()
+            amount = float(row.get('amount', 0))
+            academic_year = row.get('academic_year', '').strip()
+            academic_term = row.get('academic_term', '').strip()
+
+            student = Student.objects.get(user__student_number=student_number, user__school=school)
+            fee_type, _ = FeeType.objects.get_or_create(
+                name=fee_type_name, school=school,
+                defaults={'amount': amount, 'academic_year': academic_year}
+            )
+
+            StudentFee.objects.get_or_create(
+                student=student, fee_type=fee_type,
+                defaults={'amount': amount, 'academic_year': academic_year, 'academic_term': academic_term}
+            )
+            created_count += 1
+        except Student.DoesNotExist:
+            errors.append({'row': i, 'error': f"Student '{row.get('student_number')}' not found."})
+        except Exception as exc:
+            errors.append({'row': i, 'error': str(exc)})
+
+    return Response({
+        'created': created_count,
+        'errors': errors,
+        'message': f'Imported {created_count} fee records with {len(errors)} errors.'
+    })

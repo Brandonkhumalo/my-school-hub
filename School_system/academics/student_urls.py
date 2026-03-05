@@ -11,6 +11,9 @@ urlpatterns = [
     path('teachers/', student_views.student_teachers, name='student-teachers'),
     path('announcements/', student_views.student_announcements, name='student-announcements'),
     
+    path('attendance/', student_views.student_attendance, name='student-attendance'),
+    path('assignments/<int:assignment_id>/submit/', student_views.student_assignment_submission, name='student-assignment-submit'),
+
     path('homework/', homework_views.student_homework_list, name='student-homework-list'),
     path('homework/<int:homework_id>/download/', homework_views.student_download_homework_file, name='student-download-homework'),
 ]

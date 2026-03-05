@@ -27,6 +27,8 @@ function Layout() {
       { path: '/admin/complaints', icon: 'fa-exclamation-circle', title: 'Complaints' },
       { path: '/admin/users', icon: 'fa-user-cog', title: 'User Management' },
       { path: '/admin/extras', icon: 'fa-cogs', title: 'Extras' },
+      { path: '/admin/staff', icon: 'fa-id-badge', title: 'Staff / HR' },
+      { path: '/admin/settings', icon: 'fa-sliders-h', title: 'School Settings' },
     ],
     teacher: [
       { path: '/teacher', icon: 'fa-home', title: 'Dashboard' },
@@ -46,6 +48,7 @@ function Layout() {
       { path: '/student/timetable', icon: 'fa-clock', title: 'Timetable' },
       { path: '/student/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },
       { path: '/student/announcements', icon: 'fa-bullhorn', title: 'Announcements' },
+      { path: '/student/attendance', icon: 'fa-calendar-check', title: 'Attendance' },
     ],
     parent: [
       { path: '/parent', icon: 'fa-home', title: 'Dashboard' },
@@ -61,6 +64,11 @@ function Layout() {
     ],
     hr: [
       { path: '/hr', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/hr/staff', icon: 'fa-users', title: 'Staff' },
+      { path: '/hr/leaves', icon: 'fa-calendar-minus', title: 'Leave Requests' },
+      { path: '/hr/payroll', icon: 'fa-money-bill-wave', title: 'Payroll' },
+      { path: '/hr/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
+      { path: '/hr/meetings', icon: 'fa-handshake', title: 'Meetings' },
     ],
   };
 

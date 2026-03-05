@@ -28,3 +28,22 @@ gunicorn==23.0.0
 
 # Database (PostgreSQL for production; SQLite used in dev)
 psycopg2-binary==2.9.7
+
+# Caching (Redis backend for Django cache framework)
+django-redis==5.4.0
+
+# API Documentation
+drf-spectacular==0.28.0
+
+# PDF generation (report cards)
+reportlab==4.2.2
+
+# AI / Machine Learning (grade predictions)
+scikit-learn==1.5.2
+numpy==1.26.4
+
+# PayNow Zimbabwe payments
+paynow==1.1.7
+
+# Rate limiting
+django-ratelimit==4.1.0

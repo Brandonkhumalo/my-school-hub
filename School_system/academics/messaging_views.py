@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 from .serializers import ParentTeacherMessageSerializer, TeacherSerializer
 from django.utils import timezone
 
+from email_service import send_teacher_message_email
+
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -118,7 +120,37 @@ def send_message(request):
             student_id=student_id,
             parent_message_id=parent_message_id
         )
-        
+
+        # Email the parent when a teacher sends them a message
+        if user.role == 'teacher' and recipient.role == 'parent':
+            try:
+                teacher_name = f"{user.first_name} {user.last_name}".strip() or user.email
+                parent_name = f"{recipient.first_name} {recipient.last_name}".strip() or recipient.email
+                school = user.school
+                school_name = school.name if school else "Your School"
+                # Determine student name and class from the linked student
+                student_name, class_name = "Your Child", "N/A"
+                if student_id:
+                    try:
+                        s = Student.objects.select_related('user', 'student_class').get(id=student_id)
+                        student_name = f"{s.user.first_name} {s.user.last_name}".strip()
+                        class_name = s.student_class.name if s.student_class else "N/A"
+                    except Student.DoesNotExist:
+                        pass
+                if recipient.email:
+                    send_teacher_message_email(
+                        parent_email=recipient.email,
+                        parent_name=parent_name,
+                        school_name=school_name,
+                        student_name=student_name,
+                        class_name=class_name,
+                        teacher_name=teacher_name,
+                        subject_line=subject,
+                        message_body=message_text,
+                    )
+            except Exception as exc:
+                logger.error("Teacher message email notification failed: %s", exc)
+
         serializer = ParentTeacherMessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
         

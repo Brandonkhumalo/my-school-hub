@@ -1,0 +1,46 @@
+{
+  "name": "MySchoolHub — School Management Zimbabwe",
+  "short_name": "MySchoolHub",
+  "description": "Zimbabwe's all-in-one school management system. Students, fees, results, timetables, attendance, and WhatsApp parent alerts — built for ZIMSEC and Cambridge schools.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#172554",
+  "theme_color": "#172554",
+  "orientation": "portrait-primary",
+  "lang": "en-ZW",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Student Dashboard",
+      "short_name": "Students",
+      "description": "Access student portal",
+      "url": "/student",
+      "icons": [{ "src": "/logo.png", "sizes": "any" }]
+    },
+    {
+      "name": "Parent Portal",
+      "short_name": "Parents",
+      "description": "Track your child's progress",
+      "url": "/parent",
+      "icons": [{ "src": "/logo.png", "sizes": "any" }]
+    },
+    {
+      "name": "Admin Dashboard",
+      "short_name": "Admin",
+      "description": "School administration",
+      "url": "/admin-portal",
+      "icons": [{ "src": "/logo.png", "sizes": "any" }]
+    }
+  ]
+}

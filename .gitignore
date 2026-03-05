@@ -1,6 +1,8 @@
-# Environment variables — never commit
+# Environment variables — never commit secrets
 .env
 *.env
+# Allow the production env file (only contains the public Railway URL, no secrets)
+!.env.production
 
 # Logs — keep the directory, ignore log files
 School_system/logs/*.log

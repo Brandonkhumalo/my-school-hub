@@ -9,6 +9,9 @@ urlpatterns = [
     path('attendance/register/', teacher_views.attendance_register, name='attendance-register'),
     path('attendance/mark/', teacher_views.mark_attendance, name='mark-attendance'),
     
+    path('assignments/<int:assignment_id>/submissions/', teacher_views.assignment_submissions, name='assignment-submissions'),
+    path('submissions/<int:submission_id>/grade/', teacher_views.grade_submission, name='grade-submission'),
+
     path('homework/', homework_views.teacher_homework_list, name='teacher-homework-list'),
     path('homework/create/', homework_views.teacher_create_homework, name='teacher-create-homework'),
     path('homework/<int:homework_id>/delete/', homework_views.teacher_delete_homework, name='teacher-delete-homework'),

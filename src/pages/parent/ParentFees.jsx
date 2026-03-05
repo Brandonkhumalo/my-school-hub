@@ -11,6 +11,10 @@ export default function ParentFees() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paynowMethod, setPaynowMethod] = useState("web"); // web | ecocash | onemoney | innbucks
+  const [paynowPhone, setPaynowPhone] = useState("");
+  const [paynowLoading, setPaynowLoading] = useState(false);
+  const [paynowError, setPaynowError] = useState("");
   const [invoices, setInvoices] = useState([]);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -461,43 +465,92 @@ export default function ParentFees() {
 
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fas fa-credit-card text-3xl text-blue-600"></i>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">Demo Payment Mode</h3>
-                <p className="text-gray-600">
-                  This is a demonstration interface for school fees payment.
-                </p>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800">Pay with PayNow</h3>
+                <button onClick={() => { setShowPaymentModal(false); setPaynowError(""); }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
               </div>
 
-              <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-                <p className="text-blue-700 text-sm">
-                  <i className="fas fa-info-circle mr-2"></i>
-                  In a live system, this would integrate with payment gateways like Stripe, PayPal, or local payment providers.
-                </p>
-              </div>
-
-              <div className="space-y-3 mb-6">
+              <div className="space-y-2 mb-5 bg-gray-50 rounded p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Child:</span>
-                  <span className="font-semibold text-gray-800">
-                    {selectedChild?.name} {selectedChild?.surname}
-                  </span>
+                  <span className="text-gray-500">Child:</span>
+                  <span className="font-medium">{selectedChild?.name} {selectedChild?.surname}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Outstanding Amount:</span>
+                  <span className="text-gray-500">Outstanding:</span>
                   <span className="font-bold text-orange-600">${feesData?.outstanding || 0}</span>
                 </div>
               </div>
 
+              {paynowError && (
+                <div className="bg-red-100 text-red-700 p-2 rounded text-sm mb-3">{paynowError}</div>
+              )}
+
+              {/* Payment method selector */}
+              <div className="mb-4">
+                <p className="text-xs text-gray-500 mb-2">Payment method</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: "web", label: "Card / Bank", icon: "fa-credit-card" },
+                    { value: "ecocash", label: "EcoCash", icon: "fa-mobile-alt" },
+                    { value: "onemoney", label: "OneMoney", icon: "fa-mobile-alt" },
+                    { value: "innbucks", label: "InnBucks", icon: "fa-wallet" },
+                  ].map((opt) => (
+                    <button key={opt.value} type="button"
+                      onClick={() => setPaynowMethod(opt.value)}
+                      className={`flex items-center gap-2 p-2 rounded border text-sm transition
+                        ${paynowMethod === opt.value
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-gray-200 hover:border-gray-300 text-gray-600"}`}>
+                      <i className={`fas ${opt.icon}`}></i>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {paynowMethod !== "web" && (
+                <div className="mb-4">
+                  <label className="text-xs text-gray-500 mb-1 block">Mobile Number</label>
+                  <input type="tel" placeholder="07xxxxxxxx"
+                    className="border rounded w-full p-2 text-sm"
+                    value={paynowPhone}
+                    onChange={(e) => setPaynowPhone(e.target.value)} />
+                </div>
+              )}
+
               <button
-                onClick={() => setShowPaymentModal(false)}
-                className="w-full px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
-              >
-                Close
+                disabled={paynowLoading || (!paynowPhone && paynowMethod !== "web")}
+                onClick={async () => {
+                  setPaynowLoading(true); setPaynowError("");
+                  try {
+                    const payload = {
+                      amount: feesData?.outstanding || 0,
+                      email: user?.email || "parent@school.com",
+                      reference: `FEES-${selectedChild?.id}-${Date.now()}`,
+                      method: paynowMethod,
+                    };
+                    if (paynowMethod !== "web") payload.phone = paynowPhone;
+                    const res = await apiService.initiatePaynowPayment(payload);
+                    if (res.redirect_url) {
+                      window.location.href = res.redirect_url;
+                    } else if (res.instructions) {
+                      alert(res.instructions);
+                      setShowPaymentModal(false);
+                    }
+                  } catch (e) {
+                    setPaynowError(e.message || "Payment initiation failed");
+                  } finally {
+                    setPaynowLoading(false);
+                  }
+                }}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white py-3 rounded-lg font-semibold transition">
+                {paynowLoading ? "Processing..." : `Pay $${feesData?.outstanding || 0} via PayNow`}
               </button>
+              <p className="text-center text-xs text-gray-400 mt-2">
+                Powered by PayNow Zimbabwe — secured & encrypted
+              </p>
             </div>
           </div>
         )}

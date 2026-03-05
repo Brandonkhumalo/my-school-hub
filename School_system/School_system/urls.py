@@ -5,58 +5,71 @@ from django.conf.urls.static import static
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_root(request):
-    """API Root endpoint with available endpoints"""
     return Response({
-        'message': 'School Management System API',
+        'message': 'My School Hub API',
         'version': '1.0',
+        'docs': '/api/v1/docs/',
+        'schema': '/api/v1/schema/',
         'endpoints': {
-            'authentication': '/api/auth/',
-            'academics': '/api/academics/',
-            'finances': '/api/finances/',
-            'whatsapp': '/api/whatsapp/',
+            'authentication': '/api/v1/auth/',
+            'academics': '/api/v1/academics/',
+            'finances': '/api/v1/finances/',
+            'staff': '/api/v1/staff/',
             'admin': '/admin/'
-        },
-        'documentation': 'Contact administrator for API documentation'
+        }
     })
 
 
 urlpatterns = [
     # Admin interface
     path('admin/', admin.site.urls),
-    
+
     # API Root
-    path('api/', api_root, name='api-root'),
+    path('api/v1/', api_root, name='api-root'),
     path('', api_root, name='home'),
-    
+
+    # OpenAPI / Swagger
+    path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/v1/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
     # Authentication and User Management
-    path('api/auth/', include('users.urls')),
-    
+    path('api/v1/auth/', include('users.urls')),
+
     # Academic Management
-    path('api/academics/', include('academics.urls')),
-    
+    path('api/v1/academics/', include('academics.urls')),
+
     # Financial Management
-    path('api/finances/', include('finances.urls')),
-    
+    path('api/v1/finances/', include('finances.urls')),
+
+    # Staff / HR Management
+    path('api/v1/staff/', include('staff.urls')),
+
     # WhatsApp Integration (temporarily disabled)
-    # path('api/whatsapp/', include('whatsapp_intergration.urls')),
-    
+    # path('api/v1/whatsapp/', include('whatsapp_intergration.urls')),
+
     # Student Portal
-    path('api/students/', include('academics.student_urls')),
-    
+    path('api/v1/students/', include('academics.student_urls')),
+
     # Parent Portal
-    path('api/parents/', include('academics.parent_urls')),
-    
+    path('api/v1/parents/', include('academics.parent_urls')),
+
     # Teacher Portal
-    path('api/teachers/', include('academics.teacher_urls')),
-    
+    path('api/v1/teachers/', include('academics.teacher_urls')),
+
     # Messaging System (Parent-Teacher Communication)
-    path('api/', include('academics.messaging_urls')),
+    path('api/v1/', include('academics.messaging_urls')),
+
+    # Homework endpoints
+    path('api/v1/', include('academics.homework_urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve uploaded media files in all environments
+# (Railway uses ephemeral storage — for persistent files use Railway Volumes or S3)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

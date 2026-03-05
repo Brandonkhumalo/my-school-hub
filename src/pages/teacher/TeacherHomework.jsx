@@ -12,6 +12,15 @@ export default function TeacherHomework() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+
+  // Submission grading state
+  const [submissionsModal, setSubmissionsModal] = useState(null); // homework being viewed
+  const [submissions, setSubmissions] = useState([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [gradeModal, setGradeModal] = useState(null); // submission being graded
+  const [gradeValue, setGradeValue] = useState("");
+  const [gradeFeedback, setGradeFeedback] = useState("");
+  const [gradingInProgress, setGradingInProgress] = useState(false);
   
   const [formData, setFormData] = useState({
     title: "",
@@ -152,6 +161,46 @@ export default function TeacherHomework() {
     } catch (error) {
       console.error("Error downloading file:", error);
       alert("Failed to download file");
+    }
+  };
+
+  const openSubmissions = async (hw) => {
+    setSubmissionsModal(hw);
+    setSubmissions([]);
+    setLoadingSubmissions(true);
+    try {
+      const data = await apiService.getAssignmentSubmissions(hw.id);
+      setSubmissions(data.submissions || []);
+    } catch {
+      setSubmissions([]);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  const handleGrade = async () => {
+    if (!gradeModal) return;
+    setGradingInProgress(true);
+    try {
+      await apiService.gradeSubmission(gradeModal.id, {
+        grade: gradeValue,
+        feedback: gradeFeedback,
+      });
+      // Refresh submissions list
+      setSubmissions((prev) =>
+        prev.map((s) =>
+          s.id === gradeModal.id
+            ? { ...s, grade: gradeValue, feedback: gradeFeedback, status: "graded" }
+            : s
+        )
+      );
+      setGradeModal(null);
+      setGradeValue("");
+      setGradeFeedback("");
+    } catch {
+      alert("Failed to save grade");
+    } finally {
+      setGradingInProgress(false);
     }
   };
 
@@ -362,25 +411,33 @@ export default function TeacherHomework() {
                     </div>
                   )}
                   
-                  <div className="flex items-center justify-between pt-3 border-t">
-                    {hw.has_file ? (
+                  <div className="pt-3 border-t space-y-2">
+                    <div className="flex items-center justify-between">
+                      {hw.has_file ? (
+                        <button
+                          onClick={() => handleDownload(hw.id, hw.file_name)}
+                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        >
+                          <i className="fas fa-download"></i>
+                          {hw.file_name}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-sm">No file attached</span>
+                      )}
                       <button
-                        onClick={() => handleDownload(hw.id, hw.file_name)}
-                        className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        onClick={() => handleDelete(hw.id)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Delete homework"
                       >
-                        <i className="fas fa-download"></i>
-                        {hw.file_name}
+                        <i className="fas fa-trash"></i>
                       </button>
-                    ) : (
-                      <span className="text-gray-400 text-sm">No file attached</span>
-                    )}
-                    
+                    </div>
                     <button
-                      onClick={() => handleDelete(hw.id)}
-                      className="text-red-500 hover:text-red-700"
-                      title="Delete homework"
+                      onClick={() => openSubmissions(hw)}
+                      className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm rounded flex items-center justify-center gap-2 transition"
                     >
-                      <i className="fas fa-trash"></i>
+                      <i className="fas fa-inbox"></i>
+                      View Submissions
                     </button>
                   </div>
                 </div>
@@ -389,6 +446,130 @@ export default function TeacherHomework() {
           </div>
         )}
       </div>
+
+      {/* Submissions Modal */}
+      {submissionsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">{submissionsModal.title}</h3>
+                <p className="text-sm text-gray-500">
+                  {submissionsModal.subject.name} · {submissionsModal.assigned_class.name}
+                </p>
+              </div>
+              <button onClick={() => setSubmissionsModal(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5">
+              {loadingSubmissions ? (
+                <div className="text-center py-10 text-gray-400">Loading submissions...</div>
+              ) : submissions.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <i className="fas fa-inbox text-4xl mb-3 block"></i>
+                  No submissions yet
+                </div>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600 uppercase text-xs">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Student</th>
+                      <th className="px-3 py-2 text-left">Submitted</th>
+                      <th className="px-3 py-2 text-left">Status</th>
+                      <th className="px-3 py-2 text-left">Grade</th>
+                      <th className="px-3 py-2 text-left">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {submissions.map((s) => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-800">{s.student_name}</p>
+                          <p className="text-xs text-gray-500">{s.student_number}</p>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">
+                          {new Date(s.submitted_at).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium
+                            ${s.status === 'graded' ? 'bg-green-100 text-green-700' :
+                              s.status === 'late' ? 'bg-red-100 text-red-700' :
+                              'bg-blue-100 text-blue-700'}`}>
+                            {s.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-gray-800">
+                          {s.grade != null ? s.grade : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => { setGradeModal(s); setGradeValue(s.grade ?? ""); setGradeFeedback(s.feedback || ""); }}
+                            className="text-indigo-600 hover:text-indigo-800 text-xs font-medium">
+                            {s.grade != null ? 'Edit Grade' : 'Grade'}
+                          </button>
+                          {s.file_url && (
+                            <a href={s.file_url} target="_blank" rel="noreferrer"
+                              className="ml-3 text-blue-500 hover:text-blue-700 text-xs">
+                              <i className="fas fa-file mr-1"></i>View
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 text-sm text-gray-500 rounded-b-xl">
+              {submissions.length} submission{submissions.length !== 1 ? 's' : ''} ·{' '}
+              {submissions.filter((s) => s.status === 'graded').length} graded
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grade Submission Modal */}
+      {gradeModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm relative">
+            <button onClick={() => setGradeModal(null)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            <h3 className="text-lg font-bold mb-1">Grade Submission</h3>
+            <p className="text-sm text-gray-500 mb-4">{gradeModal.student_name}</p>
+
+            {gradeModal.text_submission && (
+              <div className="bg-gray-50 rounded p-3 text-sm text-gray-700 mb-4 max-h-32 overflow-y-auto">
+                {gradeModal.text_submission}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">Grade (0–100)</label>
+                <input type="number" min="0" max="100" step="0.5"
+                  className="border rounded w-full p-2 text-sm"
+                  value={gradeValue}
+                  onChange={(e) => setGradeValue(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">Feedback</label>
+                <textarea rows={3} className="border rounded w-full p-2 text-sm"
+                  placeholder="Optional feedback for student..."
+                  value={gradeFeedback}
+                  onChange={(e) => setGradeFeedback(e.target.value)} />
+              </div>
+              <button
+                onClick={handleGrade}
+                disabled={gradingInProgress || gradeValue === ""}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white py-2 rounded text-sm font-medium">
+                {gradingInProgress ? "Saving..." : "Save Grade"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

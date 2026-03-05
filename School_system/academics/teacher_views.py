@@ -457,3 +457,100 @@ def mark_attendance(request):
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+
+
+# ── Assignment Submission Management ─────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def assignment_submissions(request, assignment_id):
+    """List all student submissions for an assignment (teacher only)."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import Assignment, AssignmentSubmission
+
+    try:
+        assignment = Assignment.objects.select_related('subject', 'assigned_class').get(
+            id=assignment_id, created_by=request.user
+        )
+    except Assignment.DoesNotExist:
+        return Response({'error': 'Assignment not found or not yours'}, status=status.HTTP_404_NOT_FOUND)
+
+    submissions = (
+        AssignmentSubmission.objects
+        .filter(assignment=assignment)
+        .select_related('student__user')
+        .order_by('submitted_at')
+    )
+
+    data = []
+    for s in submissions:
+        data.append({
+            'id': s.id,
+            'student_id': s.student.id,
+            'student_name': f"{s.student.user.first_name} {s.student.user.last_name}",
+            'student_number': s.student.user.student_number or '',
+            'status': s.status,
+            'submitted_at': s.submitted_at.isoformat(),
+            'grade': s.grade,
+            'feedback': s.feedback,
+            'text_submission': s.text_submission,
+            'file_url': s.submitted_file.url if s.submitted_file else None,
+        })
+
+    total_students = assignment.assigned_class.students.count()
+    return Response({
+        'assignment_id': assignment_id,
+        'assignment_title': assignment.title,
+        'deadline': assignment.deadline.isoformat(),
+        'total_students': total_students,
+        'submitted_count': len(data),
+        'submissions': data,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def grade_submission(request, submission_id):
+    """Grade a student submission (teacher only)."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    from .models import AssignmentSubmission
+
+    try:
+        submission = AssignmentSubmission.objects.select_related(
+            'assignment__created_by'
+        ).get(id=submission_id, assignment__created_by=request.user)
+    except AssignmentSubmission.DoesNotExist:
+        return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    grade = request.data.get('grade')
+    feedback = request.data.get('feedback', '')
+
+    if grade is None:
+        return Response({'error': 'grade is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        grade = float(grade)
+    except (TypeError, ValueError):
+        return Response({'error': 'grade must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+
+    submission.grade = grade
+    submission.feedback = feedback
+    submission.status = 'graded'
+    submission.save(update_fields=['grade', 'feedback', 'status'])
+
+    return Response({
+        'message': 'Graded successfully.',
+        'submission_id': submission_id,
+        'grade': submission.grade,
+        'feedback': submission.feedback,
+    })

@@ -1,7 +1,33 @@
-const API_BASE_URL = "/api";
+// Development: Vite proxies /api → localhost:8000 (see vite.config.js)
+// Production (cPanel frontend): set VITE_API_BASE_URL in .env.production
+//   e.g. VITE_API_BASE_URL=https://myschoolhub-backend.up.railway.app/api/v1
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 function getToken() {
   return localStorage.getItem('token');
+}
+
+async function requestFile(endpoint, useAuth = true) {
+  const headers = {};
+  if (useAuth) {
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+  if (!response.ok) throw new Error("File request failed");
+  return response.blob();
+}
+
+async function requestMultipart(endpoint, method = "POST", formData) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method, headers, body: formData });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(err.error || "Request failed");
+  }
+  return response.json();
 }
 
 async function request(endpoint, method = "GET", body = null, useAuth = true) {
@@ -289,6 +315,93 @@ const apiService = {
   searchSchools: (query) => request(`/auth/schools/search/?q=${encodeURIComponent(query)}`, "GET", null, false),
   getSchools: () => request("/auth/schools/", "GET"),
   getSchoolDetails: (schoolId) => request(`/auth/schools/${schoolId}/`, "GET"),
+
+  // Timetable conflict detection
+  getTimetableConflicts: () => request("/academics/timetables/conflicts/", "GET"),
+
+  // Report card (returns PDF blob)
+  downloadReportCard: (studentId) => requestFile(`/academics/students/${studentId}/report-card/`),
+
+  // Grade predictions
+  getStudentGradePredictions: (studentId) => request(`/academics/students/${studentId}/grade-prediction/`, "GET"),
+
+  // Bulk CSV imports
+  bulkImportStudents: (formData) => requestMultipart("/academics/students/bulk-import/", "POST", formData),
+  bulkImportResults: (formData) => requestMultipart("/academics/results/bulk-import/", "POST", formData),
+  bulkImportFees: (formData) => requestMultipart("/finances/fees/bulk-import/", "POST", formData),
+
+  // Student attendance (student's own)
+  getStudentAttendance: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/students/attendance/${q ? '?' + q : ''}`, "GET");
+  },
+
+  // Assignment submissions (student)
+  getMySubmission: (assignmentId) => request(`/students/assignments/${assignmentId}/submit/`, "GET"),
+  submitAssignment: (assignmentId, formData) =>
+    requestMultipart(`/students/assignments/${assignmentId}/submit/`, "POST", formData),
+
+  // Assignment submissions (teacher)
+  getAssignmentSubmissions: (assignmentId) => request(`/teachers/assignments/${assignmentId}/submissions/`, "GET"),
+  gradeSubmission: (submissionId, data) => request(`/teachers/submissions/${submissionId}/grade/`, "POST", data),
+
+  // PayNow Zimbabwe payments
+  initiatePaynowPayment: (data) => request("/finances/payments/paynow/initiate/", "POST", data),
+  checkPaynowStatus: (pollUrl) => request(`/finances/payments/paynow/status/?poll_url=${encodeURIComponent(pollUrl)}`, "GET"),
+
+  // School settings (admin)
+  getSchoolSettings: () => request("/auth/school/settings/", "GET"),
+  updateSchoolSettings: (data) => request("/auth/school/settings/", "PUT", data),
+
+  // Audit logs (admin)
+  getAuditLogs: () => request("/auth/audit-logs/", "GET"),
+
+  // Global search
+  globalSearch: (q) => request(`/auth/search/?q=${encodeURIComponent(q)}`, "GET"),
+
+  // ── Staff / HR ────────────────────────────────────────────────────────────
+  getHRDashboardStats: () => request("/staff/dashboard/", "GET"),
+  getDepartments: () => request("/staff/departments/", "GET"),
+  createDepartment: (data) => request("/staff/departments/", "POST", data),
+  updateDepartment: (id, data) => request(`/staff/departments/${id}/`, "PATCH", data),
+  deleteDepartment: (id) => request(`/staff/departments/${id}/`, "DELETE"),
+
+  getStaffList: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/${q ? '?' + q : ''}`, "GET");
+  },
+  getStaffDetail: (id) => request(`/staff/${id}/`, "GET"),
+  createStaff: (data) => request("/staff/create/", "POST", data),
+  updateStaff: (id, data) => request(`/staff/${id}/`, "PATCH", data),
+  deleteStaff: (id) => request(`/staff/${id}/`, "DELETE"),
+
+  getStaffAttendance: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/attendance/${q ? '?' + q : ''}`, "GET");
+  },
+  markStaffAttendance: (data) => request("/staff/attendance/", "POST", data),
+
+  getLeaves: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/leaves/${q ? '?' + q : ''}`, "GET");
+  },
+  applyLeave: (data) => request("/staff/leaves/", "POST", data),
+  reviewLeave: (id, data) => request(`/staff/leaves/${id}/review/`, "POST", data),
+
+  getPayroll: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/payroll/${q ? '?' + q : ''}`, "GET");
+  },
+  createPayrollEntry: (data) => request("/staff/payroll/", "POST", data),
+  getPayrollSummary: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/payroll/summary/${q ? '?' + q : ''}`, "GET");
+  },
+
+  getMeetings: () => request("/staff/meetings/", "GET"),
+  createMeeting: (data) => request("/staff/meetings/", "POST", data),
+  updateMeeting: (id, data) => request(`/staff/meetings/${id}/`, "PATCH", data),
+  deleteMeeting: (id) => request(`/staff/meetings/${id}/`, "DELETE"),
 };
 
 export default apiService;

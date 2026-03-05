@@ -10,6 +10,11 @@ export default function StudentSubmissions() {
   const { user } = useAuth();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitModal, setSubmitModal] = useState(null); // assignment being submitted
+  const [submitText, setSubmitText] = useState("");
+  const [submitFile, setSubmitFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState("");
 
   useEffect(() => {
     loadSubmissions();
@@ -119,6 +124,11 @@ export default function StudentSubmissions() {
                             {days} {days === 1 ? 'day' : 'days'} left
                           </span>
                         )}
+                        <button
+                          onClick={() => { setSubmitModal(submission); setSubmitText(""); setSubmitFile(null); setSubmitMsg(""); }}
+                          className="block mt-2 w-full px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition">
+                          Submit
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -128,6 +138,53 @@ export default function StudentSubmissions() {
           )}
         </div>
       </div>
+
+      {/* Submit assignment modal */}
+      {submitModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 relative">
+            <button onClick={() => setSubmitModal(null)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            <h3 className="text-lg font-bold mb-1">Submit Assignment</h3>
+            <p className="text-sm text-gray-500 mb-4">{submitModal.title} — {submitModal.subject_name}</p>
+            {submitMsg && (
+              <div className="bg-green-100 text-green-700 p-2 rounded text-sm mb-3">{submitMsg}</div>
+            )}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">Text Answer</label>
+                <textarea rows={4} className="border rounded w-full p-2 text-sm"
+                  placeholder="Type your answer here..."
+                  value={submitText} onChange={(e) => setSubmitText(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">Or upload a file</label>
+                <input type="file" className="text-sm"
+                  onChange={(e) => setSubmitFile(e.target.files[0])} />
+              </div>
+              <button disabled={submitting || (!submitText && !submitFile)}
+                onClick={async () => {
+                  setSubmitting(true);
+                  try {
+                    const fd = new FormData();
+                    if (submitText) fd.append("text_submission", submitText);
+                    if (submitFile) fd.append("file", submitFile);
+                    await apiService.submitAssignment(submitModal.id, fd);
+                    setSubmitMsg("Submitted successfully!");
+                    setTimeout(() => setSubmitModal(null), 1500);
+                  } catch (e) {
+                    setSubmitMsg("Error: " + (e.message || "Submission failed"));
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-2 rounded text-sm">
+                {submitting ? "Submitting..." : "Submit Assignment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

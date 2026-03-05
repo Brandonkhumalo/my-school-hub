@@ -75,6 +75,25 @@ const ParentFees = lazy(() => import("./pages/parent/ParentFees"));
 const ParentMessages = lazy(() => import("./pages/parent/ParentMessages"));
 const ParentHomework = lazy(() => import("./pages/parent/ParentHomework"));
 
+// HR / Staff Pages
+const HRDashboard = lazy(() => import("./pages/hr/HRDashboard"));
+const HRStaff = lazy(() => import("./pages/hr/HRStaff"));
+const HRLeaves = lazy(() => import("./pages/hr/HRLeaves"));
+const HRPayroll = lazy(() => import("./pages/hr/HRPayroll"));
+const HRAttendance = lazy(() => import("./pages/hr/HRAttendance"));
+const HRMeetings = lazy(() => import("./pages/hr/HRMeetings"));
+
+// New Admin Pages
+const AdminStaff = lazy(() => import("./pages/admin/AdminStaff"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+
+// New Student Pages
+const StudentAttendance = lazy(() => import("./pages/student/StudentAttendance"));
+
+// Payment Return Pages
+const PaymentSuccess = lazy(() => import("./pages/payment/PaymentSuccess"));
+const PaymentFailed = lazy(() => import("./pages/payment/PaymentFailed"));
+
 // 404
 const NotFound = lazy(() => import("./pages/notfound/NotFound"));
 
@@ -92,6 +111,10 @@ function App() {
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/register/parent" element={<ParentRegister />} />
       <Route path="/logout" element={<Logout />} />
+
+      {/* Payment return pages — no auth required (PayNow redirects here) */}
+      <Route path="/payment/success" element={<PaymentSuccess />} />
+      <Route path="/payment/failed" element={<PaymentFailed />} />
 
       {/* Tishanyq Admin Portal */}
       <Route path="/tishanyq/admin/login" element={<TishanyqLogin />} />
@@ -120,6 +143,8 @@ function App() {
         <Route path="/admin/complaints" element={<AdminComplaints />} />
         <Route path="/admin/parent-requests" element={<AdminParentLinkRequests />} />
         <Route path="/admin/extras" element={<AdminExtras />} />
+        <Route path="/admin/staff" element={<AdminStaff />} />
+        <Route path="/admin/settings" element={<AdminSettings />} />
 
         {/* Teacher Routes */}
         <Route path="/teacher" element={<TeacherDashboard />} />
@@ -139,6 +164,7 @@ function App() {
         <Route path="/student/timetable" element={<StudentTimetable />} />
         <Route path="/student/teachers" element={<StudentTeachers />} />
         <Route path="/student/announcements" element={<StudentAnnouncements />} />
+        <Route path="/student/attendance" element={<StudentAttendance />} />
 
         {/* Parent Routes */}
         <Route path="/parent" element={<ParentDashboard />} />
@@ -148,6 +174,14 @@ function App() {
         <Route path="/parent/messages" element={<ParentWeeklyMessages />} />
         <Route path="/parent/fees" element={<ParentFees />} />
         <Route path="/parent/chat" element={<ParentMessages />} />
+
+        {/* HR / Staff Routes */}
+        <Route path="/hr" element={<HRDashboard />} />
+        <Route path="/hr/staff" element={<HRStaff />} />
+        <Route path="/hr/leaves" element={<HRLeaves />} />
+        <Route path="/hr/payroll" element={<HRPayroll />} />
+        <Route path="/hr/attendance" element={<HRAttendance />} />
+        <Route path="/hr/meetings" element={<HRMeetings />} />
 
         {/* Catch all */}
         <Route path="*" element={<NotFound />} />

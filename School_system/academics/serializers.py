@@ -212,13 +212,19 @@ class StudentPerformanceSerializer(serializers.Serializer):
 
 
 class CreateResultSerializer(serializers.ModelSerializer):
+    teacher = serializers.PrimaryKeyRelatedField(
+        queryset=Teacher.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = Result
-        fields = ['student', 'subject', 'exam_type', 'score', 'max_score', 'academic_term', 'academic_year']
+        fields = ['student', 'subject', 'teacher', 'exam_type', 'score', 'max_score', 'academic_term', 'academic_year']
 
     def create(self, validated_data):
-        # Set teacher from request user
-        validated_data['teacher'] = self.context['request'].user.teacher
+        user = self.context['request'].user
+        if 'teacher' not in validated_data or validated_data.get('teacher') is None:
+            # Fall back to the authenticated user's teacher profile
+            validated_data['teacher'] = user.teacher
         return super().create(validated_data)
 
 

@@ -10,9 +10,22 @@ export default function StudentMarks() {
   const { user } = useAuth();
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [predictions, setPredictions] = useState({});
 
   useEffect(() => {
     loadMarks();
+    // Load predictions for the logged-in student (student ID comes from profile)
+    apiService.getStudentProfile().then((profile) => {
+      if (profile?.id) {
+        apiService.getStudentGradePredictions(profile.id)
+          .then((res) => {
+            const map = {};
+            (res.predictions || []).forEach((p) => { map[p.subject_id] = p; });
+            setPredictions(map);
+          })
+          .catch(() => {}); // predictions are optional — fail silently
+      }
+    }).catch(() => {});
   }, []);
 
   const loadMarks = async () => {
@@ -76,7 +89,19 @@ export default function StudentMarks() {
                 <div key={subject.subject_id} className="border rounded-lg overflow-hidden">
                   <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-xl font-semibold">{subject.subject_name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xl font-semibold">{subject.subject_name}</h3>
+                        {predictions[subject.subject_id] && (
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium
+                            ${predictions[subject.subject_id].trend === 'up' ? 'bg-green-100 text-green-700' :
+                              predictions[subject.subject_id].trend === 'down' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-600'}`}>
+                            <i className={`fas fa-arrow-${predictions[subject.subject_id].trend === 'up' ? 'up' : predictions[subject.subject_id].trend === 'down' ? 'down' : 'right'} mr-1`}></i>
+                            Predicted: {predictions[subject.subject_id].predicted_score}/{predictions[subject.subject_id].max_score}
+                            <span className="ml-1 opacity-70">({predictions[subject.subject_id].confidence})</span>
+                          </span>
+                        )}
+                      </div>
                       <div className="text-right">
                         <p className="text-sm text-blue-100">Overall Year Score</p>
                         <p className="text-2xl font-bold">{subject.overall_year_percentage}%</p>

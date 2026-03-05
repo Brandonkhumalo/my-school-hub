@@ -30,6 +30,7 @@ urlpatterns = [
     path('timetables/', views.TimetableListView.as_view(), name='timetable-list'),
     path('timetables/generate/', views.generate_timetable_view, name='timetable-generate'),
     path('timetables/stats/', views.get_timetable_stats, name='timetable-stats'),
+    path('timetables/conflicts/', views.timetable_conflict_check, name='timetable-conflicts'),
     
     # Announcement endpoints
     path('announcements/', views.AnnouncementListCreateView.as_view(), name='announcement-list-create'),
@@ -45,4 +46,14 @@ urlpatterns = [
     path('parent-link-requests/', views.pending_parent_link_requests, name='pending-parent-link-requests'),
     path('parent-link-requests/<int:link_id>/approve/', views.approve_parent_link_request, name='approve-parent-link-request'),
     path('parent-link-requests/<int:link_id>/decline/', views.decline_parent_link_request, name='decline-parent-link-request'),
+
+    # Report card PDF
+    path('students/<int:student_id>/report-card/', views.generate_report_card, name='report-card'),
+
+    # Grade predictions
+    path('students/<int:student_id>/grade-prediction/', views.student_grade_prediction, name='grade-prediction'),
+
+    # Bulk CSV import
+    path('students/bulk-import/', views.bulk_import_students, name='bulk-import-students'),
+    path('results/bulk-import/', views.bulk_import_results, name='bulk-import-results'),
 ]

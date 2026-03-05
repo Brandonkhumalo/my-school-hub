@@ -355,3 +355,128 @@ def student_announcements(request):
         })
     
     return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_attendance(request):
+    """Get the logged-in student's own attendance records with stats."""
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    records_qs = (
+        Attendance.objects
+        .filter(student=student)
+        .order_by('-date')
+    )
+
+    # Optional term/year filters
+    term = request.query_params.get('term')
+    year = request.query_params.get('year')
+    if term:
+        records_qs = records_qs.filter(academic_term=term)
+    if year:
+        records_qs = records_qs.filter(academic_year=year)
+
+    total = records_qs.count()
+    present = records_qs.filter(status__in=['present', 'late']).count()
+    absent = records_qs.filter(status='absent').count()
+    late = records_qs.filter(status='late').count()
+    percentage = round(present / total * 100, 1) if total else 100.0
+
+    records = [
+        {
+            'id': r.id,
+            'date': r.date.strftime('%Y-%m-%d'),
+            'status': r.status,
+            'remarks': getattr(r, 'remarks', ''),
+        }
+        for r in records_qs[:60]  # last 60 records
+    ]
+
+    return Response({
+        'stats': {
+            'total_days': total,
+            'present': present,
+            'absent': absent,
+            'late': late,
+            'attendance_percentage': percentage,
+        },
+        'records': records,
+    })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def student_assignment_submission(request, assignment_id):
+    """
+    GET  — retrieve student's own submission for an assignment.
+    POST — submit (or resubmit) an assignment (text or file).
+    """
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import Assignment, AssignmentSubmission
+
+    try:
+        assignment = Assignment.objects.get(id=assignment_id, assigned_class=student.student_class)
+    except Assignment.DoesNotExist:
+        return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        submission = AssignmentSubmission.objects.filter(assignment=assignment, student=student).first()
+        if not submission:
+            return Response({'submitted': False, 'assignment_id': assignment_id})
+        return Response({
+            'submitted': True,
+            'id': submission.id,
+            'status': submission.status,
+            'submitted_at': submission.submitted_at.isoformat(),
+            'text_submission': submission.text_submission,
+            'grade': submission.grade,
+            'feedback': submission.feedback,
+            'file_url': submission.submitted_file.url if submission.submitted_file else None,
+        })
+
+    # POST
+    from django.utils import timezone as tz
+    now = tz.now()
+    is_late = now > assignment.deadline
+    text_submission = request.data.get('text_submission', '')
+    submitted_file = request.FILES.get('file')
+
+    if not text_submission and not submitted_file:
+        return Response({'error': 'Provide text_submission or a file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    submission, created = AssignmentSubmission.objects.get_or_create(
+        assignment=assignment, student=student,
+        defaults={
+            'text_submission': text_submission,
+            'submitted_file': submitted_file,
+            'status': 'late' if is_late else 'submitted',
+        }
+    )
+    if not created:
+        # resubmit
+        submission.text_submission = text_submission
+        if submitted_file:
+            submission.submitted_file = submitted_file
+        submission.status = 'late' if is_late else 'submitted'
+        submission.submitted_at = now
+        submission.save()
+
+    return Response({
+        'message': 'Submitted successfully.',
+        'status': submission.status,
+        'submitted_at': submission.submitted_at.isoformat(),
+    }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
