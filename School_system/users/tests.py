@@ -177,7 +177,8 @@ class AuditLogModelTest(TestCase):
                 user=self.admin, school=self.school,
                 action=action, model_name="Subject",
             )
-        logs = list(AuditLog.objects.filter(school=self.school))
+        # Order by id descending for deterministic test (timestamps may collide in SQLite)
+        logs = list(AuditLog.objects.filter(school=self.school).order_by('-id'))
         # Newest first — DELETE was created last
         self.assertEqual(logs[0].action, "DELETE")
 

@@ -1397,13 +1397,18 @@ def bulk_import_fees(request):
 
             student = Student.objects.get(user__student_number=student_number, user__school=school)
             fee_type, _ = FeeType.objects.get_or_create(
-                name=fee_type_name, school=school,
+                name=fee_type_name,
                 defaults={'amount': amount, 'academic_year': academic_year}
             )
 
+            import datetime
             StudentFee.objects.get_or_create(
                 student=student, fee_type=fee_type,
-                defaults={'amount': amount, 'academic_year': academic_year, 'academic_term': academic_term}
+                academic_term=academic_term, academic_year=academic_year,
+                defaults={
+                    'amount_due': amount,
+                    'due_date': datetime.date.today(),
+                }
             )
             created_count += 1
         except Student.DoesNotExist:

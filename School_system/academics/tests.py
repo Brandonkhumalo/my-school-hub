@@ -379,17 +379,19 @@ class StudentAPITest(APITestCase):
 
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url)
-        # S999 should not appear
-        numbers = [s["student_number"] for s in get_list(response.data)]
+        # S999 should not appear; student_number is nested inside user dict
+        numbers = [s["user"]["student_number"] for s in get_list(response.data)]
         self.assertIn("S001", numbers)
         self.assertNotIn("S999", numbers)
 
     def test_create_student_as_admin_returns_201(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
-            "first_name": "Alice",
-            "last_name": "Smith",
-            "email": "alice@test.school",
+            "user": {
+                "first_name": "Alice",
+                "last_name": "Smith",
+                "password": "testpass123",
+            },
             "student_class": self.cls.pk,
             "admission_date": "2026-01-10",
             "gender": "Female",
@@ -403,7 +405,7 @@ class StudentAPITest(APITestCase):
 
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url, {"class": self.cls.pk})
-        numbers = [s["student_number"] for s in get_list(response.data)]
+        numbers = [s["user"]["student_number"] for s in get_list(response.data)]
         self.assertIn("C1001", numbers)
         self.assertNotIn("C2001", numbers)
 

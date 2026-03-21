@@ -13,7 +13,8 @@ export default function TishanyqLogin() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/superadmin/login/", {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

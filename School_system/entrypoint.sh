@@ -5,9 +5,13 @@
 # ──────────────────────────────────────────────────────────────
 set -e
 
+# Verify Django can load settings
+echo "==> Checking Django configuration..."
+python -c "import django; django.setup(); print('Django OK')" 2>&1
+
 # Collect static files — done at runtime so SECRET_KEY is available
 echo "==> Collecting static files..."
-python manage.py collectstatic --noinput --clear 2>&1
+python manage.py collectstatic --noinput --clear 2>&1 || echo "WARNING: collectstatic failed, continuing..."
 
 # Apply any pending database migrations
 echo "==> Running database migrations..."

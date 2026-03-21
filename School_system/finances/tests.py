@@ -19,7 +19,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
-from users.models import CustomUser, School
+from users.models import CustomUser, School, SchoolSettings
 from academics.models import Class, Student, Teacher
 from finances.models import (
     FeeType,
@@ -354,6 +354,12 @@ class PayNowInitiateAPITest(APITestCase):
         self.admin = make_user(
             self.school, "paynow_admin", role="admin",
             email="admin@paynow.test",
+        )
+        # Configure PayNow credentials for the school (required by the view)
+        SchoolSettings.objects.create(
+            school=self.school,
+            paynow_integration_id="TEST_ID_12345",
+            paynow_integration_key="TEST_KEY_ABCDEF",
         )
         self.url = "/api/v1/finances/payments/paynow/initiate/"
 

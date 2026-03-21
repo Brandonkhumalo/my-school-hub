@@ -11,7 +11,8 @@ export default function TishanyqHome() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem("tishanyq_token");
-      const response = await fetch("/api/auth/superadmin/stats/", {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/stats/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {

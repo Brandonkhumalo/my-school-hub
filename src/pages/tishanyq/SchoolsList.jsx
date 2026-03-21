@@ -12,10 +12,12 @@ export default function SchoolsList() {
     fetchSchools();
   }, []);
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+
   const fetchSchools = async () => {
     try {
       const token = localStorage.getItem("tishanyq_token");
-      const response = await fetch("/api/auth/superadmin/schools/", {
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -43,7 +45,7 @@ export default function SchoolsList() {
 
     try {
       const token = localStorage.getItem("tishanyq_token");
-      const response = await fetch(`/api/auth/superadmin/schools/${schoolId}/reset-password/`, {
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/${schoolId}/reset-password/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,7 +86,7 @@ export default function SchoolsList() {
 
     try {
       const token = localStorage.getItem("tishanyq_token");
-      const response = await fetch(`/api/auth/superadmin/schools/${schoolId}/suspend/`, {
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/${schoolId}/suspend/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
