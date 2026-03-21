@@ -29,6 +29,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    DJANGO_SETTINGS_MODULE=School_system.settings \
     # Default port — Railway overrides this with $PORT at runtime
     PORT=8000
 
