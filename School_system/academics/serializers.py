@@ -395,7 +395,7 @@ class CreateTeacherSerializer(serializers.Serializer):
 
 
 class CreateParentSerializer(serializers.Serializer):
-    full_name = serializers.CharField(max_length=255)
+    full_name = serializers.CharField(max_length=255, write_only=True)
     contact_number = serializers.CharField(max_length=20)
     email = serializers.EmailField()
     address = serializers.CharField(required=False, allow_blank=True)
@@ -416,12 +416,18 @@ class CreateParentSerializer(serializers.Serializer):
             # Generate username from email or random
             username = validated_data['email'].split('@')[0] + str(random.randint(100, 999))
             
+            # Split full_name into first_name and last_name
+            name_parts = validated_data['full_name'].split(' ', 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+
             # Create user account
             user = CustomUser.objects.create_user(
                 username=username,
                 email=validated_data['email'],
                 password=validated_data['password'],
-                full_name=validated_data['full_name'],
+                first_name=first_name,
+                last_name=last_name,
                 role='parent',
                 phone_number=validated_data['contact_number'],
                 school=school,

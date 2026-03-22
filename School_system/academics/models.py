@@ -87,7 +87,10 @@ class Parent(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     children = models.ManyToManyField(Student, related_name='parents', blank=True)
     occupation = models.CharField(max_length=100, blank=True)
-    
+
+    class Meta:
+        ordering = ['-id']
+
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} - Parent"
 
