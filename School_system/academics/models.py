@@ -54,6 +54,7 @@ class Class(models.Model):
     
     class Meta:
         verbose_name_plural = "Classes"
+        ordering = ['name']
     
     def __str__(self):
         return f"{self.name} - {self.academic_year}"

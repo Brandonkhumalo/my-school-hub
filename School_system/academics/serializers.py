@@ -283,7 +283,7 @@ class CreateStudentSerializer(serializers.Serializer):
             last_name=last_name,
             role='student',
             student_number=student_number,
-            phone_number=student_contact,
+            phone_number=student_contact if student_contact else None,
             school=school,
             created_by=created_by
         )
@@ -429,7 +429,7 @@ class CreateParentSerializer(serializers.Serializer):
                 first_name=first_name,
                 last_name=last_name,
                 role='parent',
-                phone_number=validated_data['contact_number'],
+                phone_number=validated_data['contact_number'] if validated_data['contact_number'] else None,
                 school=school,
                 created_by=created_by
             )
