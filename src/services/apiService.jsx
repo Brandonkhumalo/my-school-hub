@@ -61,7 +61,15 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
         const errorText = await response.text();
         errorData = { error: errorText || "API request failed" };
       }
-      const error = new Error(errorData.error || errorData.message || "API request failed");
+      // Extract DRF validation errors (e.g. {"email": ["Already registered"]})
+      let errorMessage = errorData.error || errorData.message || errorData.detail;
+      if (!errorMessage && typeof errorData === 'object') {
+        const messages = Object.entries(errorData)
+          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(', ') : val}`)
+          .join('; ');
+        errorMessage = messages || "API request failed";
+      }
+      const error = new Error(errorMessage || "API request failed");
       error.response = { data: errorData, status: response.status };
       throw error;
     }
