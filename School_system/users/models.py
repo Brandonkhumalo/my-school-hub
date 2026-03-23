@@ -117,6 +117,12 @@ class CustomUser(AbstractUser):
     class Meta:
         ordering = ['-id']
 
+    def save(self, *args, **kwargs):
+        # Normalize empty phone_number to None so unique constraint allows multiple blanks
+        if not self.phone_number:
+            self.phone_number = None
+        super().save(*args, **kwargs)
+
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip() or self.email
