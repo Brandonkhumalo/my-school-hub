@@ -70,12 +70,16 @@ Single EC2 instance hosting **both** the React frontend and Django backend, with
 | Setting | Value |
 |---------|-------|
 | Name | `schoolhub-backend` |
-| AMI | Ubuntu 22.04 LTS |
+| AMI | Ubuntu 22.04 LTS (or 24.04 LTS) |
 | Instance type | t3.small (2 vCPU, 2GB RAM) |
-| Key pair | Create one (for SSH + CI/CD) or **Proceed without** (browser SSH only) |
+| Key pair | **Create new key pair** → name it `schoolhub-key` → download the `.pem` file. You need this for SSH and CI/CD. |
 | Storage | 20 GB gp3 |
 
-3. **Network Settings** → use **Default VPC**, then add security group rules:
+3. **Network Settings** → click **Edit**:
+   - **VPC**: Select **Default VPC** (it's pre-selected)
+   - **Auto-assign public IP**: Enable
+   - **Create security group** → name it `schoolhub-ec2-sg`
+   - Add these inbound rules:
 
 | Type | Port | Source | Purpose |
 |------|------|--------|---------|
@@ -84,12 +88,17 @@ Single EC2 instance hosting **both** the React frontend and Django backend, with
 | HTTPS | 443 | 0.0.0.0/0 | Nginx (SSL termination) |
 
 4. Click **Launch Instance**
-5. If you created a **key pair**, download the `.pem` file and save it securely — you'll need it for SSH and CI/CD.
-6. Go to **Elastic IPs** → **Allocate** → **Associate** to this instance
 
-> **Save for `.env`:** Note your **Elastic IP** (e.g., `3.105.xx.xx`) — you'll add it to `ALLOWED_HOSTS` in `.env`.
+5. Go to **Elastic IPs** → **Allocate Elastic IP address** → **Allocate** → select the new IP → **Actions → Associate Elastic IP address** → select your `schoolhub-backend` instance → **Associate**
 
-7. Note the **Security Group ID** (e.g., `sg-0abc123`) — you'll need it for RDS and ElastiCache
+6. **Get your EC2 Security Group ID** (you need this for Steps 3 and 4):
+   - Go to **EC2 → Instances → schoolhub-backend**
+   - Click the **Security** tab
+   - Copy the **Security group ID** (e.g., `sg-0abc123def456`) — write this down
+
+> **Save for `.env`:**
+> - **Elastic IP** (e.g., `13.245.56.109`) → goes into `ALLOWED_HOSTS`
+> - **`.pem` file** → save securely, needed for SSH + GitHub Actions secret `EC2_SSH_KEY`
 
 ### Step 2: Point DNS to Elastic IP
 
@@ -102,55 +111,126 @@ Go to your domain registrar for `myschoolhub.co.zw` and add:
 
 > **Important:** Do NOT use Cloudflare proxy (orange cloud). DNS-only (grey cloud) or use your registrar's DNS directly. Cloudflare's SSL conflicts with Let's Encrypt and causes the domain to become unreachable after reboots.
 
-### Step 3: Create RDS PostgreSQL
+### Step 3: Create RDS Security Group + Database
 
-1. Go to **AWS Console → RDS → Create database**
-2. Configure:
+You must create the security group **before** creating the database.
+
+**Step 3a — Create a security group for RDS:**
+
+1. Go to **EC2 → Security Groups → Create security group**
+2. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Security group name | `schoolhub-db-sg` |
+| Description | `Allow PostgreSQL from EC2` |
+| VPC | **Default VPC** (same dropdown, same VPC as your EC2) |
+
+3. **Inbound rules → Add rule:**
+
+| Type | Port range | Source type | Source |
+|------|-----------|-------------|--------|
+| PostgreSQL | 5432 | **Custom** | Paste your EC2 security group ID from Step 1 (e.g., `sg-0abc123def456`) |
+
+> **Why Custom and not CIDR?** Selecting "Custom" and pasting the security group ID means "allow any instance in that security group". This is more secure than an IP address and won't break if the EC2's private IP changes.
+
+4. Click **Create security group** — note the new SG ID (e.g., `sg-0db789...`)
+
+**Step 3b — Create the RDS database:**
+
+1. Go to **RDS → Create database**
+2. Select **Standard create**
+3. Configure **every** field below:
+
+| Setting | Value | Where to find it |
+|---------|-------|-------------------|
+| Engine type | **PostgreSQL** | |
+| Engine version | **15** (any 15.x) | |
+| Templates | **Free tier** | This auto-selects db.t3.micro |
+| DB instance identifier | `schoolhub-db` | This is just a label |
+| Master username | `postgres` | |
+| Master password | Choose a password (e.g., `My-school-hub`) | **Write this down — you need it for `.env`** |
+| Confirm password | Same as above | |
+| DB instance class | db.t3.micro (pre-selected by Free tier) | |
+| Storage type | gp3 | |
+| Allocated storage | 20 GB | |
+
+4. **Connectivity** section (scroll down):
 
 | Setting | Value |
 |---------|-------|
-| Engine | PostgreSQL 15 |
-| Template | Free tier |
-| DB instance class | db.t3.micro |
-| Storage | 20 GB gp3 |
-| DB instance identifier | `schoolhub-db` |
-| Master username | `postgres` |
-| Master password | (generate a strong password, save it) |
-| Initial database name | `schoolhub` |
-| Public access | No |
-| VPC | Default VPC (**same as EC2**) |
-| VPC security group | Create new → allow port **5432** from your EC2 security group |
+| VPC | **Default VPC** (must match your EC2) |
+| DB subnet group | **default** |
+| Public access | **No** |
+| VPC security group | Select **Choose existing** → select `schoolhub-db-sg` (the one you just created). **Remove** any other security group (like `default`) |
+| Availability Zone | No preference |
+
+5. **Additional configuration** section (click to expand):
+
+| Setting | Value |
+|---------|-------|
+| **Initial database name** | `schoolhub` |
 | Backup retention | 7 days |
 | Enable automated backups | Yes |
 
-3. Click **Create database**, wait 5-10 minutes
-4. Copy the **Endpoint** from the database details page (e.g., `schoolhub-db.xxxxx.af-south-1.rds.amazonaws.com`)
+> **CRITICAL:** You must type `schoolhub` in the "Initial database name" field. If you leave it blank, no database is created and your app will crash with "database does not exist".
 
-> **Save for `.env`:** You now have two pieces — the **RDS Endpoint** and the **Master password** you set above. You'll combine them into the `DATABASE_URL` in `.env`:
+6. Click **Create database** — wait 5-10 minutes until status shows **Available**
+7. Click **schoolhub-db** → copy the **Endpoint** (e.g., `schoolhub-db.xxxxx.af-south-1.rds.amazonaws.com`)
+
+> **Save for `.env`:** Combine the endpoint + password into `DATABASE_URL`:
 > ```
-> DATABASE_URL=postgresql://postgres:<RDS_PASSWORD>@<RDS_ENDPOINT>:5432/schoolhub
+> DATABASE_URL=postgresql://postgres:My-school-hub@schoolhub-db.xxxxx.af-south-1.rds.amazonaws.com:5432/schoolhub
 > ```
+> The format is: `postgresql://USERNAME:PASSWORD@ENDPOINT:5432/DBNAME`
 
-### Step 4: Create ElastiCache Redis
+### Step 4: Create ElastiCache Security Group + Redis
 
-1. Go to **AWS Console → ElastiCache → Create cache**
+**Step 4a — Create a security group for ElastiCache:**
+
+1. Go to **EC2 → Security Groups → Create security group**
+2. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Security group name | `schoolhub-redis-sg` |
+| Description | `Allow Redis from EC2` |
+| VPC | **Default VPC** (same as EC2) |
+
+3. **Inbound rules → Add rule:**
+
+| Type | Port range | Source type | Source |
+|------|-----------|-------------|--------|
+| Custom TCP | 6379 | **Custom** | Paste your EC2 security group ID from Step 1 (e.g., `sg-0abc123def456`) |
+
+4. Click **Create security group**
+
+**Step 4b — Create the ElastiCache Redis cluster:**
+
+1. Go to **ElastiCache → Redis OSS caches → Create Redis OSS cache**
 2. Configure:
 
 | Setting | Value |
 |---------|-------|
-| Cluster engine | Redis |
+| Cluster mode | Disabled |
+| Name | `schoolhub-redis` |
 | Node type | cache.t3.micro |
 | Number of replicas | 0 |
-| Name | `schoolhub-redis` |
-| Subnet group | Default |
-| Security group | Create new → allow port **6379** from your EC2 security group |
 
-3. Copy the **Primary Endpoint** (e.g., `schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com`)
+3. **Connectivity** section:
 
-> **Save for `.env`:** You'll use this endpoint for both `REDIS_URL` and `CELERY_BROKER_URL` in `.env`:
+| Setting | Value |
+|---------|-------|
+| Subnet group | **Create new** or **default** (uses Default VPC) |
+| VPC security group | Select `schoolhub-redis-sg` (the one you just created) |
+
+4. Click **Create** — wait a few minutes
+5. Click **schoolhub-redis** → copy the **Primary Endpoint** (e.g., `schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com`)
+
+> **Save for `.env`:** Use this endpoint for both Redis vars:
 > ```
-> REDIS_URL=redis://<ELASTICACHE_ENDPOINT>:6379/0
-> CELERY_BROKER_URL=redis://<ELASTICACHE_ENDPOINT>:6379/0
+> REDIS_URL=redis://schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com:6379/0
+> CELERY_BROKER_URL=redis://schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com:6379/0
 > ```
 
 ### Step 5: Create ECR Repository
@@ -161,12 +241,18 @@ Go to **AWS Console → CloudShell** (top right, terminal icon) and run:
 aws ecr create-repository --repository-name schoolhub-web --region af-south-1
 ```
 
-Copy the registry URI (e.g., `123456789.dkr.ecr.af-south-1.amazonaws.com`)
+The output will show a `repositoryUri` like:
+```
+"repositoryUri": "215627216353.dkr.ecr.af-south-1.amazonaws.com/schoolhub-web"
+```
 
-> **Save for `.env`:** This is your `ECR_REGISTRY` value in `.env`:
+Your `ECR_REGISTRY` is **everything before** `/schoolhub-web`:
+
+> **Save for `.env`:** Just the registry host — **not** the full image path:
 > ```
-> ECR_REGISTRY=123456789.dkr.ecr.af-south-1.amazonaws.com
+> ECR_REGISTRY=215627216353.dkr.ecr.af-south-1.amazonaws.com
 > ```
+> Do NOT include `/schoolhub-web` — the deploy scripts add that automatically.
 
 ### Step 6: Connect to EC2
 
@@ -195,7 +281,12 @@ export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 nvm install 20
 
 # Nginx + Certbot
-sudo apt-get update && sudo apt-get install -y nginx certbot python3-certbot-nginx awscli
+sudo apt-get update && sudo apt-get install -y nginx certbot python3-certbot-nginx
+
+# AWS CLI v2 (the apt package doesn't exist on Ubuntu 24+)
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+sudo apt-get install -y unzip && unzip awscliv2.zip && sudo ./aws/install
+rm -rf awscliv2.zip aws/
 ```
 
 Then configure AWS CLI:
@@ -211,7 +302,7 @@ Enter: Access Key ID, Secret Key, region `af-south-1`, output `json`.
 ### Step 8: Clone and Configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/my-school-hub.git
+git clone https://github.com/Brandonkhumalo/my-school-hub.git
 cd my-school-hub
 
 # Create .env from template
@@ -226,9 +317,10 @@ Fill in the `.env` using the credentials you saved from the previous steps:
 SECRET_KEY=<generate: python3 -c "import secrets; print(secrets.token_urlsafe(50))">
 SUPERADMIN_SECRET_KEY=<generate: python3 -c "import secrets; print(secrets.token_urlsafe(50))">
 DEBUG=False
-ALLOWED_HOSTS=myschoolhub.co.zw,www.myschoolhub.co.zw,<ELASTIC_IP from Step 1>
+ALLOWED_HOSTS=myschoolhub.co.zw,www.myschoolhub.co.zw,<ELASTIC_IP from Step 1>,localhost
 
 # ── Database (from Step 3 — RDS Endpoint + Master Password) ───
+# Format: postgresql://USERNAME:PASSWORD@ENDPOINT:5432/DBNAME
 DATABASE_URL=postgresql://postgres:<RDS_PASSWORD from Step 3>@<RDS_ENDPOINT from Step 3>:5432/schoolhub
 
 # ── Redis (from Step 4 — ElastiCache Primary Endpoint) ────────
@@ -261,11 +353,11 @@ WEB_CONCURRENCY=4
 > |----------|-----------------|
 > | `SECRET_KEY` | Generated just now |
 > | `SUPERADMIN_SECRET_KEY` | Generated just now |
-> | `ALLOWED_HOSTS` | Elastic IP from Step 1 |
-> | `DATABASE_URL` | RDS Endpoint + Password from Step 3 |
-> | `REDIS_URL` | ElastiCache Endpoint from Step 4 |
-> | `CELERY_BROKER_URL` | Same as `REDIS_URL` |
-> | `ECR_REGISTRY` | ECR Registry URI from Step 5 |
+> | `ALLOWED_HOSTS` | Elastic IP from Step 1 + `localhost` (needed for Docker health checks) |
+> | `DATABASE_URL` | `postgresql://postgres:PASSWORD@ENDPOINT:5432/schoolhub` — from Step 3 |
+> | `REDIS_URL` | `redis://ENDPOINT:6379/0` — from Step 4 |
+> | `CELERY_BROKER_URL` | Same value as `REDIS_URL` |
+> | `ECR_REGISTRY` | Registry host only from Step 5 — do NOT include `/schoolhub-web` |
 > | `ResendEmailApiKey` | Your Resend dashboard |
 > | `CORS_ALLOWED_ORIGINS` | Your domain (pre-filled) |
 > | `CSRF_TRUSTED_ORIGINS` | Your domain (pre-filled) |
