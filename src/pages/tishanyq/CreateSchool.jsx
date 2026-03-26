@@ -24,7 +24,7 @@ export default function CreateSchool() {
 
     try {
       const token = localStorage.getItem("tishanyq_token");
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+      const API_BASE_URL = "/api/v1";
       const response = await fetch(`${API_BASE_URL}/auth/superadmin/create-school/`, {
         method: "POST",
         headers: {

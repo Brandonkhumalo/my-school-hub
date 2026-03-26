@@ -1,7 +1,6 @@
 // Development: Vite proxies /api → localhost:8000 (see vite.config.js)
-// Production (cPanel frontend): set VITE_API_BASE_URL in .env.production
-//   e.g. VITE_API_BASE_URL=https://myschoolhub-backend.up.railway.app/api/v1
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+// Production: Nginx on the same EC2 instance proxies /api → Django container
+const API_BASE_URL = "/api/v1";
 
 function getToken() {
   return localStorage.getItem('token');

@@ -68,7 +68,7 @@ const ContactUs = () => {
     setSending(true);
     setError("");
     try {
-      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
+      const apiBase = "/api/v1";
       const res = await fetch(`${apiBase}/auth/contact/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
