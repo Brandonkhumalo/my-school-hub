@@ -2,7 +2,7 @@
 // Provides offline support via a Cache-First strategy for static assets
 // and a Network-First strategy for API requests.
 
-const CACHE_NAME = 'myschoolhub-v1';
+const CACHE_NAME = 'myschoolhub-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
