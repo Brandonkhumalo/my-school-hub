@@ -79,10 +79,14 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
     if (!response.ok) {
       let errorData = null;
       try {
-        errorData = await response.json();
-      } catch {
         const errorText = await response.text();
-        errorData = { error: errorText || "API request failed" };
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || "API request failed" };
+        }
+      } catch {
+        errorData = { error: "API request failed" };
       }
       // Extract DRF validation errors (e.g. {"email": ["Already registered"]})
       let errorMessage = errorData.error || errorData.message || errorData.detail;
