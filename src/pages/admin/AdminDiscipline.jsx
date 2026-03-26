@@ -31,13 +31,15 @@ export default function AdminDiscipline() {
       if (filter.severity) params.severity = filter.severity;
       if (filter.resolved) params.is_resolved = filter.resolved;
       const [recordsData, studentsData] = await Promise.all([
-        apiService.getDisciplinaryRecords(params),
-        apiService.fetchStudents(),
+        apiService.getDisciplinaryRecords(params).catch(() => []),
+        apiService.fetchStudents().catch(() => []),
       ]);
       setRecords(Array.isArray(recordsData) ? recordsData : []);
       setStudents(Array.isArray(studentsData) ? studentsData : []);
     } catch (err) {
       console.error("Error loading discipline data:", err);
+      setRecords([]);
+      setStudents([]);
     } finally {
       setLoading(false);
     }

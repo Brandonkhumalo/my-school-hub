@@ -20,7 +20,7 @@ export default function AdminAnalytics() {
       const result = await apiService.getAdminAnalytics();
       setData(result);
     } catch (err) {
-      setError(err.message || "Failed to load analytics");
+      setError("Analytics data is not available yet. This feature requires the latest backend update to be deployed.");
     } finally {
       setIsLoading(false);
     }

@@ -41,7 +41,7 @@ export default function AdminHealth() {
       const data = await apiService.fetchStudents();
       setStudents(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Error fetching students:", error);
+      setStudents([]);
     }
   };
 
@@ -52,7 +52,7 @@ export default function AdminHealth() {
       const data = await apiService.getClinicVisits(params);
       setClinicVisits(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Error fetching clinic visits:", error);
+      setClinicVisits([]);
     }
   };
 

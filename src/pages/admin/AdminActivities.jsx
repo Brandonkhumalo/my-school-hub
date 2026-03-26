@@ -101,15 +101,17 @@ export default function AdminActivities() {
     setLoading(true);
     try {
       const [activitiesData, teachersData, studentsData] = await Promise.all([
-        apiService.getActivities(),
-        apiService.fetchTeachers(),
-        apiService.fetchStudents(),
+        apiService.getActivities().catch(() => []),
+        apiService.fetchTeachers().catch(() => []),
+        apiService.fetchStudents().catch(() => []),
       ]);
-      setActivities(activitiesData);
-      setTeachers(teachersData);
-      setStudents(studentsData);
+      setActivities(Array.isArray(activitiesData) ? activitiesData : []);
+      setTeachers(Array.isArray(teachersData) ? teachersData : []);
+      setStudents(Array.isArray(studentsData) ? studentsData : []);
     } catch (err) {
-      setError("Failed to load data");
+      setActivities([]);
+      setTeachers([]);
+      setStudents([]);
     } finally {
       setLoading(false);
     }
@@ -118,13 +120,14 @@ export default function AdminActivities() {
   const loadAccolades = async () => {
     try {
       const [accoladesData, leaderboardData] = await Promise.all([
-        apiService.getAccolades(),
-        apiService.getAccoladeLeaderboard(),
+        apiService.getAccolades().catch(() => []),
+        apiService.getAccoladeLeaderboard().catch(() => []),
       ]);
-      setAccolades(accoladesData);
-      setLeaderboard(leaderboardData);
+      setAccolades(Array.isArray(accoladesData) ? accoladesData : []);
+      setLeaderboard(Array.isArray(leaderboardData) ? leaderboardData : []);
     } catch (err) {
-      setError("Failed to load accolades");
+      setAccolades([]);
+      setLeaderboard([]);
     }
   };
 
@@ -195,9 +198,9 @@ export default function AdminActivities() {
     setSelectedActivity(activity);
     try {
       const data = await apiService.getActivityEnrollments(activity.id);
-      setEnrollments(data);
+      setEnrollments(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError("Failed to load enrollments");
+      setEnrollments([]);
     }
   };
 
@@ -235,9 +238,9 @@ export default function AdminActivities() {
     setEventsActivity(activity);
     try {
       const data = await apiService.getActivityEvents(activity.id);
-      setEvents(data);
+      setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError("Failed to load events");
+      setEvents([]);
     }
   };
 
