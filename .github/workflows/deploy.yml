@@ -15,6 +15,7 @@ on:
     paths:
       - 'School_system/**'
       - 'src/**'
+      - 'public/**'
       - 'package.json'
       - 'vite.config.js'
       - 'docker-compose.prod.yml'
