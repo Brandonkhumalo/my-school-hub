@@ -21,7 +21,7 @@ def api_root(request):
             'academics': '/api/v1/academics/',
             'finances': '/api/v1/finances/',
             'staff': '/api/v1/staff/',
-            'admin': '/admin/'
+            'admin': '/django-admin/'
         }
     })
 
@@ -44,8 +44,8 @@ urlpatterns = [
     # Health check (ALB target group, docker HEALTHCHECK)
     path('health/', health_check, name='health-check'),
 
-    # Admin interface
-    path('admin/', admin.site.urls),
+    # Django Admin interface (at /django-admin/ to avoid collision with React /admin/ routes)
+    path('django-admin/', admin.site.urls),
 
     # API Root
     path('api/v1/', api_root, name='api-root'),
