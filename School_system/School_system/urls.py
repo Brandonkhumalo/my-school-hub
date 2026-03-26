@@ -71,6 +71,9 @@ urlpatterns = [
     # WhatsApp Integration (temporarily disabled)
     # path('api/v1/whatsapp/', include('whatsapp_intergration.urls')),
 
+    # Library Management
+    path('api/v1/library/', include('library.urls')),
+
     # Student Portal
     path('api/v1/students/', include('academics.student_urls')),
 
@@ -83,8 +86,6 @@ urlpatterns = [
     # Messaging System (Parent-Teacher Communication)
     path('api/v1/', include('academics.messaging_urls')),
 
-    # Homework endpoints
-    path('api/v1/', include('academics.homework_urls')),
 ]
 
 # Serve uploaded media files in all environments

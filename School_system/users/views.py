@@ -2,12 +2,13 @@ import logging
 
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
-from .models import CustomUser, School, AuditLog, SchoolSettings
+from .models import CustomUser, School, AuditLog, SchoolSettings, Notification
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
     ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer
@@ -101,7 +102,7 @@ def login_view(request):
                 response_status=200,
             )
         except Exception:
-            pass
+            logger.warning("Audit log creation failed", exc_info=True)
 
         return Response({
             'user': user_data,
@@ -151,7 +152,7 @@ def logout_view(request):
                 response_status=200,
             )
         except Exception:
-            pass
+            logger.warning("Audit log creation failed", exc_info=True)
         return Response({'message': 'Logout successful'})
     except Exception as e:
         return Response({'message': 'Error during logout'}, status=status.HTTP_400_BAD_REQUEST)
@@ -181,7 +182,10 @@ def change_password_view(request):
     if serializer.is_valid():
         user = request.user
         if user.check_password(serializer.validated_data['old_password']):
-            user.set_password(serializer.validated_data['new_password'])
+            new_password = serializer.validated_data['new_password']
+            if not new_password or len(new_password) < 8:
+                return Response({'error': 'New password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(new_password)
             user.save()
             return Response({'message': 'Password changed successfully'})
         else:
@@ -490,3 +494,144 @@ def contact_form_view(request):
         # Still return 200 so the user gets feedback — the enquiry details are logged
         return Response({'message': 'Your enquiry has been received.'})
 
+
+# ---------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_list_view(request):
+    """List notifications for the current user (newest first)."""
+    notifications = Notification.objects.filter(user=request.user).order_by('-date_created')[:50]
+    data = [
+        {
+            'id': n.id,
+            'title': n.title,
+            'message': n.message,
+            'notification_type': n.notification_type,
+            'is_read': n.is_read,
+            'link': n.link,
+            'date_created': n.date_created.isoformat(),
+        }
+        for n in notifications
+    ]
+    return Response({'results': data, 'count': len(data)})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_mark_read_view(request, notification_id):
+    """Mark a single notification as read."""
+    try:
+        notification = Notification.objects.get(id=notification_id, user=request.user)
+        notification.is_read = True
+        notification.save()
+        return Response({'message': 'Notification marked as read'})
+    except Notification.DoesNotExist:
+        return Response({'error': 'Notification not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_mark_all_read_view(request):
+    """Mark all notifications as read for the current user."""
+    count = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return Response({'message': f'{count} notifications marked as read'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_unread_count_view(request):
+    """Return the count of unread notifications."""
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({'unread_count': count})
+
+
+# ---------------------------------------------------------------
+# Admin Analytics
+# ---------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_analytics(request):
+    """Admin analytics dashboard data"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    from academics.models import Student, Teacher, Class, Result, Attendance, Subject
+    from finances.models import StudentFee
+    from django.db.models import Sum
+    from datetime import timedelta
+
+    now = timezone.now()
+    thirty_days_ago = now - timedelta(days=30)
+
+    total_students = Student.objects.filter(user__school=school).count()
+    total_teachers = Teacher.objects.filter(user__school=school).count()
+    total_classes = Class.objects.filter(school=school).count()
+    total_subjects = Subject.objects.filter(school=school, is_deleted=False).count()
+
+    # Attendance (last 30 days)
+    recent_attendance = Attendance.objects.filter(student__user__school=school, date__gte=thirty_days_ago.date())
+    total_records = recent_attendance.count()
+    present_count = recent_attendance.filter(status__in=['present', 'late']).count()
+    attendance_rate = round((present_count / total_records * 100), 1) if total_records > 0 else 0
+
+    # Attendance by day (last 7 days)
+    attendance_by_day = []
+    for i in range(6, -1, -1):
+        day = (now - timedelta(days=i)).date()
+        day_records = Attendance.objects.filter(student__user__school=school, date=day)
+        total = day_records.count()
+        present = day_records.filter(status__in=['present', 'late']).count()
+        attendance_by_day.append({
+            'date': day.isoformat(),
+            'total': total,
+            'present': present,
+            'rate': round((present / total * 100), 1) if total > 0 else 0,
+        })
+
+    # Fee collection
+    total_fees_due = StudentFee.objects.filter(student__user__school=school).aggregate(total=Sum('amount_due'))['total'] or 0
+    total_fees_paid = StudentFee.objects.filter(student__user__school=school).aggregate(total=Sum('amount_paid'))['total'] or 0
+    collection_rate = round((float(total_fees_paid) / float(total_fees_due) * 100), 1) if total_fees_due > 0 else 0
+
+    # Subject performance
+    subject_performance = []
+    for subject in Subject.objects.filter(school=school, is_deleted=False)[:15]:
+        results = Result.objects.filter(subject=subject, student__user__school=school)
+        if results.exists():
+            avg = 0
+            count = 0
+            for r in results:
+                if r.max_score > 0:
+                    avg += (r.score / r.max_score * 100)
+                    count += 1
+            subject_performance.append({
+                'name': subject.name,
+                'code': subject.code,
+                'average': round(avg / count, 1) if count > 0 else 0,
+                'student_count': results.values('student').distinct().count(),
+            })
+    subject_performance.sort(key=lambda x: x['average'], reverse=True)
+
+    # Class distribution
+    class_distribution = [{'name': c.name, 'student_count': c.students.count()} for c in Class.objects.filter(school=school)]
+
+    return Response({
+        'overview': {
+            'total_students': total_students,
+            'total_teachers': total_teachers,
+            'total_classes': total_classes,
+            'total_subjects': total_subjects,
+            'attendance_rate': attendance_rate,
+            'fee_collection_rate': collection_rate,
+            'total_fees_due': float(total_fees_due),
+            'total_fees_paid': float(total_fees_paid),
+        },
+        'attendance_by_day': attendance_by_day,
+        'subject_performance': subject_performance,
+        'class_distribution': class_distribution,
+    })

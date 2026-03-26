@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDateLong } from "../../utils/dateFormat";
 import apiService from "../../services/apiService";
 
 export default function StudentAnnouncements() {
@@ -27,10 +28,7 @@ export default function StudentAnnouncements() {
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  };
+  const formatDate = formatDateLong;
 
   const getPriorityColor = (priority) => {
     switch (priority?.toLowerCase()) {

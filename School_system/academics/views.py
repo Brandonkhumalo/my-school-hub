@@ -1096,3 +1096,77 @@ def timetable_conflict_check(request):
         'conflict_count': len(conflicts),
         'conflicts': conflicts,
     })
+
+
+# ── Subject-Teacher Assignment ─────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_teachers(request, subject_id):
+    """Get all teachers assigned to a subject"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
+    except Subject.DoesNotExist:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    teachers = subject.teachers.select_related('user').all()
+    data = [{
+        'id': t.id,
+        'user_id': t.user.id,
+        'first_name': t.user.first_name,
+        'last_name': t.user.last_name,
+        'email': t.user.email,
+        'qualification': t.qualification,
+    } for t in teachers]
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def assign_teacher_to_subject(request, subject_id):
+    """Assign a teacher to a subject"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
+    except Subject.DoesNotExist:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    teacher_id = request.data.get('teacher_id')
+    if not teacher_id:
+        return Response({'error': 'teacher_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from .models import Teacher
+        teacher = Teacher.objects.get(id=teacher_id, user__school=request.user.school)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if subject.teachers.filter(id=teacher.id).exists():
+        return Response({'error': 'Teacher already assigned to this subject'}, status=status.HTTP_400_BAD_REQUEST)
+
+    teacher.subjects_taught.add(subject)
+    return Response({'message': f'{teacher.user.first_name} {teacher.user.last_name} assigned to {subject.name}'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def remove_teacher_from_subject(request, subject_id, teacher_id):
+    """Remove a teacher from a subject"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
+    except Subject.DoesNotExist:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        from .models import Teacher
+        teacher = Teacher.objects.get(id=teacher_id)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    teacher.subjects_taught.remove(subject)
+    return Response({'message': f'{teacher.user.first_name} {teacher.user.last_name} removed from {subject.name}'})

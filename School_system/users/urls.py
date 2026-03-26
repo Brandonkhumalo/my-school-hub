@@ -22,6 +22,9 @@ urlpatterns = [
     # Dashboard
     path('dashboard/stats/', views.dashboard_stats_view, name='dashboard-stats'),
 
+    # Analytics
+    path('analytics/', views.admin_analytics, name='admin-analytics'),
+
     # School management (SaaS multi-tenant)
     path('schools/register/', views.register_school, name='register-school'),
     path('schools/search/', views.search_schools, name='search-schools'),
@@ -39,6 +42,12 @@ urlpatterns = [
 
     # Public contact form
     path('contact/', views.contact_form_view, name='contact-form'),
+
+    # Notifications
+    path('notifications/', views.notification_list_view, name='notification-list'),
+    path('notifications/<int:notification_id>/read/', views.notification_mark_read_view, name='notification-mark-read'),
+    path('notifications/read-all/', views.notification_mark_all_read_view, name='notification-mark-all-read'),
+    path('notifications/unread-count/', views.notification_unread_count_view, name='notification-unread-count'),
 
     # Superadmin endpoints (Tishanyq Developer Portal)
     path('superadmin/register/', superadmin_views.superadmin_register, name='superadmin-register'),

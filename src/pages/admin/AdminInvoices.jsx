@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -182,7 +183,7 @@ export default function AdminInvoices() {
                         <td className="p-3 font-semibold">${parseFloat(invoice.total_amount).toFixed(2)}</td>
                         <td className="p-3 text-green-600">${parseFloat(invoice.amount_paid).toFixed(2)}</td>
                         <td className="p-3 font-semibold text-red-600">${parseFloat(invoice.balance).toFixed(2)}</td>
-                        <td className="p-3 text-gray-600">{new Date(invoice.due_date).toLocaleDateString()}</td>
+                        <td className="p-3 text-gray-600">{formatDate(invoice.due_date)}</td>
                         <td className="p-3">
                           <span className={`px-2 py-1 rounded text-white text-sm ${
                             invoice.is_paid ? 'bg-green-500' : 'bg-orange-500'

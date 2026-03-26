@@ -324,9 +324,24 @@ def attendance_register(request):
             return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
-        # Get the class where this teacher is the class_teacher
-        teacher_class = Class.objects.filter(class_teacher=request.user).first()
-        
+        # Support class_id parameter — teacher can select any class they teach
+        class_id = request.query_params.get('class_id')
+
+        if class_id:
+            try:
+                teacher_class = Class.objects.get(id=class_id)
+                # Verify teacher is authorized (class teacher OR teaches via timetable)
+                from .models import Timetable
+                is_class_teacher = teacher_class.class_teacher == request.user
+                teaches_class = Timetable.objects.filter(teacher=teacher, class_assigned=teacher_class).exists()
+                if not is_class_teacher and not teaches_class:
+                    return Response({'error': 'You are not authorized to mark attendance for this class'},
+                                   status=status.HTTP_403_FORBIDDEN)
+            except Class.DoesNotExist:
+                return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            teacher_class = Class.objects.filter(class_teacher=request.user).first()
+
         if not teacher_class:
             return Response({
                 'no_class': True,
@@ -407,9 +422,15 @@ def mark_attendance(request):
                            status=status.HTTP_400_BAD_REQUEST)
         
         if not attendance_data:
-            return Response({'error': 'Attendance data is required'}, 
+            return Response({'error': 'Attendance data is required'},
                            status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Get classes this teacher is authorized for (class teacher OR teaches via timetable)
+        from .models import Timetable
+        class_teacher_ids = set(Class.objects.filter(class_teacher=request.user).values_list('id', flat=True))
+        timetable_class_ids = set(Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True).distinct())
+        allowed_class_ids = class_teacher_ids | timetable_class_ids
+
         created_count = 0
         updated_count = 0
         errors = []
@@ -429,7 +450,12 @@ def mark_attendance(request):
             
             try:
                 student = Student.objects.get(id=student_id)
-                
+
+                # Verify student belongs to a class this teacher is authorized for
+                if student.student_class_id not in allowed_class_ids:
+                    errors.append(f"Student {student_id} is not in your class")
+                    continue
+
                 # Check if attendance already exists for this date
                 attendance, created = Attendance.objects.update_or_create(
                     student=student,
@@ -554,3 +580,41 @@ def grade_submission(request, submission_id):
         'grade': submission.grade,
         'feedback': submission.feedback,
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_classes(request):
+    """Get all classes this teacher is authorized for (class teacher + timetable)"""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                       status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+        from .models import Timetable
+
+        # Classes where teacher is class_teacher
+        class_teacher_classes = set(Class.objects.filter(
+            class_teacher=request.user
+        ).values_list('id', flat=True))
+
+        # Classes where teacher has timetable entries
+        timetable_classes = set(Timetable.objects.filter(
+            teacher=teacher
+        ).values_list('class_assigned_id', flat=True).distinct())
+
+        all_class_ids = class_teacher_classes | timetable_classes
+        classes = Class.objects.filter(id__in=all_class_ids).order_by('name')
+
+        data = [{
+            'id': c.id,
+            'name': c.name,
+            'grade_level': c.grade_level,
+            'academic_year': c.academic_year,
+            'is_class_teacher': c.id in class_teacher_classes,
+            'student_count': c.students.count(),
+        } for c in classes]
+
+        return Response({'classes': data})
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)

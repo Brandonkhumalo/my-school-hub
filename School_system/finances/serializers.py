@@ -372,7 +372,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     balance = serializers.ReadOnlyField()
     school_name = serializers.CharField(source='school.name', read_only=True)
     school_address = serializers.CharField(source='school.address', read_only=True)
-    school_phone = serializers.CharField(source='school.phone_number', read_only=True)
+    school_phone = serializers.CharField(source='school.phone', read_only=True)
     school_email = serializers.CharField(source='school.email', read_only=True)
     payment_details = serializers.SerializerMethodField()
 

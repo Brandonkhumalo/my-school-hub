@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDateShort } from "../../utils/dateFormat";
 
 export default function ParentHomework() {
   const { user } = useAuth();
@@ -129,12 +130,7 @@ export default function ParentHomework() {
                       </div>
                       <div className="flex items-center gap-2">
                         <i className="fas fa-calendar-alt text-blue-500 w-5"></i>
-                        <span>Due: <strong>{new Date(hw.due_date).toLocaleDateString('en-GB', { 
-                          weekday: 'short', 
-                          day: 'numeric', 
-                          month: 'short', 
-                          year: 'numeric' 
-                        })}</strong></span>
+                        <span>Due: <strong>{formatDateShort(hw.due_date)}</strong></span>
                       </div>
                     </div>
 

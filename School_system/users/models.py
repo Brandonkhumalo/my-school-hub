@@ -191,3 +191,28 @@ class AuditLog(models.Model):
     def __str__(self):
         user_str = self.user.full_name if self.user else 'System'
         return f"{user_str} — {self.action} {self.model_name} at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('announcement', 'Announcement'),
+        ('message', 'Message'),
+        ('fee_reminder', 'Fee Reminder'),
+        ('homework', 'Homework'),
+        ('attendance', 'Attendance'),
+        ('result', 'Result'),
+        ('general', 'General'),
+    ]
+    user = models.ForeignKey('CustomUser', on_delete=models.CASCADE, related_name='notifications')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES, default='general')
+    is_read = models.BooleanField(default=False)
+    link = models.CharField(max_length=500, blank=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_created']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.title} ({'Read' if self.is_read else 'Unread'})"

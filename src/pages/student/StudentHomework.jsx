@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDateFull } from "../../utils/dateFormat";
 
 export default function StudentHomework() {
   const { user } = useAuth();
@@ -121,12 +122,7 @@ export default function StudentHomework() {
                   <div className="p-4">
                     <div className="flex items-center text-gray-600 mb-3">
                       <i className="fas fa-calendar-alt mr-2"></i>
-                      <span>Due: {new Date(hw.due_date).toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}</span>
+                      <span>Due: {formatDateFull(hw.due_date)}</span>
                     </div>
                     
                     <div className="flex items-center text-gray-600 mb-3">

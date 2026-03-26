@@ -1,9 +1,24 @@
-// Development: Vite proxies /api → localhost:8000 (see vite.config.js)
-// Production: Nginx on the same EC2 instance proxies /api → Django container
-const API_BASE_URL = "/api/v1";
+// Production: Django backend hosted on Railway
+const API_BASE_URL = "https://myschoolhub.co.zw/api/v1";
 
 function getToken() {
   return localStorage.getItem('token');
+}
+
+function getRefreshToken() {
+  return localStorage.getItem('refresh_token');
+}
+
+// Handle 401 — clear auth and redirect to login
+function handleAuthExpired() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  // Only redirect if not already on login/register/public pages
+  const publicPaths = ['/', '/login', '/admin/login', '/register', '/about', '/contact', '/payment'];
+  if (!publicPaths.some(p => window.location.pathname.startsWith(p))) {
+    window.location.href = '/login';
+  }
 }
 
 async function requestFile(endpoint, useAuth = true) {
@@ -13,6 +28,7 @@ async function requestFile(endpoint, useAuth = true) {
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
   const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+  if (response.status === 401) { handleAuthExpired(); throw new Error("Session expired"); }
   if (!response.ok) throw new Error("File request failed");
   return response.blob();
 }
@@ -22,6 +38,7 @@ async function requestMultipart(endpoint, method = "POST", formData) {
   const headers = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const response = await fetch(`${API_BASE_URL}${endpoint}`, { method, headers, body: formData });
+  if (response.status === 401) { handleAuthExpired(); throw new Error("Session expired"); }
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: "Request failed" }));
     throw new Error(err.error || "Request failed");
@@ -52,6 +69,13 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+
+    // Handle expired token — redirect to login
+    if (response.status === 401 && useAuth) {
+      handleAuthExpired();
+      throw new Error("Session expired. Please log in again.");
+    }
+
     if (!response.ok) {
       let errorData = null;
       try {
@@ -73,12 +97,12 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
       throw error;
     }
     const data = await response.json();
-    
+
     // Handle paginated responses - extract results array
     if (data && typeof data === 'object' && 'results' in data) {
       return data.results;
     }
-    
+
     return data;
   } catch (error) {
     console.error("API Service Error:", error.message);
@@ -97,74 +121,75 @@ const apiService = {
   register: (userData) => request("/auth/register/", "POST", userData, false),
   registerUser: (userData) => request("/auth/register/", "POST", userData, false),
   logout: () => request("/auth/logout/", "POST"),
-  
+
   getProfile: () => request("/auth/profile/", "GET"),
   updateProfile: (data) => request("/auth/profile/update/", "PUT", data),
   changePassword: (data) => request("/auth/profile/change-password/", "POST", data),
   setWhatsAppPin: (data) => request("/auth/profile/set-whatsapp-pin/", "POST", data),
-  
+
   fetchUsers: () => request("/auth/users/", "GET"),
   deleteUser: (userId) => request(`/auth/users/${userId}/delete/`, "DELETE"),
-  
+
   getDashboardStats: () => request("/auth/dashboard/stats/", "GET"),
-  
+
   fetchSubjects: () => request("/academics/subjects/", "GET"),
   createSubject: (data) => request("/academics/subjects/", "POST", data),
   deleteSubject: (id) => request(`/academics/subjects/${id}/`, "DELETE"),
-  
+
   fetchClasses: () => request("/academics/classes/", "GET"),
   createClass: (data) => request("/academics/classes/", "POST", data),
   updateClass: (id, data) => request(`/academics/classes/${id}/`, "PATCH", data),
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
-  
+
   fetchStudents: () => request("/academics/students/", "GET"),
   fetchStudentById: (id) => request(`/academics/students/${id}/`, "GET"),
   fetchStudentPerformance: (studentId) => request(`/academics/students/${studentId}/performance/`, "GET"),
   createStudent: (data) => request("/academics/students/", "POST", data),
-  
+
   fetchTeachers: () => request("/academics/teachers/", "GET"),
   createTeacher: (data) => request("/academics/teachers/", "POST", data),
-  
+
   fetchParents: () => request("/academics/parents/", "GET"),
   createParent: (data) => request("/academics/parents/", "POST", data),
-  
+
   fetchResults: () => request("/academics/results/", "GET"),
   fetchClassAverages: () => request("/academics/results/class-averages/", "GET"),
   createResult: (data) => request("/academics/results/", "POST", data),
-  
+
   fetchTimetable: () => request("/academics/timetables/", "GET"),
   fetchTimetables: () => request("/academics/timetables/", "GET"),
-  
+
   fetchAnnouncements: () => request("/academics/announcements/", "GET"),
   createAnnouncement: (data) => request("/academics/announcements/", "POST", data),
-  
+
   fetchComplaints: () => request("/academics/complaints/", "GET"),
   createComplaint: (data) => request("/academics/complaints/", "POST", data),
-  
+
   fetchSuspensions: () => request("/academics/suspensions/", "GET"),
   createSuspension: (data) => request("/academics/suspensions/", "POST", data),
-  
+
   fetchFeeTypes: () => request("/finances/fee-types/", "GET"),
   createFeeType: (data) => request("/finances/fee-types/", "POST", data),
-  
+
   fetchFees: () => request("/finances/student-fees/", "GET"),
   createFee: (data) => request("/finances/student-fees/", "POST", data),
-  
+
   fetchPayments: () => request("/finances/payments/", "GET"),
   createPayment: (data) => request("/finances/payments/", "POST", data),
-  
+
   fetchInvoices: () => request("/finances/invoices/", "GET"),
   createInvoice: (data) => request("/finances/invoices/", "POST", data),
-  
+
   fetchReports: () => request("/finances/reports/", "GET"),
   createReport: (data) => request("/finances/reports/", "POST", data),
-  
+
   fetchStudentSummary: (studentId) => request(`/finances/students/${studentId}/summary/`, "GET"),
-  
+
   fetchTeacherClasses: () => request("/academics/classes/", "GET"),
+  getTeacherClasses: () => request("/teachers/classes/", "GET"),
   fetchTeacherStudents: () => request("/academics/students/", "GET"),
   fetchTeacherResults: () => request("/academics/results/", "GET"),
-  
+
   fetchParentChildren: () => request("/academics/students/", "GET"),
   fetchParentResults: () => request("/academics/results/", "GET"),
   fetchParentFeeSummary: () => request("/finances/student-fees/", "GET"),
@@ -212,12 +237,12 @@ const apiService = {
     return request(`/teachers/attendance/register/?${params.toString()}`, "GET");
   },
   markAttendance: (data) => request("/teachers/attendance/mark/", "POST", data),
-  
+
   // Admin Parent-Child Link Management endpoints
   getPendingParentLinkRequests: () => request("/academics/parent-link-requests/", "GET"),
   approveParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/approve/`, "POST"),
   declineParentLinkRequest: (linkId) => request(`/academics/parent-link-requests/${linkId}/decline/`, "DELETE"),
-  
+
   // Messaging endpoints
   getMessages: () => request("/messages/", "GET"),
   getConversation: (userId) => request(`/messages/conversation/${userId}/`, "GET"),
@@ -227,7 +252,7 @@ const apiService = {
   searchTeachers: (query = '') => request(`/teachers/search/?q=${query}`, "GET"),
   searchParents: (query = '') => request(`/parents/search/?q=${query}`, "GET"),
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
-  
+
   // Homework endpoints
   getTeacherHomework: () => request("/teachers/homework/", "GET"),
   getTeacherHomeworkClasses: () => request("/teachers/homework/classes/", "GET"),
@@ -248,13 +273,13 @@ const apiService = {
   },
   deleteHomework: (homeworkId) => request(`/teachers/homework/${homeworkId}/delete/`, "DELETE"),
   downloadHomework: (homeworkId) => `${API_BASE_URL}/teachers/homework/${homeworkId}/download/`,
-  
+
   getParentHomework: () => request("/parents/homework/", "GET"),
   downloadParentHomework: (homeworkId) => `${API_BASE_URL}/parents/homework/${homeworkId}/download/`,
-  
+
   getStudentHomework: () => request("/students/homework/", "GET"),
   downloadStudentHomework: (homeworkId) => `${API_BASE_URL}/students/homework/${homeworkId}/download/`,
-  
+
   // School Fees endpoints
   getSchoolFees: (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -265,7 +290,7 @@ const apiService = {
   deleteSchoolFees: (id) => request(`/finances/school-fees/${id}/`, "DELETE"),
   getMySchoolFees: () => request("/finances/school-fees/my-fees/", "GET"),
   getAllGrades: () => request("/finances/grades/", "GET"),
-  
+
   // Payment Records endpoints
   getPaymentRecords: (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -285,7 +310,7 @@ const apiService = {
     const query = new URLSearchParams(params).toString();
     return request(`/finances/payment-records/students/${query ? '?' + query : ''}`, "GET");
   },
-  
+
   // Invoice endpoints
   getInvoices: (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -297,7 +322,7 @@ const apiService = {
   },
   getInvoiceDetail: (id) => request(`/finances/invoices/${id}/detail/`, "GET"),
   getParentInvoices: () => request("/finances/invoices/parent/", "GET"),
-  
+
   // Additional Fees endpoints
   getAdditionalFees: (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -306,7 +331,7 @@ const apiService = {
   createAdditionalFee: (data) => request("/finances/additional-fees/", "POST", data),
   updateAdditionalFee: (id, data) => request(`/finances/additional-fees/${id}/`, "PATCH", data),
   deleteAdditionalFee: (id) => request(`/finances/additional-fees/${id}/`, "DELETE"),
-  
+
   // Daily Transaction Report
   getDailyTransactionReport: (params = {}) => {
     const query = new URLSearchParams(params).toString();
@@ -316,7 +341,7 @@ const apiService = {
   // Timetable generation endpoints
   generateTimetable: (data = {}) => request("/academics/timetables/generate/", "POST", data),
   getTimetableStats: () => request("/academics/timetables/stats/", "GET"),
-  
+
   // School management (SaaS multi-tenant)
   registerSchool: (data) => request("/auth/schools/register/", "POST", data, false),
   searchSchools: (query) => request(`/auth/schools/search/?q=${encodeURIComponent(query)}`, "GET", null, false),
@@ -409,6 +434,94 @@ const apiService = {
   createMeeting: (data) => request("/staff/meetings/", "POST", data),
   updateMeeting: (id, data) => request(`/staff/meetings/${id}/`, "PATCH", data),
   deleteMeeting: (id) => request(`/staff/meetings/${id}/`, "DELETE"),
+
+  // Promotion endpoints
+  getPromotionPreview: (classId, academicYear) => request(`/academics/promotions/preview/?class_id=${classId}&academic_year=${encodeURIComponent(academicYear)}`, "GET"),
+  processPromotions: (data) => request("/academics/promotions/", "POST", data),
+  getPromotionHistory: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/academics/promotions/history/${q ? '?' + q : ''}`, "GET");
+  },
+
+  // Activities endpoints
+  getActivities: () => request("/academics/activities/", "GET"),
+  createActivity: (data) => request("/academics/activities/", "POST", data),
+  updateActivity: (id, data) => request(`/academics/activities/${id}/`, "PUT", data),
+  deleteActivity: (id) => request(`/academics/activities/${id}/`, "DELETE"),
+  getActivityEnrollments: (id) => request(`/academics/activities/${id}/enrollments/`, "GET"),
+  enrollStudent: (activityId, data) => request(`/academics/activities/${activityId}/enroll/`, "POST", data),
+  unenrollStudent: (activityId, studentId) => request(`/academics/activities/${activityId}/unenroll/${studentId}/`, "DELETE"),
+  getActivityEvents: (id) => request(`/academics/activities/${id}/events/`, "GET"),
+  createActivityEvent: (id, data) => request(`/academics/activities/${id}/events/`, "POST", data),
+  getStudentActivities: () => request("/students/activities/", "GET"),
+  getAccolades: () => request("/academics/accolades/", "GET"),
+  createAccolade: (data) => request("/academics/accolades/", "POST", data),
+  awardAccolade: (data) => request("/academics/accolades/award/", "POST", data),
+  getStudentAccolades: () => request("/students/accolades/", "GET"),
+  getAccoladeLeaderboard: () => request("/academics/accolades/leaderboard/", "GET"),
+
+  // Subject-Teacher assignment
+  getSubjectTeachers: (subjectId) => request(`/academics/subjects/${subjectId}/teachers/`, "GET"),
+  assignTeacherToSubject: (subjectId, teacherId) => request(`/academics/subjects/${subjectId}/assign-teacher/`, "POST", { teacher_id: teacherId }),
+  removeTeacherFromSubject: (subjectId, teacherId) => request(`/academics/subjects/${subjectId}/remove-teacher/${teacherId}/`, "DELETE"),
+
+  // Library endpoints
+  getBooks: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/library/books/${q ? '?' + q : ''}`, "GET");
+  },
+  createBook: (data) => request("/library/books/", "POST", data),
+  updateBook: (id, data) => request(`/library/books/${id}/`, "PUT", data),
+  deleteBook: (id) => request(`/library/books/${id}/`, "DELETE"),
+  issueBook: (bookId, data) => request(`/library/books/${bookId}/issue/`, "POST", data),
+  getLoans: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/library/loans/${q ? '?' + q : ''}`, "GET");
+  },
+  returnBook: (loanId) => request(`/library/loans/${loanId}/return/`, "POST"),
+  getOverdueLoans: () => request("/library/loans/overdue/", "GET"),
+  getLibraryStats: () => request("/library/stats/", "GET"),
+
+  // Health endpoints
+  getStudentHealthRecord: (studentId) => request(`/academics/health/${studentId}/`, "GET"),
+  updateHealthRecord: (studentId, data) => request(`/academics/health/${studentId}/`, "PUT", data),
+  createHealthRecord: (studentId, data) => request(`/academics/health/${studentId}/`, "POST", data),
+  getClinicVisits: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/academics/clinic-visits/${q ? '?' + q : ''}`, "GET");
+  },
+  createClinicVisit: (data) => request("/academics/clinic-visits/", "POST", data),
+  getMyHealthRecord: () => request("/students/health/", "GET"),
+
+  // Notifications
+  getNotifications: () => request("/auth/notifications/", "GET"),
+  markNotificationRead: (id) => request(`/auth/notifications/${id}/read/`, "POST"),
+  markAllNotificationsRead: () => request("/auth/notifications/read-all/", "POST"),
+  getUnreadNotificationCount: () => request("/auth/notifications/unread-count/", "GET"),
+
+  // Conference scheduling (teacher)
+  getTeacherConferenceSlots: () => request("/teachers/conference-slots/", "GET"),
+  createConferenceSlots: (data) => request("/teachers/conference-slots/", "POST", data),
+  deleteConferenceSlot: (id) => request(`/teachers/conference-slots/${id}/`, "DELETE"),
+
+  // Conference scheduling (parent)
+  getAvailableConferenceSlots: (teacherId) => request(`/parents/conferences/available/?teacher_id=${teacherId}`, "GET"),
+  bookConference: (data) => request("/parents/conferences/book/", "POST", data),
+  getParentConferences: () => request("/parents/conferences/", "GET"),
+  cancelConference: (id) => request(`/parents/conferences/${id}/cancel/`, "POST"),
+
+  // Disciplinary records
+  getDisciplinaryRecords: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/academics/discipline/${q ? '?' + q : ''}`, "GET");
+  },
+  createDisciplinaryRecord: (data) => request("/academics/discipline/", "POST", data),
+  updateDisciplinaryRecord: (id, data) => request(`/academics/discipline/${id}/`, "PUT", data),
+  getStudentDisciplinaryRecords: (studentId) => request(`/academics/discipline/student/${studentId}/`, "GET"),
+  resolveDisciplinaryRecord: (id) => request(`/academics/discipline/${id}/resolve/`, "POST"),
+
+  // Admin Analytics
+  getAdminAnalytics: () => request("/auth/analytics/", "GET"),
 };
 
 export default apiService;

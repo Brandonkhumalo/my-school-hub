@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -171,7 +172,7 @@ export default function AdminParents() {
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
                         <i className="fas fa-clock mr-1"></i>
-                        Requested: {new Date(request.requested_date).toLocaleDateString()}
+                        Requested: {formatDate(request.requested_date)}
                       </p>
                     </div>
                     

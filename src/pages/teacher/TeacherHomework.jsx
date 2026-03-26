@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 
 export default function TeacherHomework() {
   const { user } = useAuth();
@@ -62,8 +63,8 @@ export default function TeacherHomework() {
     const file = e.target.files[0];
     if (file) {
       const ext = file.name.split('.').pop().toLowerCase();
-      if (!['pdf', 'doc', 'docx'].includes(ext)) {
-        alert("Only PDF and Word documents are allowed");
+      if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+        alert("Only PDF, Word documents, and images (JPG, PNG, GIF, WebP) are allowed");
         e.target.value = '';
         return;
       }
@@ -401,8 +402,8 @@ export default function TeacherHomework() {
                   <h5 className="font-semibold text-gray-800 mb-2">{hw.title}</h5>
                   <div className="text-sm text-gray-600 mb-3 space-y-1">
                     <p><i className="fas fa-users-class mr-2"></i>Class: {hw.assigned_class.name}</p>
-                    <p><i className="fas fa-calendar mr-2"></i>Due: {new Date(hw.due_date).toLocaleDateString()}</p>
-                    <p><i className="fas fa-clock mr-2"></i>Created: {new Date(hw.date_created).toLocaleDateString()}</p>
+                    <p><i className="fas fa-calendar mr-2"></i>Due: {formatDate(hw.due_date)}</p>
+                    <p><i className="fas fa-clock mr-2"></i>Created: {formatDate(hw.date_created)}</p>
                   </div>
                   
                   {hw.description && (
@@ -489,7 +490,7 @@ export default function TeacherHomework() {
                           <p className="text-xs text-gray-500">{s.student_number}</p>
                         </td>
                         <td className="px-3 py-2 text-gray-600">
-                          {new Date(s.submitted_at).toLocaleString()}
+                          {formatDateTime(s.submitted_at)}
                         </td>
                         <td className="px-3 py-2">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium

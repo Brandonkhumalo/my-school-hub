@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { Link } from "react-router-dom";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDateShort } from "../../utils/dateFormat";
 import apiService from "../../services/apiService";
 
 export default function StudentDashboard() {
@@ -34,10 +35,7 @@ export default function StudentDashboard() {
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDate = formatDateShort;
 
   if (loading) {
     return (

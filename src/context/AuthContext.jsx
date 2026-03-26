@@ -24,12 +24,27 @@ export function AuthProvider({ children }) {
     localStorage.setItem("token", jwtToken);
   };
 
-  // Logout: clear storage + state
-  const logout = () => {
+  // Logout: call backend to blacklist token, then clear storage + state
+  const logout = async () => {
+    try {
+      const savedToken = localStorage.getItem("token");
+      if (savedToken) {
+        await fetch("https://myschoolhub.co.zw/api/v1/auth/logout/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${savedToken}`,
+          },
+        });
+      }
+    } catch (e) {
+      // Continue logout even if backend call fails
+    }
     setUser(null);
     setToken(null);
     localStorage.removeItem("user");
     localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
   };
 
   return (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -106,7 +107,7 @@ export default function AdminParentLinkRequests() {
                         {request.class_name || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {request.created_at ? new Date(request.created_at).toLocaleDateString() : '-'}
+                        {request.created_at ? formatDate(request.created_at) : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex space-x-2">

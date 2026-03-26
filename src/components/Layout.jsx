@@ -1,6 +1,7 @@
 import React from "react";
 import { Outlet, NavLink, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 function Layout() {
   const { user } = useAuth();
@@ -28,6 +29,12 @@ function Layout() {
       { path: '/admin/users', icon: 'fa-user-cog', title: 'User Management' },
       { path: '/admin/extras', icon: 'fa-cogs', title: 'Extras' },
       { path: '/admin/staff', icon: 'fa-id-badge', title: 'Staff / HR' },
+      { path: '/admin/promotions', icon: 'fa-graduation-cap', title: 'Promotions' },
+      { path: '/admin/activities', icon: 'fa-running', title: 'Activities & Sports' },
+      { path: '/admin/discipline', icon: 'fa-gavel', title: 'Discipline' },
+      { path: '/admin/library', icon: 'fa-book-reader', title: 'Library' },
+      { path: '/admin/health', icon: 'fa-heartbeat', title: 'Health Records' },
+      { path: '/admin/analytics', icon: 'fa-chart-pie', title: 'Analytics' },
       { path: '/admin/settings', icon: 'fa-sliders-h', title: 'School Settings' },
     ],
     teacher: [
@@ -36,6 +43,7 @@ function Layout() {
       { path: '/teacher/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
       { path: '/teacher/performance', icon: 'fa-chart-line', title: 'Performance' },
       { path: '/teacher/homework', icon: 'fa-book-open', title: 'Homework' },
+      { path: '/teacher/conferences', icon: 'fa-calendar-check', title: 'Conferences' },
       { path: '/teacher/messages', icon: 'fa-comments', title: 'Messages' },
     ],
     student: [
@@ -49,6 +57,7 @@ function Layout() {
       { path: '/student/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },
       { path: '/student/announcements', icon: 'fa-bullhorn', title: 'Announcements' },
       { path: '/student/attendance', icon: 'fa-calendar-check', title: 'Attendance' },
+      { path: '/student/activities', icon: 'fa-running', title: 'Activities' },
     ],
     parent: [
       { path: '/parent', icon: 'fa-home', title: 'Dashboard' },
@@ -57,6 +66,7 @@ function Layout() {
       { path: '/parent/homework', icon: 'fa-book-open', title: 'Homework' },
       { path: '/parent/messages', icon: 'fa-envelope', title: 'Weekly Messages' },
       { path: '/parent/fees', icon: 'fa-credit-card', title: 'School Fees' },
+      { path: '/parent/conferences', icon: 'fa-calendar-check', title: 'Conferences' },
       { path: '/parent/chat', icon: 'fa-comments', title: 'Chat with Teachers' },
     ],
     accountant: [
@@ -86,6 +96,9 @@ function Layout() {
               <h2 className="text-xl font-bold">School System</h2>
               <p className="text-sm text-blue-300 capitalize">{role}</p>
             </div>
+            <div className="ml-3">
+              <NotificationBell />
+            </div>
           </div>
 
           <nav className="space-y-1">
@@ -106,15 +119,13 @@ function Layout() {
           </nav>
 
           <div className="mt-6 pt-6 border-t border-blue-800">
-            {role !== 'parent' && (
-              <Link
-                to="/profile"
-                className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition mb-2"
-              >
-                <i className="fas fa-user-circle mr-3 w-5"></i>
-                Profile
-              </Link>
-            )}
+            <Link
+              to={`/${role}/profile`}
+              className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition mb-2"
+            >
+              <i className="fas fa-user-circle mr-3 w-5"></i>
+              Profile
+            </Link>
             <Link
               to="/logout"
               className="flex items-center px-3 py-2 rounded text-blue-100 hover:bg-blue-800 transition"

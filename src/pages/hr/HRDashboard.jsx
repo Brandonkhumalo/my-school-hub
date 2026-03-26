@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import apiService from "../../services/apiService";
+import { formatDateTime } from "../../utils/dateFormat";
 
 export default function HRDashboard() {
   const [stats, setStats] = useState(null);
@@ -70,7 +71,7 @@ export default function HRDashboard() {
                 {stats.upcoming_meetings.map((m) => (
                   <li key={m.id} className="py-2 flex justify-between text-sm">
                     <span className="font-medium text-gray-800">{m.title}</span>
-                    <span className="text-gray-500">{new Date(m.scheduled_at).toLocaleString()}</span>
+                    <span className="text-gray-500">{formatDateTime(m.scheduled_at)}</span>
                   </li>
                 ))}
               </ul>

@@ -338,3 +338,239 @@ class AssignmentSubmission(models.Model):
 
     def __str__(self):
         return f"{self.student.user.full_name} → {self.assignment.title}"
+
+
+class PromotionRecord(models.Model):
+    """Records year-end student promotions, repeats, and graduations."""
+    ACTION_CHOICES = [
+        ('promote', 'Promoted'),
+        ('repeat', 'Repeating'),
+        ('graduate', 'Graduated'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='promotions')
+    from_class = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, related_name='promotions_from')
+    to_class = models.ForeignKey(Class, on_delete=models.SET_NULL, null=True, blank=True, related_name='promotions_to')
+    academic_year = models.CharField(max_length=20)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='promote')
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    date_processed = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        unique_together = ('student', 'academic_year')
+
+    def __str__(self):
+        return f"{self.student.user.full_name}: {self.from_class} -> {self.to_class or 'Graduated'} ({self.action})"
+
+
+class Activity(models.Model):
+    ACTIVITY_TYPES = [
+        ('sport', 'Sport'),
+        ('club', 'Club'),
+        ('society', 'Society'),
+        ('arts', 'Arts'),
+    ]
+    name = models.CharField(max_length=100)
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    description = models.TextField(blank=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='activities')
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='coached_activities')
+    schedule_day = models.CharField(max_length=20, blank=True)
+    schedule_time = models.TimeField(null=True, blank=True)
+    location = models.CharField(max_length=200, blank=True)
+    max_participants = models.IntegerField(default=30)
+    is_active = models.BooleanField(default=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "Activities"
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.get_activity_type_display()})"
+
+
+class ActivityEnrollment(models.Model):
+    ROLE_CHOICES = [
+        ('member', 'Member'),
+        ('captain', 'Captain'),
+        ('vice_captain', 'Vice Captain'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='activity_enrollments')
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='enrollments')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    date_joined = models.DateField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('student', 'activity')
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.activity.name} ({self.role})"
+
+
+class ActivityEvent(models.Model):
+    EVENT_TYPES = [
+        ('practice', 'Practice'),
+        ('match', 'Match'),
+        ('competition', 'Competition'),
+        ('performance', 'Performance'),
+        ('meeting', 'Meeting'),
+    ]
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='events')
+    title = models.CharField(max_length=200)
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    event_date = models.DateTimeField()
+    location = models.CharField(max_length=200, blank=True)
+    opponent = models.CharField(max_length=200, blank=True)
+    result = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-event_date']
+
+    def __str__(self):
+        return f"{self.activity.name} - {self.title} ({self.event_date.strftime('%Y-%m-%d')})"
+
+
+class Accolade(models.Model):
+    CATEGORY_CHOICES = [
+        ('academic', 'Academic'),
+        ('sports', 'Sports'),
+        ('conduct', 'Conduct'),
+        ('attendance', 'Attendance'),
+        ('extracurricular', 'Extracurricular'),
+        ('leadership', 'Leadership'),
+    ]
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, default='fa-trophy')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    points_value = models.IntegerField(default=10)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='accolades')
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"
+
+
+class StudentAccolade(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='accolades')
+    accolade = models.ForeignKey(Accolade, on_delete=models.CASCADE, related_name='awards')
+    awarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    date_awarded = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True)
+    academic_term = models.CharField(max_length=50, blank=True)
+    academic_year = models.CharField(max_length=20, blank=True)
+
+    class Meta:
+        ordering = ['-date_awarded']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.accolade.name}"
+
+
+class ConferenceSlot(models.Model):
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='conference_slots')
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    is_booked = models.BooleanField(default=False)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
+
+    class Meta:
+        ordering = ['date', 'start_time']
+        unique_together = ('teacher', 'date', 'start_time')
+
+    def __str__(self):
+        return f"{self.teacher.user.full_name} - {self.date} {self.start_time}-{self.end_time}"
+
+
+class ConferenceBooking(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('cancelled', 'Cancelled'),
+        ('completed', 'Completed'),
+    ]
+    slot = models.OneToOneField(ConferenceSlot, on_delete=models.CASCADE, related_name='booking')
+    parent = models.ForeignKey(Parent, on_delete=models.CASCADE, related_name='conference_bookings')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='conference_bookings')
+    purpose = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='confirmed')
+    date_booked = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-date_booked']
+
+    def __str__(self):
+        return f"{self.parent.user.full_name} -> {self.slot.teacher.user.full_name} ({self.slot.date})"
+
+
+class DisciplinaryRecord(models.Model):
+    SEVERITY_CHOICES = [
+        ('minor', 'Minor'),
+        ('major', 'Major'),
+        ('critical', 'Critical'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='disciplinary_records')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    incident_type = models.CharField(max_length=100)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='minor')
+    description = models.TextField()
+    action_taken = models.TextField(blank=True)
+    date_of_incident = models.DateField()
+    parent_notified = models.BooleanField(default=False)
+    follow_up_notes = models.TextField(blank=True)
+    is_resolved = models.BooleanField(default=False)
+    date_created = models.DateTimeField(auto_now_add=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
+
+    class Meta:
+        ordering = ['-date_of_incident']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.incident_type} ({self.severity})"
+
+
+class HealthRecord(models.Model):
+    BLOOD_TYPES = [
+        ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-'),
+    ]
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='health_record')
+    blood_type = models.CharField(max_length=5, choices=BLOOD_TYPES, blank=True)
+    allergies = models.TextField(blank=True, help_text='Comma-separated list of allergies')
+    chronic_conditions = models.TextField(blank=True)
+    medications = models.TextField(blank=True)
+    emergency_contact_name = models.CharField(max_length=100, blank=True)
+    emergency_contact_phone = models.CharField(max_length=20, blank=True)
+    emergency_contact_relationship = models.CharField(max_length=50, blank=True)
+    medical_aid_name = models.CharField(max_length=100, blank=True)
+    medical_aid_number = models.CharField(max_length=50, blank=True)
+    notes = models.TextField(blank=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Health Record - {self.student.user.full_name}"
+
+
+class ClinicVisit(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='clinic_visits')
+    visit_date = models.DateTimeField(auto_now_add=True)
+    complaint = models.TextField()
+    diagnosis = models.TextField(blank=True)
+    treatment = models.TextField(blank=True)
+    nurse_notes = models.TextField(blank=True)
+    parent_notified = models.BooleanField(default=False)
+    follow_up_required = models.BooleanField(default=False)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
+
+    class Meta:
+        ordering = ['-visit_date']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.visit_date.strftime('%Y-%m-%d')}"

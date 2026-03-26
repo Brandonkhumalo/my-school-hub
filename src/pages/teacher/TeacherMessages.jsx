@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 
 export default function TeacherMessages() {
   const { user } = useAuth();
@@ -223,7 +224,7 @@ export default function TeacherMessages() {
                       <div className={`text-xs mt-1 ${
                         selectedConversation?.userId === conv.userId ? 'text-green-100' : 'text-gray-400'
                       }`}>
-                        {new Date(conv.lastMessageDate).toLocaleDateString()}
+                        {formatDate(conv.lastMessageDate)}
                       </div>
                     </div>
                   ))}
@@ -322,7 +323,7 @@ export default function TeacherMessages() {
                         <div className={`text-xs mt-1 ${
                           msg.sender === user.id ? 'text-green-100' : 'text-gray-500'
                         }`}>
-                          {new Date(msg.date_sent).toLocaleString()}
+                          {formatDateTime(msg.date_sent)}
                         </div>
                       </div>
                     </div>

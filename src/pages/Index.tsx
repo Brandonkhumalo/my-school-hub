@@ -610,10 +610,10 @@ const Index = () => {
             {/* Starter */}
             <div className="bg-white/10 border border-white/20 rounded-2xl p-8 text-center hover:bg-white/15 transition">
               <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mb-3">Starter</p>
-              <p className="text-5xl font-extrabold text-white mb-1">$3</p>
+              <p className="text-5xl font-extrabold text-white mb-1">$2</p>
               <p className="text-blue-300 text-sm mb-6">per learner / month</p>
               <ul className="space-y-3 text-sm text-left text-blue-100 mb-8">
-                {["Up to 300 students", "All core features", "Staff & admin accounts FREE", "WhatsApp alerts", "PayNow integration", "Email support"].map(f => (
+                {["Unlimited students", "All core features", "Staff & admin accounts FREE", "PayNow integration", "Report cards & analytics", "Email support"].map(f => (
                   <li key={f} className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-yellow-400 rounded-full flex-shrink-0 flex items-center justify-center">
                       <svg className="w-2.5 h-2.5 text-blue-950" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
@@ -630,10 +630,10 @@ const Index = () => {
             <div className="relative bg-yellow-400 text-blue-950 rounded-2xl p-8 text-center shadow-2xl scale-105">
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest">Most Popular</span>
               <p className="text-blue-800 text-xs font-bold uppercase tracking-widest mb-3">Growth</p>
-              <p className="text-5xl font-extrabold mb-1">$3</p>
+              <p className="text-5xl font-extrabold mb-1">$4</p>
               <p className="text-blue-700 text-sm mb-6">per learner / month</p>
               <ul className="space-y-3 text-sm text-left text-blue-900 mb-8">
-                {["Up to 1 000 students", "Everything in Starter", "Staff & admin accounts FREE", "AI performance predictions", "Advanced finance reports", "Priority WhatsApp support"].map(f => (
+                {["Unlimited students", "Everything in Starter", "WhatsApp alerts & messaging", "AI performance predictions", "Advanced finance reports", "Priority support"].map(f => (
                   <li key={f} className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-blue-950 rounded-full flex-shrink-0 flex items-center justify-center">
                       <svg className="w-2.5 h-2.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
@@ -649,10 +649,10 @@ const Index = () => {
             {/* Enterprise */}
             <div className="bg-white/10 border border-white/20 rounded-2xl p-8 text-center hover:bg-white/15 transition">
               <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mb-3">Enterprise</p>
-              <p className="text-5xl font-extrabold text-white mb-1">$3</p>
+              <p className="text-5xl font-extrabold text-white mb-1">$6</p>
               <p className="text-blue-300 text-sm mb-6">per learner / month</p>
               <ul className="space-y-3 text-sm text-left text-blue-100 mb-8">
-                {["Unlimited students", "Everything in Growth", "Staff & admin accounts FREE", "Multi-campus support", "Custom onboarding", "Dedicated account manager"].map(f => (
+                {["Unlimited students", "Everything in Growth", "WhatsApp alerts & messaging", "Multi-campus support", "Custom onboarding", "Dedicated account manager"].map(f => (
                   <li key={f} className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-yellow-400 rounded-full flex-shrink-0 flex items-center justify-center">
                       <svg className="w-2.5 h-2.5 text-blue-950" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
@@ -670,7 +670,7 @@ const Index = () => {
           <div className="grid sm:grid-cols-3 gap-4 text-center">
             {[
               { icon: "👨‍🏫", title: "Staff Pay Nothing", desc: "Teachers, admins, HR, and accountants all access the system for free." },
-              { icon: "💰", title: "From $3 / Learner", desc: "Transparent, per-student pricing. A school of 500 students pays $1 500/month." },
+              { icon: "💰", title: "From $2 / Learner", desc: "Transparent, per-student pricing. A school of 500 students pays $1 000/month." },
               { icon: "📞", title: "No Lock-in Contracts", desc: "Cancel any time. No setup fees. No hidden charges." },
             ].map(item => (
               <div key={item.title} className="bg-white/5 rounded-xl p-5 border border-white/10">

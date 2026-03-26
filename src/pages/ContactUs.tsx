@@ -139,8 +139,8 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <p className="font-bold text-gray-900 text-sm mb-1">Email Us</p>
-                    <a href="mailto:info@myschoolhub.co.zw" className="text-blue-600 hover:underline text-sm block">info@myschoolhub.co.zw</a>
-                    <a href="mailto:support@myschoolhub.co.zw" className="text-blue-600 hover:underline text-sm block">support@myschoolhub.co.zw</a>
+                    <a href="mailto:info@tishanyq.co.zw" className="text-blue-600 hover:underline text-sm block">info@tishanyq.co.zw</a>
+                    <a href="mailto:support@tishanyq.co.zw" className="text-blue-600 hover:underline text-sm block">support@tishanyq.co.zw</a>
                   </div>
                 </div>
 

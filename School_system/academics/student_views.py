@@ -72,7 +72,9 @@ def student_dashboard_stats(request):
             avg_percentage = round((agg['avg_score'] / agg['avg_max']) * 100, 1)
         
         # Get total subjects
-        total_subjects = student.student_class.timetable.values('subject').distinct().count() if student.student_class else 0
+        total_subjects = student.student_class.timetable.filter(
+            class_assigned__school=student.user.school
+        ).values('subject').distinct().count() if student.student_class else 0
         
         # Get pending submissions
         pending_submissions = Assignment.objects.filter(

@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDateLong } from "../../utils/dateFormat";
 
 export default function ParentWeeklyMessages() {
   const { user } = useAuth();
@@ -51,10 +52,7 @@ export default function ParentWeeklyMessages() {
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  };
+  const formatDate = formatDateLong;
 
   if (loading) {
     return (

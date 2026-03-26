@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
+import { formatDateShort } from "../../utils/dateFormat";
 
 const STATUS_COLORS = { present: "green", absent: "red", late: "yellow" };
 
@@ -107,9 +108,7 @@ export default function StudentAttendance() {
                     return (
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-700">
-                          {new Date(r.date).toLocaleDateString("en-ZW", {
-                            weekday: "short", year: "numeric", month: "short", day: "numeric"
-                          })}
+                          {formatDateShort(r.date)}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium bg-${c}-100 text-${c}-700`}>

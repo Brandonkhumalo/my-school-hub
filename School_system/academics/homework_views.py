@@ -88,10 +88,10 @@ def teacher_create_homework(request):
         
         if file:
             ext = os.path.splitext(file.name)[1].lower()
-            allowed_extensions = ['.pdf', '.doc', '.docx']
+            allowed_extensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp']
             if ext not in allowed_extensions:
                 return Response({
-                    'error': f'Invalid file type. Only PDF and Word documents are allowed.'
+                    'error': f'Invalid file type. Allowed: PDF, Word documents, and images (JPG, PNG, GIF, WebP).'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if file.size > 10 * 1024 * 1024:

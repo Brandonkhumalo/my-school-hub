@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
+import { formatDateTime } from "../../utils/dateFormat";
 
 export default function HRMeetings() {
   const [meetings, setMeetings] = useState([]);
@@ -75,7 +76,7 @@ export default function HRMeetings() {
                 {m.description && <p className="text-sm text-gray-600 mb-1">{m.description}</p>}
                 <p className="text-xs text-gray-500">
                   <i className="fas fa-clock mr-1"></i>
-                  {new Date(m.scheduled_at).toLocaleString()}
+                  {formatDateTime(m.scheduled_at)}
                   {m.location && <span className="ml-3"><i className="fas fa-map-marker-alt mr-1"></i>{m.location}</span>}
                 </p>
               </div>

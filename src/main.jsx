@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
+import WhatsAppButton from "./components/WhatsAppButton.jsx";
 import { registerSW } from "./registerSW.js";
 
 registerSW();
@@ -12,6 +13,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <AuthProvider>
         <App />
+        <WhatsAppButton />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

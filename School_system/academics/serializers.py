@@ -31,13 +31,12 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 class ClassSerializer(serializers.ModelSerializer):
     class_teacher_name = serializers.CharField(source='class_teacher.full_name', read_only=True)
-    teacher_name = serializers.CharField(source='class_teacher.full_name', read_only=True)
     student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Class
         fields = [
-            'id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'teacher_name', 'student_count',
+            'id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'student_count',
             'first_period_start', 'last_period_end', 'period_duration_minutes',
             'break_start', 'break_end', 'lunch_start', 'lunch_end',
             'friday_last_period_end', 'include_transition_time'
@@ -480,11 +479,10 @@ class WeeklyMessageSerializer(serializers.ModelSerializer):
 
 class SchoolEventSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.first_name', read_only=True)
-    type = serializers.CharField(source='event_type', read_only=True)
-    
+
     class Meta:
         model = SchoolEvent
-        fields = ['id', 'title', 'description', 'event_type', 'type', 'start_date', 
+        fields = ['id', 'title', 'description', 'event_type', 'start_date',
                   'end_date', 'location', 'created_by', 'created_by_name', 'date_created']
 
 

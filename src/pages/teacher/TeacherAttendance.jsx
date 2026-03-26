@@ -14,18 +14,37 @@ export default function TeacherAttendance() {
   const [className, setClassName] = useState("");
   const [attendanceMarked, setAttendanceMarked] = useState(false);
   const [noClass, setNoClass] = useState(false);
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState(null);
 
   const isToday = date === new Date().toISOString().split('T')[0];
 
+  // Load available classes on mount
   useEffect(() => {
-    loadAttendance();
-  }, [date]);
+    const loadClasses = async () => {
+      try {
+        const data = await apiService.getTeacherClasses();
+        const classList = Array.isArray(data) ? data : (data.classes || []);
+        setClasses(classList);
+        if (classList.length > 0 && !selectedClassId) {
+          setSelectedClassId(classList[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load classes:", err);
+      }
+    };
+    loadClasses();
+  }, []);
+
+  useEffect(() => {
+    if (selectedClassId) loadAttendance();
+  }, [date, selectedClassId]);
 
   const loadAttendance = async () => {
     try {
       setLoading(true);
       setAttendanceMarked(false);
-      const data = await apiService.getAttendanceRegister(date, null);
+      const data = await apiService.getAttendanceRegister(date, selectedClassId);
       
       if (data.no_class) {
         setNoClass(true);
@@ -187,7 +206,25 @@ export default function TeacherAttendance() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-6">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <i className="fas fa-school mr-2 text-blue-600"></i>
+              Select Class
+            </label>
+            <select
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={selectedClassId || ""}
+              onChange={(e) => setSelectedClassId(Number(e.target.value))}
+            >
+              {classes.length === 0 && <option value="">No classes available</option>}
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="bg-white rounded-lg shadow-lg p-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <i className="fas fa-calendar mr-2 text-blue-600"></i>
               Select Date

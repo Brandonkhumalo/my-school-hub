@@ -229,7 +229,7 @@ def request_child_link(request):
 def confirm_child(request, child_id):
     """ADMIN ONLY: Approve parent-child link requests"""
     # Only admins can confirm links for security
-    if request.user.role not in ['admin', 'teacher']:
+    if request.user.role != 'admin':
         return Response({
             'error': 'Only administrators can approve parent-child links. Your request is pending admin approval.'
         }, status=status.HTTP_403_FORBIDDEN)

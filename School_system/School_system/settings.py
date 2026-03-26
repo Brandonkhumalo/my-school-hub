@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'staff',
     'finances',
     'whatsapp_intergration',
+    'library',
 ]
 
 MIDDLEWARE = [

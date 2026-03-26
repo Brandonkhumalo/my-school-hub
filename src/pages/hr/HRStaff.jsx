@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function HRStaff() {
   const [staff, setStaff] = useState([]);
@@ -99,7 +100,7 @@ export default function HRStaff() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.department_name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">
-                    {s.date_joined ? new Date(s.date_joined).toLocaleDateString() : '—'}
+                    {s.date_joined ? formatDate(s.date_joined) : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => setSelected(s)}

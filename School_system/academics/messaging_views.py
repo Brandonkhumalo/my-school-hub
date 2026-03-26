@@ -96,14 +96,24 @@ def send_message(request):
             student_ids = Student.objects.filter(student_class_id__in=class_ids).values_list('id', flat=True)
             
             parent = Parent.objects.get(user=recipient)
-            # Check if any of the parent's children are in the teacher's students
-            if not parent.children.filter(id__in=student_ids).exists():
-                return Response({'error': 'You can only message parents of students you teach'}, 
+            # Check if any of the parent's CONFIRMED children are in the teacher's students
+            from .models import ParentChildLink
+            confirmed_child_ids = ParentChildLink.objects.filter(
+                parent=parent, is_confirmed=True
+            ).values_list('student_id', flat=True)
+            if not set(confirmed_child_ids) & set(student_ids):
+                return Response({'error': 'You can only message parents of students you teach'},
                                status=status.HTTP_403_FORBIDDEN)
         else:
             parent = Parent.objects.get(user=user)
-            # Get classes of all children linked to this parent
-            child_class_ids = parent.children.values_list('student_class_id', flat=True)
+            # Get classes of all CONFIRMED children linked to this parent
+            from .models import ParentChildLink
+            confirmed_child_ids = ParentChildLink.objects.filter(
+                parent=parent, is_confirmed=True
+            ).values_list('student_id', flat=True)
+            child_class_ids = Student.objects.filter(
+                id__in=confirmed_child_ids
+            ).values_list('student_class_id', flat=True)
             # Get all teachers who have entries in Timetable for these classes
             teacher_ids = Timetable.objects.filter(class_assigned_id__in=child_class_ids).values_list('teacher_id', flat=True)
             
@@ -177,9 +187,14 @@ def search_teachers(request):
     try:
         parent = Parent.objects.get(user=user)
         # Get all children (Student records) linked to this parent
-        children = parent.children.all()
-        # Get the IDs of classes these children belong to
-        child_class_ids = children.values_list('student_class_id', flat=True)
+        # Get CONFIRMED children via ParentChildLink
+        from .models import ParentChildLink
+        confirmed_child_ids = ParentChildLink.objects.filter(
+            parent=parent, is_confirmed=True
+        ).values_list('student_id', flat=True)
+        child_class_ids = Student.objects.filter(
+            id__in=confirmed_child_ids
+        ).values_list('student_class_id', flat=True)
         
         from .models import Timetable
         # Find all teachers assigned to these classes in the Timetable
@@ -245,10 +260,14 @@ def search_parents(request):
             student_class_id__in=all_class_ids
         ).values_list('id', flat=True)
         
-        # Get parents who have those students as children
+        # Get parents who have CONFIRMED links to those students
+        from .models import ParentChildLink
+        parent_ids = ParentChildLink.objects.filter(
+            student_id__in=student_ids, is_confirmed=True
+        ).values_list('parent_id', flat=True).distinct()
         parents = Parent.objects.filter(
-            children__id__in=student_ids
-        ).distinct().select_related('user')
+            id__in=parent_ids
+        ).select_related('user')
         
         if query:
             parents = parents.filter(

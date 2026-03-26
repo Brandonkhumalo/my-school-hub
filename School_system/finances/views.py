@@ -261,7 +261,10 @@ def student_financial_summary(request, student_id):
         if request.user.role == 'student' and request.user.student.id != student_id:
             return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         elif request.user.role == 'parent':
-            if not request.user.parent.children.filter(id=student_id).exists():
+            from academics.models import ParentChildLink
+            if not ParentChildLink.objects.filter(
+                parent=request.user.parent, student_id=student_id, is_confirmed=True
+            ).exists():
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         # Calculate financial summary
@@ -327,7 +330,10 @@ def process_whatsapp_payment(request):
             if student_fee.student.user != request.user:
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         elif request.user.role == 'parent':
-            if not request.user.parent.children.filter(id=student_fee.student.id).exists():
+            from academics.models import ParentChildLink
+            if not ParentChildLink.objects.filter(
+                parent=request.user.parent, student_id=student_fee.student.id, is_confirmed=True
+            ).exists():
                 return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         # Create payment record
@@ -342,6 +348,10 @@ def process_whatsapp_payment(request):
         )
         
         # Update student fee
+        # Prevent negative payment fraud
+        if float(amount) <= 0:
+            return Response({'error': 'Payment amount must be positive'}, status=status.HTTP_400_BAD_REQUEST)
+
         student_fee.amount_paid += float(amount)
         if student_fee.amount_paid >= student_fee.amount_due:
             student_fee.is_paid = True
