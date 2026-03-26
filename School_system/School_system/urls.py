@@ -26,7 +26,24 @@ def api_root(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check for ALB / docker HEALTHCHECK / monitoring."""
+    from django.db import connection
+    try:
+        connection.ensure_connection()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    status_code = 200 if db_ok else 503
+    return Response({'status': 'healthy' if db_ok else 'unhealthy', 'database': db_ok}, status=status_code)
+
+
 urlpatterns = [
+    # Health check (ALB target group, docker HEALTHCHECK)
+    path('health/', health_check, name='health-check'),
+
     # Admin interface
     path('admin/', admin.site.urls),
 

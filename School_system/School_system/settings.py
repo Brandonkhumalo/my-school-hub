@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_celery_results',
     'drf_spectacular',
+    'storages',
     'users',
     'academics',
     'staff',
@@ -132,19 +133,35 @@ USE_TZ = True
 
 
 # ---------------------------------------------------------------
-# Static & Media files
+# Static files — served by WhiteNoise from the container
 # ---------------------------------------------------------------
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# ---------------------------------------------------------------
+# Media files — S3 in production, local filesystem in dev
+# Set AWS_STORAGE_BUCKET_NAME in .env to enable S3.
+# ---------------------------------------------------------------
+_s3_bucket = config('AWS_STORAGE_BUCKET_NAME', default='')
+
+if _s3_bucket:
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    AWS_STORAGE_BUCKET_NAME = _s3_bucket
+    AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='af-south-1')
+    AWS_DEFAULT_ACL = None  # use bucket policy
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_CUSTOM_DOMAIN = None  # use default S3 URL
+    MEDIA_URL = f'https://{_s3_bucket}.s3.amazonaws.com/'
+else:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ---------------------------------------------------------------
-# CORS — allow the frontend origin (cPanel) + dev origins
+# CORS — allow the frontend origin + dev origins
 # ---------------------------------------------------------------
 _cors_origins = config(
     'CORS_ALLOWED_ORIGINS',
@@ -155,17 +172,22 @@ CORS_ALLOWED_ORIGINS = list(_cors_origins)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 
+# CSRF trusted origins — required when behind ALB/reverse proxy
+CSRF_TRUSTED_ORIGINS = list(config(
+    'CSRF_TRUSTED_ORIGINS',
+    default=','.join(_cors_origins),
+    cast=Csv(),
+))
+
 # ---------------------------------------------------------------
 # Security Headers
-# Railway terminates SSL at their edge proxy and forwards plain
+# ALB / Nginx / Railway terminate SSL at the edge and forward plain
 # HTTP to the container — do NOT use SECURE_SSL_REDIRECT or every
-# request will loop forever.  Instead trust the X-Forwarded-Proto
-# header Railway injects so Django knows the original request was HTTPS.
+# request will loop.  Trust the X-Forwarded-Proto header instead.
 # ---------------------------------------------------------------
 if not DEBUG:
-    # Tell Django that HTTPS was used if Railway's proxy says so
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    # Do NOT set SECURE_SSL_REDIRECT — Railway handles the redirect
+    # Do NOT set SECURE_SSL_REDIRECT — the reverse proxy handles it
     SECURE_HSTS_SECONDS = 31536000       # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

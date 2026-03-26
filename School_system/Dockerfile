@@ -38,13 +38,18 @@ COPY --from=builder /install /usr/local
 # Copy Django project source
 COPY . .
 
-# Collect static files (whitenoise will serve them)
-RUN python manage.py collectstatic --noinput
+# Collect static files at build time (whitenoise serves them).
+# SECRET_KEY is required by Django but not used for collectstatic,
+# so we pass a throwaway value. The real key is set at runtime via .env.
+RUN SECRET_KEY=build-placeholder python manage.py collectstatic --noinput
 
 # Entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

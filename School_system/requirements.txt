@@ -47,3 +47,7 @@ paynow==1.0.8
 
 # Rate limiting
 django-ratelimit==4.1.0
+
+# AWS S3 media storage (optional — only needed when AWS_STORAGE_BUCKET_NAME is set)
+django-storages==1.14.4
+boto3==1.35.36
