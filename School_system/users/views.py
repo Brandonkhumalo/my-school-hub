@@ -224,7 +224,7 @@ class UserListView(generics.ListAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
-    from academics.models import Class, Subject
+    from academics.models import Class, Subject, ParentChildLink
     from finances.models import Invoice, StudentPaymentRecord
 
     school = request.user.school
@@ -233,14 +233,10 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
-            'total_parents': CustomUser.objects.filter(
-                role='parent', is_active=True
-            ).filter(
-                # Count parents linked to this school via schools M2M, direct FK, or children
-                models.Q(school=school) |
-                models.Q(parent__schools=school) |
-                models.Q(parent__children__user__school=school)
-            ).distinct().count(),
+            'total_parents': ParentChildLink.objects.filter(
+                is_confirmed=True,
+                student__user__school=school
+            ).values('parent').distinct().count(),
             'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True, school=school).count(),
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
