@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import apiService from "../../services/apiService";
-import { formatDate } from "../../utils/dateFormat";
+import { formatDate, parseDate } from "../../utils/dateFormat";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -48,14 +48,16 @@ export default function AdminInvoices() {
     
     if (filterDate) {
       result = result.filter(inv => {
-        const invDate = new Date(inv.due_date).toISOString().split('T')[0];
-        return invDate === filterDate;
+        const invDate = parseDate(inv.due_date);
+        if (!invDate) return false;
+        const invIso = invDate.toISOString().split('T')[0];
+        return invIso === filterDate;
       });
     }
-    
+
     result.sort((a, b) => {
-      const dateA = new Date(a.due_date || a.created_at);
-      const dateB = new Date(b.due_date || b.created_at);
+      const dateA = parseDate(a.due_date || a.created_at) || new Date(0);
+      const dateB = parseDate(b.due_date || b.created_at) || new Date(0);
       return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
     });
     

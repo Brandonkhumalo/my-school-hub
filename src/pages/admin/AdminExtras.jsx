@@ -1178,7 +1178,7 @@ export default function AdminExtras() {
                   <div className="bg-green-50 rounded-lg p-4">
                     <p className="text-sm text-gray-600">Report Date</p>
                     <p className="text-2xl font-bold text-green-700">
-                      {formatDateShort(dailyReport.date + 'T00:00:00')}
+                      {formatDateShort(dailyReport.date)}
                     </p>
                   </div>
                 </div>

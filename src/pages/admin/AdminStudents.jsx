@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminStudents() {
   const [students, setStudents] = useState([]);
@@ -331,7 +332,7 @@ export default function AdminStudents() {
                 <div className="space-y-3">
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Date of Birth:</span>
-                    <span className="text-gray-800">{selectedStudent.date_of_birth || '-'}</span>
+                    <span className="text-gray-800">{selectedStudent.date_of_birth ? formatDate(selectedStudent.date_of_birth) : '-'}</span>
                   </div>
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Gender:</span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminTeachers() {
   const [teachers, setTeachers] = useState([]);
@@ -272,7 +273,7 @@ export default function AdminTeachers() {
                   <p><i className="fas fa-envelope text-blue-500 mr-2 w-5"></i><strong>Email:</strong> {selectedTeacher.user?.email}</p>
                   <p><i className="fas fa-phone text-blue-500 mr-2 w-5"></i><strong>Phone:</strong> {selectedTeacher.user?.phone_number || '-'}</p>
                   <p><i className="fas fa-graduation-cap text-blue-500 mr-2 w-5"></i><strong>Qualification:</strong> {selectedTeacher.qualification || '-'}</p>
-                  <p><i className="fas fa-calendar text-blue-500 mr-2 w-5"></i><strong>Hire Date:</strong> {selectedTeacher.hire_date}</p>
+                  <p><i className="fas fa-calendar text-blue-500 mr-2 w-5"></i><strong>Hire Date:</strong> {formatDate(selectedTeacher.hire_date)}</p>
                 </div>
               </div>
               <div>

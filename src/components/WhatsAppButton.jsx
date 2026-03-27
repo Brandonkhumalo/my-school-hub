@@ -1,4 +1,11 @@
+import { useLocation } from "react-router-dom";
+
+const PUBLIC_PATHS = ["/", "/about", "/contact"];
+
 export default function WhatsAppButton() {
+  const { pathname } = useLocation();
+  if (!PUBLIC_PATHS.includes(pathname)) return null;
+
   const phone = "263781603382";
   const message = encodeURIComponent("Hie, I want to inquire about My School Hub");
   const url = `https://wa.me/${phone}?text=${message}`;

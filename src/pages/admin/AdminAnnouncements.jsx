@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
@@ -34,7 +35,7 @@ export default function AdminAnnouncements() {
               <li key={idx} className="border-b pb-2">
                 <h4 className="font-semibold">{announcement.title}</h4>
                 <p>{announcement.message}</p>
-                <span className="text-gray-500 text-sm">{announcement.date_posted}</span>
+                <span className="text-gray-500 text-sm">{formatDate(announcement.date_posted)}</span>
               </li>
             ))}
           </ul>

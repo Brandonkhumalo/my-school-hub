@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 
 const STATUS_COLORS = { pending: "yellow", approved: "green", rejected: "red" };
 
@@ -81,8 +82,8 @@ export default function HRLeaves() {
                 <tr key={l.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{l.staff_name || "—"}</td>
                   <td className="px-4 py-3 text-gray-600 capitalize">{l.leave_type}</td>
-                  <td className="px-4 py-3 text-gray-600">{l.start_date}</td>
-                  <td className="px-4 py-3 text-gray-600">{l.end_date}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDate(l.start_date)}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDate(l.end_date)}</td>
                   <td className="px-4 py-3 text-gray-600">{l.total_days ?? "—"}</td>
                   <td className="px-4 py-3"><span className={badge(l.status)}>{l.status}</span></td>
                   <td className="px-4 py-3">
@@ -105,7 +106,7 @@ export default function HRLeaves() {
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             <h2 className="text-lg font-bold mb-3">Review Leave — {reviewing.staff_name}</h2>
             <p className="text-sm text-gray-600 mb-1">
-              {reviewing.leave_type} · {reviewing.start_date} to {reviewing.end_date}
+              {reviewing.leave_type} · {formatDate(reviewing.start_date)} to {formatDate(reviewing.end_date)}
             </p>
             {reviewing.reason && <p className="text-sm text-gray-500 mb-3 italic">"{reviewing.reason}"</p>}
             <textarea

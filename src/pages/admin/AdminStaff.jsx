@@ -10,8 +10,8 @@ export default function AdminStaff() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", phone_number: "",
-    position: "teacher", department: "", qualification: "",
-    contract_type: "permanent", salary: "",
+    position: "teacher", department: "", hire_date: "",
+    salary: "",
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -33,7 +33,7 @@ export default function AdminStaff() {
       const res = await apiService.createStaff(form);
       setSuccess(`Staff created. Temporary password: ${res.temporary_password || "(see console)"}`);
       setShowForm(false);
-      setForm({ first_name: "", last_name: "", email: "", phone_number: "", position: "teacher", department: "", qualification: "", contract_type: "permanent", salary: "" });
+      setForm({ first_name: "", last_name: "", email: "", phone_number: "", position: "teacher", department: "", hire_date: "", salary: "" });
       load();
     } catch (err) {
       setError(err.message || "Failed to create staff member");
@@ -102,7 +102,7 @@ export default function AdminStaff() {
                 ["Last Name", "last_name", "text", true],
                 ["Email", "email", "email", true],
                 ["Phone", "phone_number", "tel", false],
-                ["Qualification", "qualification", "text", false],
+                ["Hire Date", "hire_date", "date", true],
                 ["Salary ($)", "salary", "number", false],
               ].map(([label, key, type, req]) => (
                 <div key={key}>
@@ -124,15 +124,6 @@ export default function AdminStaff() {
                   value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>
                   <option value="">None</option>
                   {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 mb-1 block">Contract Type</label>
-                <select className="border rounded w-full p-2 text-sm"
-                  value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })}>
-                  {["permanent", "contract", "part_time", "intern"].map((c) => (
-                    <option key={c} value={c}>{c.replace("_", " ")}</option>
-                  ))}
                 </select>
               </div>
               <div className="col-span-2">

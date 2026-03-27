@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminSuspensions() {
   const [suspensions, setSuspensions] = useState([]);
@@ -45,8 +46,8 @@ export default function AdminSuspensions() {
                   <td>{item.id}</td>
                   <td>{item.student_name}</td>
                   <td>{item.reason}</td>
-                  <td>{item.start_date}</td>
-                  <td>{item.end_date}</td>
+                  <td>{formatDate(item.start_date)}</td>
+                  <td>{formatDate(item.end_date)}</td>
                 </tr>
               ))}
             </tbody>

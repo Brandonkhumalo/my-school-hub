@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function StudentFeeSummary() {
   const navigate = useNavigate();
@@ -99,7 +100,7 @@ export default function StudentFeeSummary() {
                           {payment.payment_status}
                         </span>
                       </td>
-                      <td>{payment.payment_date || "N/A"}</td>
+                      <td>{payment.payment_date ? formatDate(payment.payment_date) : "N/A"}</td>
                     </tr>
                   ))}
                 </tbody>

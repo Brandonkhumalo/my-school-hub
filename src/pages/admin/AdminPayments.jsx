@@ -121,7 +121,10 @@ export default function AdminPayments() {
   const handleCreatePaymentRecord = async (e) => {
     e.preventDefault();
     try {
-      await apiService.createPaymentRecord(formData);
+      const cleanData = { ...formData };
+      if (!cleanData.due_date) delete cleanData.due_date;
+      if (!cleanData.next_payment_due) delete cleanData.next_payment_due;
+      await apiService.createPaymentRecord(cleanData);
       setShowAddModal(false);
       setFormData({
         student: "",
@@ -153,7 +156,9 @@ export default function AdminPayments() {
       const paymentRef = addPaymentData.transaction_reference;
       const recordForReceipt = selectedRecord;
       
-      await apiService.addPaymentToRecord(addPaymentData);
+      const cleanPayment = { ...addPaymentData };
+      if (!cleanPayment.next_payment_due) delete cleanPayment.next_payment_due;
+      await apiService.addPaymentToRecord(cleanPayment);
       setShowPaymentModal(false);
       setAddPaymentData({
         payment_record_id: "",
@@ -281,8 +286,8 @@ export default function AdminPayments() {
           <div class="invoice-label">
             <h2>RECEIPT</h2>
             <p class="inv-num">${inv.invoice_number || ''}</p>
-            <p>Date: ${inv.issue_date || formatDate(new Date().toISOString())}</p>
-            ${inv.due_date ? `<p>Due: ${inv.due_date}</p>` : ''}
+            <p>Date: ${inv.issue_date ? formatDate(inv.issue_date) : formatDate(new Date().toISOString())}</p>
+            ${inv.due_date ? `<p>Due: ${formatDate(inv.due_date)}</p>` : ''}
           </div>
         </div>
 
@@ -577,7 +582,7 @@ export default function AdminPayments() {
                         <td className="px-4 py-3 text-right text-green-600 font-medium">{record.currency}{parseFloat(record.amount_paid).toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-red-600 font-medium">{record.currency}{parseFloat(record.balance).toFixed(2)}</td>
                         <td className="px-4 py-3">{getStatusBadge(record.payment_status)}</td>
-                        <td className="px-4 py-3 text-gray-700">{record.due_date || '-'}</td>
+                        <td className="px-4 py-3 text-gray-700">{record.due_date ? formatDate(record.due_date) : '-'}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2 justify-center">
                             {record.payment_status !== 'paid' && (
@@ -1079,8 +1084,8 @@ export default function AdminPayments() {
                 <div className="text-right">
                   <h3 className="text-3xl font-bold text-green-600">INVOICE</h3>
                   <p className="text-gray-700 font-mono mt-2">{selectedInvoice.invoice_number}</p>
-                  <p className="text-gray-600 mt-1">Date: {selectedInvoice.issue_date}</p>
-                  <p className="text-gray-600">Due: {selectedInvoice.due_date}</p>
+                  <p className="text-gray-600 mt-1">Date: {formatDate(selectedInvoice.issue_date)}</p>
+                  <p className="text-gray-600">Due: {formatDate(selectedInvoice.due_date)}</p>
                 </div>
               </div>
 

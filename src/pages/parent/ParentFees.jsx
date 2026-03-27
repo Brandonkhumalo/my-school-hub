@@ -114,8 +114,8 @@ export default function ParentFees() {
           <div class="invoice-label">
             <h2>RECEIPT</h2>
             <p class="inv-num">${inv.invoice_number || ''}</p>
-            <p>Date: ${inv.issue_date || formatDate(new Date().toISOString())}</p>
-            ${inv.due_date ? `<p>Due: ${inv.due_date}</p>` : ''}
+            <p>Date: ${inv.issue_date ? formatDate(inv.issue_date) : formatDate(new Date().toISOString())}</p>
+            ${inv.due_date ? `<p>Due: ${formatDate(inv.due_date)}</p>` : ''}
           </div>
         </div>
 
@@ -565,8 +565,8 @@ export default function ParentFees() {
                   <div className="text-right">
                     <h3 className="text-3xl font-bold text-green-600">INVOICE</h3>
                     <p className="text-gray-700 font-mono mt-2">{selectedInvoice.invoice_number}</p>
-                    <p className="text-gray-600 mt-1">Date: {selectedInvoice.issue_date}</p>
-                    <p className="text-gray-600">Due: {selectedInvoice.due_date}</p>
+                    <p className="text-gray-600 mt-1">Date: {formatDate(selectedInvoice.issue_date)}</p>
+                    <p className="text-gray-600">Due: {formatDate(selectedInvoice.due_date)}</p>
                   </div>
                 </div>
 

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
+import { formatDate } from "../../utils/dateFormat";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
 export default function StudentResults() {
@@ -81,7 +82,7 @@ export default function StudentResults() {
                     <td>{result.score}/{result.max_score}</td>
                     <td>{result.percentage}%</td>
                     <td>{result.grade}</td>
-                    <td>{result.date_recorded}</td>
+                    <td>{formatDate(result.date_recorded)}</td>
                   </tr>
                 ))}
               </tbody>
