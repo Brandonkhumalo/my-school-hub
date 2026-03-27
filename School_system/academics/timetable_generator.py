@@ -307,16 +307,44 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
         return False, "No subjects found", []
     
     rooms = [f"Room {i}" for i in range(1, len(classes) + 5)]
-    
+
     class_periods = {}
     for cls in classes:
         class_periods[cls.id] = generate_periods_for_class(cls)
-    
+
+    # Build a set of subject IDs that have at least one teacher
+    teachable_subject_ids = set()
+    for teacher in teachers:
+        for subject in teacher.subjects_taught.all():
+            teachable_subject_ids.add(subject.id)
+
+    # Only assign subjects that actually have a teacher available
+    teachable_subjects = [s for s in subjects if s.id in teachable_subject_ids]
+
+    if not teachable_subjects:
+        return False, "No subjects have assigned teachers. Please assign teachers to subjects first.", []
+
     subjects_per_class = {}
     for cls in classes:
-        subjects_per_class[cls.id] = [s.id for s in subjects[:min(10, len(subjects))]]
-    
-    periods_per_subject = {s.id: 4 for s in subjects}
+        subjects_per_class[cls.id] = [s.id for s in teachable_subjects]
+
+    # Calculate periods per subject based on available slots
+    # Distribute periods evenly across subjects so we don't over-schedule
+    periods_per_subject = {}
+    for cls in classes:
+        day_periods = class_periods.get(cls.id, {})
+        total_slots = sum(len(slots) for slots in day_periods.values())
+        num_subjects = len(subjects_per_class.get(cls.id, []))
+        if num_subjects > 0:
+            periods_each = max(1, total_slots // num_subjects)
+        else:
+            periods_each = 4
+        for s_id in subjects_per_class.get(cls.id, []):
+            # Use the minimum so we don't over-commit; cap at 6 per week
+            periods_per_subject[s_id] = min(periods_each, 6)
+
+    if not periods_per_subject:
+        periods_per_subject = {s.id: 4 for s in teachable_subjects}
     
     csp = TimetableCSP(
         classes=classes,

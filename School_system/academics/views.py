@@ -561,6 +561,15 @@ def approve_parent_link_request(request, link_id):
         link.confirmed_at = timezone.now()
         link.save()
 
+        # Add the child to parent's children M2M
+        link.parent.children.add(link.student)
+
+        # Add the child's school to parent's schools M2M
+        # This supports parents with children at multiple schools
+        child_school = link.student.user.school
+        if child_school:
+            link.parent.schools.add(child_school)
+
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}".strip()
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}".strip()
         school_name = school.name

@@ -90,6 +90,7 @@ class Teacher(models.Model):
 class Parent(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     children = models.ManyToManyField(Student, related_name='parents', blank=True)
+    schools = models.ManyToManyField('users.School', related_name='parents', blank=True)
     occupation = models.CharField(max_length=100, blank=True)
 
     class Meta:

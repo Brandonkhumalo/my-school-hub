@@ -225,7 +225,7 @@ class UserListView(generics.ListAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
     from academics.models import Class, Subject
-    from finances.models import Invoice, Payment
+    from finances.models import Invoice, StudentPaymentRecord
 
     school = request.user.school
 
@@ -233,14 +233,21 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
-            'total_parents': CustomUser.objects.filter(role='parent', is_active=True, school=school).count(),
+            'total_parents': CustomUser.objects.filter(
+                role='parent', is_active=True
+            ).filter(
+                # Count parents linked to this school via schools M2M, direct FK, or children
+                models.Q(school=school) |
+                models.Q(parent__schools=school) |
+                models.Q(parent__children__user__school=school)
+            ).distinct().count(),
             'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True, school=school).count(),
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
             'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
-            'total_revenue': Payment.objects.filter(
-                payment_status='completed', student_fee__student__user__school=school
-            ).aggregate(total=models.Sum('amount'))['total'] or 0,
+            'total_revenue': StudentPaymentRecord.objects.filter(
+                school=school
+            ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
             'school_type': school.school_type,
             'school_name': school.name,
         }
