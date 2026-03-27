@@ -50,8 +50,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'School_system.middleware.AuditMiddleware',  # audit trail
 ]
+
+# Only use Django AuditMiddleware when NOT behind Go gateway
+# (the Go gateway handles audit logging with buffered batch inserts)
+if not config('USE_GO_GATEWAY', default=False, cast=bool):
+    MIDDLEWARE.append('School_system.middleware.AuditMiddleware')
 
 ROOT_URLCONF = 'School_system.urls'
 
@@ -102,9 +106,15 @@ AUTH_PASSWORD_VALIDATORS = [
 # ---------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------
+# When USE_GO_GATEWAY=true, the Go gateway handles JWT + audit logging.
+# Django uses GatewayAuthentication which reads X-Gateway-Auth headers
+# and falls back to standard JWT when running standalone.
+_use_gateway = config('USE_GO_GATEWAY', default=False, cast=bool)
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'users.token.JWTAuthentication',
+        'users.gateway_auth.GatewayAuthentication' if _use_gateway
+        else 'users.token.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [

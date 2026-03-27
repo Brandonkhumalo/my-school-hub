@@ -361,10 +361,10 @@ const apiService = {
   // Grade predictions
   getStudentGradePredictions: (studentId) => request(`/academics/students/${studentId}/grade-prediction/`, "GET"),
 
-  // Bulk CSV imports
-  bulkImportStudents: (formData) => requestMultipart("/academics/students/bulk-import/", "POST", formData),
-  bulkImportResults: (formData) => requestMultipart("/academics/results/bulk-import/", "POST", formData),
-  bulkImportFees: (formData) => requestMultipart("/finances/fees/bulk-import/", "POST", formData),
+  // Bulk CSV imports — routed to Go workers via gateway
+  bulkImportStudents: (formData) => requestMultipart("/bulk/students", "POST", formData),
+  bulkImportResults: (formData) => requestMultipart("/bulk/results", "POST", formData),
+  bulkImportFees: (formData) => requestMultipart("/bulk/fees", "POST", formData),
 
   // Student attendance (student's own)
   getStudentAttendance: (params = {}) => {
