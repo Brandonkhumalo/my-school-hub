@@ -17,7 +17,7 @@ class SubjectSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Subject
-        fields = ['id', 'name', 'code', 'description', 'teachers', 'teacher_names']
+        fields = ['id', 'name', 'code', 'description', 'is_priority', 'teachers', 'teacher_names']
     
     def get_teachers(self, obj):
         # prefetch_related('teachers__user') in the view makes this a single query

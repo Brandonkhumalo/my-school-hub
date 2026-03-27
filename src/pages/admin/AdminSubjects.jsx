@@ -10,6 +10,15 @@ export default function AdminSubjects() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', code: '', description: '' });
 
+  const togglePriority = async (subject) => {
+    try {
+      await apiService.updateSubject(subject.id, { is_priority: !subject.is_priority });
+      fetchSubjects();
+    } catch (error) {
+      alert("Failed to update priority: " + (error.message || "Unknown error"));
+    }
+  };
+
   // Teacher assignment state
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [subjectTeachers, setSubjectTeachers] = useState([]);
@@ -174,6 +183,7 @@ export default function AdminSubjects() {
                       <tr>
                         <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Code</th>
                         <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Priority</th>
                         <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Teacher(s)</th>
                         <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -187,6 +197,20 @@ export default function AdminSubjects() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{subject.name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); togglePriority(subject); }}
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                subject.is_priority
+                                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              }`}
+                              title={subject.is_priority ? 'Priority: gets daily periods. Click to remove.' : 'Click to make priority (daily periods)'}
+                            >
+                              <i className={`fas fa-star mr-1 ${subject.is_priority ? 'text-amber-500' : 'text-gray-400'}`}></i>
+                              {subject.is_priority ? 'Daily' : 'Normal'}
+                            </button>
+                          </td>
                           <td className="px-6 py-4 text-blue-600 text-sm">{subject.teacher_names || '-'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm space-x-3">
                             <button onClick={() => openTeacherPanel(subject)}

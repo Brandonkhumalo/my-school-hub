@@ -1,13 +1,14 @@
 """
-Timetable Generation — Greedy scheduler with per-class subject allocation
-and teacher clash prevention.
+Timetable Generation — Per-class greedy scheduler.
 
-Key design:
-- Each class gets its OWN subject list and period count (per-class, not global)
-- Teachers are never double-booked — before assigning, we check global teacher_busy
-- Slots are filled across ALL days (Mon-Fri) evenly, not front-loaded
-- If a teacher is busy for a subject at a given time, we try another teacher
-  who teaches the same subject, or skip to the next subject
+Rules:
+1. Max 2 periods of the same subject per day per class
+2. Priority subjects (is_priority=True) are scheduled FIRST and get
+   at least 1 period every day (2 on some days if slots allow)
+3. Normal subjects fill the remaining slots
+4. A teacher is NEVER double-booked — global teacher_busy prevents clashes
+5. If a subject can't fit on a day (teacher busy), it's prioritized for
+   the next day via a carryover mechanism
 """
 
 import logging
@@ -16,7 +17,6 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 from .models import Class, Subject, Teacher, Timetable
-
 
 DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
@@ -118,15 +118,31 @@ def generate_periods_for_class(class_obj):
     return day_periods
 
 
+def _find_teacher(subject_teachers, sid, time_key, teacher_busy):
+    """Find a teacher for subject `sid` who is free at `time_key`."""
+    candidates = list(subject_teachers.get(sid, []))
+    random.shuffle(candidates)
+    for tid in candidates:
+        if time_key not in teacher_busy[tid]:
+            return tid
+    return None
+
+
+def _find_room(rooms, time_key, room_busy):
+    """Find a room not booked at `time_key`. Creates one if needed."""
+    for r in rooms:
+        if time_key not in room_busy[r]:
+            return r
+    new_room = f"Room {len(rooms) + 1}"
+    rooms.append(new_room)
+    return new_room
+
+
 def generate_timetable(school=None, academic_year=None, clear_existing=True):
     """
-    Generate timetables for all classes in a school.
-
-    Per-class logic:
-    1. Determine which subjects this class takes (subjects that have a teacher)
-    2. Calculate how many periods each subject gets FOR THIS CLASS
-    3. Fill slots day-by-day, spreading subjects across the whole week
-    4. Never double-book a teacher — check global teacher_busy before assigning
+    Generate timetables for all classes.
+    Priority subjects → scheduled first, 1-2 periods/day across all 5 days.
+    Normal subjects → fill remaining slots, max 2 per day.
     """
     from django.db import transaction
 
@@ -137,7 +153,7 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
     if academic_year:
         class_qs = class_qs.filter(academic_year=academic_year)
     classes = list(class_qs)
-    subjects = list(Subject.objects.filter(school=school))
+    subjects = list(Subject.objects.filter(school=school, is_deleted=False))
     teachers = list(Teacher.objects.filter(user__school=school).prefetch_related('subjects_taught'))
 
     if not classes:
@@ -147,127 +163,156 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
     if not subjects:
         return False, "No subjects found", []
 
-    # ── Build subject → [teacher_ids] map ──
+    # ── Maps ──
+    subject_map = {s.id: s for s in subjects}
     subject_teachers = defaultdict(list)
     for teacher in teachers:
         for subj in teacher.subjects_taught.all():
             subject_teachers[subj.id].append(teacher.id)
 
-    teachable_subject_ids = set(subject_teachers.keys())
-    if not teachable_subject_ids:
+    teachable = [s for s in subjects if s.id in subject_teachers]
+    if not teachable:
         return False, "No subjects have assigned teachers. Assign teachers to subjects first.", []
 
-    # ── Generate time slots per class ──
+    priority_subjects = [s for s in teachable if s.is_priority]
+    normal_subjects = [s for s in teachable if not s.is_priority]
+
+    # ── Periods per class ──
     class_periods = {}
     for cls in classes:
         class_periods[cls.id] = generate_periods_for_class(cls)
 
     rooms = [f"Room {i}" for i in range(1, len(classes) + 5)]
 
-    # ── GLOBAL teacher schedule — prevents any teacher from being in two places at once ──
-    teacher_busy = defaultdict(set)   # teacher_id → {(day, start_time), ...}
-    room_busy = defaultdict(set)      # room → {(day, start_time), ...}
-
-    assignments = []  # (class_id, subject_id, teacher_id, room, day, start, end)
+    # ── Global state — prevents teacher double-booking ──
+    teacher_busy = defaultdict(set)
+    room_busy = defaultdict(set)
+    assignments = []
 
     # Shuffle class order for fairness
     class_order = list(classes)
     random.shuffle(class_order)
 
+    MAX_PER_DAY = 2  # Hard cap: no subject gets more than 2 periods on any day
+
     for cls in class_order:
-        # ── Per-class: determine subjects and periods ──
-        cls_subject_ids = [sid for sid in teachable_subject_ids]
-        random.shuffle(cls_subject_ids)
-
-        # Count total available slots for THIS class across the whole week
-        total_slots = 0
-        for day in DAYS:
-            total_slots += len(class_periods.get(cls.id, {}).get(day, []))
-
-        if total_slots == 0 or len(cls_subject_ids) == 0:
+        day_periods_map = class_periods.get(cls.id, {})
+        total_slots = sum(len(slots) for slots in day_periods_map.values())
+        if total_slots == 0:
             continue
 
-        # Per-class periods: distribute slots evenly across this class's subjects
-        periods_per_subj = max(1, min(total_slots // len(cls_subject_ids), 6))
+        # ── Per-class: calculate how many weekly periods each subject gets ──
+        # Priority subjects: 1 period/day = 5/week, or 2/day on some days
+        # if few priority subjects relative to slots
+        n_priority = len(priority_subjects)
+        n_normal = len(normal_subjects)
 
-        # Per-class tracker: how many periods each subject has been assigned
-        cls_subject_count = defaultdict(int)
-        # Per-class tracker: which days each subject has been placed on (for spreading)
-        cls_subject_days = defaultdict(set)
+        # Reserve slots for priority: each priority subject gets ~5 periods/week (1/day)
+        priority_weekly = {}
+        for s in priority_subjects:
+            priority_weekly[s.id] = 5  # 1 per day across 5 days
 
-        # Build a round-robin subject queue for this class
-        subj_queue = list(cls_subject_ids)
+        # Remaining slots for normal subjects
+        reserved = sum(priority_weekly.values())
+        remaining_slots = max(0, total_slots - reserved)
+        normal_weekly = {}
+        if n_normal > 0 and remaining_slots > 0:
+            per_normal = max(1, min(remaining_slots // n_normal, 5))
+            for s in normal_subjects:
+                normal_weekly[s.id] = per_normal
 
-        # ── Fill slots day by day (ensures all days get entries, not just Friday) ──
+        # Combined weekly budget per subject for this class
+        weekly_budget = {}
+        weekly_budget.update(priority_weekly)
+        weekly_budget.update(normal_weekly)
+
+        # ── Per-class trackers ──
+        week_count = defaultdict(int)      # subject_id → total periods assigned this week
+        day_count = defaultdict(lambda: defaultdict(int))  # subject_id → {day → count}
+
+        # Subjects that couldn't be placed today → get priority tomorrow
+        carryover = []
+
         for day in DAYS:
-            day_slots = class_periods.get(cls.id, {}).get(day, [])
+            day_slots = day_periods_map.get(day, [])
+            if not day_slots:
+                continue
 
+            # ── Build today's subject queue ──
+            # 1. Carryover subjects from yesterday (they were skipped)
+            # 2. Priority subjects (ensure they get at least 1 today)
+            # 3. Normal subjects
+            todays_queue = []
+
+            # Carryover first
+            for sid in carryover:
+                if week_count[sid] < weekly_budget.get(sid, 0):
+                    todays_queue.append(sid)
+            carryover = []
+
+            # Priority subjects that haven't had a slot today yet
+            priority_ids = [s.id for s in priority_subjects
+                           if s.id not in todays_queue
+                           and week_count[s.id] < weekly_budget.get(s.id, 0)]
+            random.shuffle(priority_ids)
+            todays_queue.extend(priority_ids)
+
+            # Normal subjects
+            normal_ids = [s.id for s in normal_subjects
+                         if s.id not in todays_queue
+                         and week_count[s.id] < weekly_budget.get(s.id, 0)]
+            random.shuffle(normal_ids)
+            todays_queue.extend(normal_ids)
+
+            # ── Fill each slot ──
             for start, end in day_slots:
                 time_key = (day, start)
-
-                # Try each subject in the queue
                 placed = False
-                attempts = 0
-                max_attempts = len(subj_queue)
 
-                while attempts < max_attempts:
-                    sid = subj_queue[0]
-                    attempts += 1
+                # Try each subject in queue order
+                tried = 0
+                while tried < len(todays_queue):
+                    sid = todays_queue[0]
+                    tried += 1
 
-                    # Check if this subject still needs periods for this class
-                    if cls_subject_count[sid] >= periods_per_subj:
-                        subj_queue.append(subj_queue.pop(0))
+                    # Check weekly budget
+                    if week_count[sid] >= weekly_budget.get(sid, 0):
+                        todays_queue.pop(0)
+                        tried -= 1  # list shrank, don't increment
                         continue
 
-                    # Prefer spreading: skip if this subject already has a slot today
-                    # (but allow it if we've tried everything else)
-                    if day in cls_subject_days[sid] and attempts < max_attempts:
-                        subj_queue.append(subj_queue.pop(0))
+                    # Check max 2 per day
+                    if day_count[sid][day] >= MAX_PER_DAY:
+                        todays_queue.append(todays_queue.pop(0))
                         continue
 
-                    # Find an available teacher (NOT busy at this time globally)
-                    teacher_id = None
-                    candidates = list(subject_teachers.get(sid, []))
-                    random.shuffle(candidates)
-                    for tid in candidates:
-                        if time_key not in teacher_busy[tid]:
-                            teacher_id = tid
-                            break
-
-                    if teacher_id is None:
-                        # Every teacher for this subject is busy at this time
-                        subj_queue.append(subj_queue.pop(0))
+                    # Find available teacher
+                    tid = _find_teacher(subject_teachers, sid, time_key, teacher_busy)
+                    if tid is None:
+                        # Teacher busy — carry this subject over to next day
+                        if sid not in carryover:
+                            carryover.append(sid)
+                        todays_queue.append(todays_queue.pop(0))
                         continue
 
-                    # Find an available room
-                    room = None
-                    for r in rooms:
-                        if time_key not in room_busy[r]:
-                            room = r
-                            break
-                    if room is None:
-                        room = f"Room {len(rooms) + 1}"
-                        rooms.append(room)
+                    # Find room
+                    room = _find_room(rooms, time_key, room_busy)
 
-                    # ── Assign — mark teacher as busy globally ──
-                    teacher_busy[teacher_id].add(time_key)
+                    # ── Assign ──
+                    teacher_busy[tid].add(time_key)
                     room_busy[room].add(time_key)
-                    cls_subject_count[sid] += 1
-                    cls_subject_days[sid].add(day)
-                    assignments.append((cls.id, sid, teacher_id, room, day, start, end))
+                    week_count[sid] += 1
+                    day_count[sid][day] += 1
+                    assignments.append((cls.id, sid, tid, room, day, start, end))
                     placed = True
 
-                    # Rotate to next subject for variety
-                    subj_queue.append(subj_queue.pop(0))
+                    # Rotate subject to back for variety
+                    todays_queue.append(todays_queue.pop(0))
                     break
-
-                # If not placed — free period (that's fine)
 
     # ── Write to database ──
     class_map = {c.id: c for c in classes}
-    subject_map = {s.id: s for s in subjects}
-    teacher_map = {t.id: t for t in teachers}
-
+    teacher_map_db = {t.id: t for t in teachers}
     timetable_entries = []
 
     with transaction.atomic():
@@ -282,7 +327,7 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
                 entry = Timetable.objects.create(
                     class_assigned=class_map[cls_id],
                     subject=subject_map[subj_id],
-                    teacher=teacher_map[teach_id],
+                    teacher=teacher_map_db[teach_id],
                     day_of_week=day,
                     start_time=start,
                     end_time=end,

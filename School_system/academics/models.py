@@ -12,6 +12,8 @@ class Subject(models.Model):
     # Grade weighting for CA vs Final Exam (must sum to 1.0)
     ca_weight = models.FloatField(default=0.4, help_text='Continuous Assessment weight (e.g. 0.4 = 40%)')
     exam_weight = models.FloatField(default=0.6, help_text='Final Exam weight (e.g. 0.6 = 60%)')
+    # Priority subjects get scheduled every day (1-2 periods/day) before others
+    is_priority = models.BooleanField(default=False, help_text='Priority subjects (e.g. Math, English) get daily periods')
     # Soft delete
     is_deleted = models.BooleanField(default=False, db_index=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
