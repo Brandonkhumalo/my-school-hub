@@ -27,6 +27,8 @@ if [ -z "${ECR_REGISTRY:-}" ]; then
     exit 1
 fi
 
+ECR_REGISTRY="${ECR_REGISTRY%/schoolhub-web}"
+
 IMAGE="${ECR_REGISTRY}/schoolhub-web"
 cd "$REPO_DIR"
 
@@ -62,6 +64,7 @@ deploy_backend() {
     docker push "${IMAGE}:latest"
 
     echo "==> Pulling latest image..."
+    docker compose -f "$COMPOSE_FILE" config | grep image
     docker compose -f "$COMPOSE_FILE" pull
 
     echo "==> Restarting services..."

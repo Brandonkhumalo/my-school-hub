@@ -120,8 +120,14 @@ jobs:
             git pull origin main
 
             # ── Backend: pull new Docker image and restart ──
-            source School_system/.env
+            set -a
+            . School_system/.env
+            set +a
+            export ECR_REGISTRY="${ECR_REGISTRY%/schoolhub-web}"
+            test -n "$ECR_REGISTRY"
+            echo "Using ECR_REGISTRY=$ECR_REGISTRY"
             aws ecr get-login-password --region af-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+            docker compose -f docker-compose.prod.yml config | grep image
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
