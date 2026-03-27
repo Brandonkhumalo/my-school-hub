@@ -557,8 +557,7 @@ def approve_parent_link_request(request, link_id):
         ).get(id=link_id, is_confirmed=False, student__user__school=school)
         
         link.is_confirmed = True
-        link.confirmed_by = request.user
-        link.confirmed_at = timezone.now()
+        link.confirmed_date = timezone.now()
         link.save()
 
         # Add the child to parent's children M2M
