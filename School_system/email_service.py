@@ -7,6 +7,7 @@ Every email includes a no-reply notice directing parents to contact the school.
 """
 
 import logging
+import os
 import requests
 from django.conf import settings
 
@@ -151,17 +152,47 @@ def _alert_badge(text: str, colour: str = "#22c55e") -> str:
 
 
 def _send(to: list[str], subject: str, html: str) -> bool:
-    """Fire-and-forget Resend API call. Returns True on success."""
+    """
+    Send email via Go Services (preferred) or Resend API (fallback).
+    When GO_SERVICES_URL is set, delegates to Go for non-blocking goroutine-based sending.
+    """
+    # Remove blanks / duplicates
+    recipients = list({e.strip() for e in to if e and e.strip()})
+    if not recipients:
+        return False
+
+    # ── Delegate to Go Services if available (non-blocking, goroutine-based) ──
+    go_services_url = getattr(settings, 'GO_SERVICES_URL', '') or os.environ.get('GO_SERVICES_URL', '')
+    if go_services_url:
+        try:
+            resp = requests.post(
+                f"{go_services_url}/api/v1/services/email/send",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Gateway-Auth": "true",
+                    "X-User-ID": "system",
+                },
+                json={
+                    "to": recipients,
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=5,
+            )
+            if resp.status_code in (200, 201, 202):
+                logger.info("Email delegated to Go service for %s — subject: %s", recipients, subject)
+                return True
+            else:
+                logger.warning("Go email service returned %s, falling back to direct send", resp.status_code)
+        except Exception as exc:
+            logger.warning("Go email service unavailable (%s), falling back to direct send", exc)
+
+    # ── Fallback: direct Resend API call ──
     api_key   = getattr(settings, 'RESEND_API_KEY', '')
     from_addr = getattr(settings, 'RESEND_FROM_EMAIL', 'noreply@myschoolhub.co.zw')
 
     if not api_key:
         logger.warning("RESEND_API_KEY not configured — email skipped")
-        return False
-
-    # Remove blanks / duplicates
-    recipients = list({e.strip() for e in to if e and e.strip()})
-    if not recipients:
         return False
 
     try:

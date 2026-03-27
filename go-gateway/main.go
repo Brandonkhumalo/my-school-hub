@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,13 @@ import (
 
 	"github.com/joho/godotenv"
 )
+
+// reportCardRe matches /api/v1/academics/students/{id}/report-card/
+var reportCardRe = regexp.MustCompile(`^/api/v1/academics/students/\d+/report-card/?$`)
+
+func isReportCardPath(path string) bool {
+	return reportCardRe.MatchString(path)
+}
 
 func main() {
 	// Load .env (ignore error — env vars may come from Docker/EC2)
@@ -54,12 +62,35 @@ func main() {
 	}
 	workersProxy := httputil.NewSingleHostReverseProxy(workersURL)
 
-	// Route bulk imports to Go workers, everything else to Django
+	servicesURL, err := url.Parse(cfg.ServicesUpstream)
+	if err != nil {
+		log.Fatalf("FATAL: invalid GO_SERVICES_UPSTREAM: %v", err)
+	}
+	servicesProxy := httputil.NewSingleHostReverseProxy(servicesURL)
+
+	// Route requests to the appropriate backend:
+	//   /api/v1/bulk/*                              → Go Workers  (CSV imports)
+	//   /api/v1/academics/students/*/report-card/*   → Go Services (PDF generation)
+	//   /api/v1/finances/payments/paynow/*            → Go Services (PayNow API)
+	//   /api/v1/services/*                            → Go Services (email, WhatsApp)
+	//   everything else                               → Django
 	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasPrefix(path, "/api/v1/bulk/") {
+
+		switch {
+		case strings.HasPrefix(path, "/api/v1/bulk/"):
 			workersProxy.ServeHTTP(w, r)
-		} else {
+
+		case strings.HasPrefix(path, "/api/v1/finances/payments/paynow/"):
+			servicesProxy.ServeHTTP(w, r)
+
+		case strings.HasPrefix(path, "/api/v1/services/"):
+			servicesProxy.ServeHTTP(w, r)
+
+		case isReportCardPath(path):
+			servicesProxy.ServeHTTP(w, r)
+
+		default:
 			djangoProxy.ServeHTTP(w, r)
 		}
 	})
@@ -100,7 +131,8 @@ func main() {
 		srv.Shutdown(ctx)
 	}()
 
-	log.Printf("Go Gateway listening on :%s → proxying to %s", cfg.Port, cfg.DjangoUpstream)
+	log.Printf("Go Gateway listening on :%s → Django(%s) Workers(%s) Services(%s)",
+		cfg.Port, cfg.DjangoUpstream, cfg.WorkersUpstream, cfg.ServicesUpstream)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("FATAL: %v", err)
 	}
@@ -109,12 +141,13 @@ func main() {
 // ─── Config ─────────────────────────────────────────────────
 
 type Config struct {
-	Port             string
-	SecretKey        string
-	DatabaseURL      string
-	DjangoUpstream   string
-	WorkersUpstream  string
-	CORSOrigins      []string
+	Port              string
+	SecretKey         string
+	DatabaseURL       string
+	DjangoUpstream    string
+	WorkersUpstream   string
+	ServicesUpstream  string
+	CORSOrigins       []string
 }
 
 func LoadConfig() Config {
@@ -129,6 +162,7 @@ func LoadConfig() Config {
 	}
 	upstream := getEnv("DJANGO_UPSTREAM", "http://localhost:8000")
 	workers := getEnv("GO_WORKERS_UPSTREAM", "http://localhost:8081")
+	services := getEnv("GO_SERVICES_UPSTREAM", "http://localhost:8082")
 	corsRaw := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5000")
 	origins := strings.Split(corsRaw, ",")
 	for i := range origins {
@@ -136,12 +170,13 @@ func LoadConfig() Config {
 	}
 
 	return Config{
-		Port:            port,
-		SecretKey:       secret,
-		DatabaseURL:     dbURL,
-		DjangoUpstream:  upstream,
-		WorkersUpstream: workers,
-		CORSOrigins:     origins,
+		Port:             port,
+		SecretKey:        secret,
+		DatabaseURL:      dbURL,
+		DjangoUpstream:   upstream,
+		WorkersUpstream:  workers,
+		ServicesUpstream: services,
+		CORSOrigins:      origins,
 	}
 }
 

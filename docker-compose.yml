@@ -5,7 +5,8 @@ version: "3.9"
 # ──────────────────────────────────────────────────────────────
 # Architecture:
 #   Internet → Go Gateway (:8080) → Django (:8000)
-#                                 → Go Workers (:8081)
+#                                 → Go Workers (:8081)   — bulk CSV imports
+#                                 → Go Services (:8082)  — PDF, PayNow, email, WhatsApp
 #
 # Start everything:   docker compose up --build
 # Run in background:  docker compose up -d --build
@@ -44,10 +45,13 @@ services:
       GATEWAY_PORT: "8080"
       DJANGO_UPSTREAM: "http://web:8000"
       GO_WORKERS_UPSTREAM: "http://workers:8081"
+      GO_SERVICES_UPSTREAM: "http://services:8082"
     depends_on:
       web:
         condition: service_started
       workers:
+        condition: service_started
+      services:
         condition: service_started
 
   # ── Django API (Gunicorn) — now internal only ──────────────
@@ -64,6 +68,7 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
       - ./School_system/db.sqlite3:/app/db.sqlite3
       - media_files:/app/media
@@ -86,6 +91,21 @@ services:
     environment:
       WORKERS_PORT: "8081"
 
+  # ── Go Services (~12MB RAM) ───────────────────────────────
+  # Handles: PDF report cards, PayNow payments, email (Resend), WhatsApp
+  # Uses goroutines for non-blocking external API calls
+  services:
+    build:
+      context: ./go-services
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8082"
+    env_file:
+      - ./School_system/.env
+    environment:
+      SERVICES_PORT: "8082"
+
   # ── Celery Worker ───────────────────────────────────────────
   celery:
     build:
@@ -102,6 +122,7 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
       - ./School_system/db.sqlite3:/app/db.sqlite3
       - media_files:/app/media

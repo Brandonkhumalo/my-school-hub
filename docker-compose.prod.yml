@@ -5,10 +5,10 @@
 # Database (RDS) and Redis (ElastiCache) are external — no
 # local containers for them.
 #
-# Nginx runs on the host (not in Docker) and handles:
-#   - SSL termination (Let's Encrypt)
-#   - Serving the React frontend from /var/www/schoolhub/dist
-#   - Proxying /api/ and /admin/ to Django on :8000
+# Architecture:
+#   Nginx (host) → Go Gateway (:8080) → Django (:8000)
+#                                      → Go Workers (:8081)
+#                                      → Go Services (:8082)
 #
 # Usage:
 #   docker compose -f docker-compose.prod.yml up -d
@@ -18,16 +18,42 @@
 
 services:
 
-  # ── Django API (Gunicorn) ───────────────────────────────────
+  # ── Go API Gateway (~15MB RAM) ─────────────────────────────
+  # Handles: JWT auth, token blacklist, audit logging, rate limiting
+  # Routes requests to Django, Go Workers, or Go Services
+  gateway:
+    image: ${ECR_REGISTRY}/schoolhub-gateway:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - ./School_system/.env
+    environment:
+      GATEWAY_PORT: "8080"
+      DJANGO_UPSTREAM: "http://web:8000"
+      GO_WORKERS_UPSTREAM: "http://workers:8081"
+      GO_SERVICES_UPSTREAM: "http://services:8082"
+    depends_on:
+      web:
+        condition: service_healthy
+      workers:
+        condition: service_started
+      services:
+        condition: service_started
+
+  # ── Django API (Gunicorn) — internal only ──────────────────
+  # No longer exposed on host port — gateway handles all traffic
   web:
     image: ${ECR_REGISTRY}/schoolhub-web:latest
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8000:8000"
+    expose:
+      - "8000"
     env_file:
       - ./School_system/.env
     environment:
       PORT: "8000"
+      USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
       - media_files:/app/media
     healthcheck:
@@ -36,6 +62,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # ── Go Bulk Workers (~10MB RAM) ────────────────────────────
+  # Handles: CSV bulk imports (students, results, fees)
+  workers:
+    image: ${ECR_REGISTRY}/schoolhub-workers:latest
+    restart: unless-stopped
+    expose:
+      - "8081"
+    env_file:
+      - ./School_system/.env
+    environment:
+      WORKERS_PORT: "8081"
+
+  # ── Go Services (~12MB RAM) ────────────────────────────────
+  # Handles: PDF report cards, PayNow payments, email (Resend), WhatsApp
+  # Uses goroutines for non-blocking external API calls
+  services:
+    image: ${ECR_REGISTRY}/schoolhub-services:latest
+    restart: unless-stopped
+    expose:
+      - "8082"
+    env_file:
+      - ./School_system/.env
+    environment:
+      SERVICES_PORT: "8082"
 
   # ── Celery Worker ───────────────────────────────────────────
   celery:
@@ -48,6 +99,9 @@ services:
         --queues=celery
     env_file:
       - ./School_system/.env
+    environment:
+      USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
       - media_files:/app/media
     depends_on:
@@ -64,6 +118,8 @@ services:
         --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file:
       - ./School_system/.env
+    environment:
+      USE_GO_GATEWAY: "true"
     depends_on:
       web:
         condition: service_healthy
