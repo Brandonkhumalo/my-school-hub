@@ -40,11 +40,15 @@ export default function AdminFees() {
             </thead>
             <tbody>
               {fees.map((fee, idx) => (
-                <tr key={idx}>
-                  <td>{fee.student_name}</td>
-                  <td>{fee.fee_type}</td>
-                  <td>${fee.amount}</td>
-                  <td>{fee.status}</td>
+                <tr key={idx} className="border-b">
+                  <td className="py-2 px-3">{fee.student_name}</td>
+                  <td className="py-2 px-3">{fee.fee_type_name}</td>
+                  <td className="py-2 px-3">{fee.currency || '$'}{parseFloat(fee.amount_due).toFixed(2)}</td>
+                  <td className="py-2 px-3">
+                    <span className={`px-2 py-1 rounded-full text-xs ${fee.is_paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {fee.is_paid ? 'Paid' : 'Pending'}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

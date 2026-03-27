@@ -55,7 +55,8 @@ def bulk_assign_fees_task(self, school_id: int, academic_year: str, academic_ter
         from django.db import transaction
         from users.models import School
         from academics.models import Student
-        from .models import SchoolFees, StudentFee
+        from datetime import date
+        from .models import SchoolFees, StudentFee, FeeType
 
         school = School.objects.get(id=school_id)
         fee_structures = SchoolFees.objects.filter(
@@ -77,14 +78,20 @@ def bulk_assign_fees_task(self, school_id: int, academic_year: str, academic_ter
                 fee_structure = fee_structures.filter(grade_level=grade_level).first()
                 if not fee_structure:
                     continue
+                fee_type, _ = FeeType.objects.get_or_create(
+                    name=fee_structure.grade_name,
+                    school=school,
+                    academic_year=academic_year,
+                    defaults={'amount': fee_structure.total_fee},
+                )
                 _, created = StudentFee.objects.get_or_create(
                     student=student,
-                    fee_type__name=fee_structure.grade_name,
+                    fee_type=fee_type,
                     academic_year=academic_year,
                     academic_term=academic_term,
                     defaults={
                         'amount_due': fee_structure.total_fee,
-                        'due_date': fee_structure.date_updated.date() if hasattr(fee_structure, 'date_updated') else None,
+                        'due_date': fee_structure.date_updated.date() if hasattr(fee_structure, 'date_updated') else date.today(),
                     },
                 )
                 if created:

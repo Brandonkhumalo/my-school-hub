@@ -9,6 +9,7 @@ class FeeType(models.Model):
     description = models.TextField(blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     academic_year = models.CharField(max_length=20)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='fee_types', null=True, blank=True)
 
     objects = TenantAwareManager()
 

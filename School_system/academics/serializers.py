@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    Subject, Class, Student, Teacher, Parent, Result, 
+    Subject, Class, Student, Teacher, Parent, Result,
     Timetable, Announcement, Complaint, Suspension,
-    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, Attendance, ParentTeacherMessage
+    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, Attendance, ParentTeacherMessage,
+    Homework, AssignmentSubmission
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
@@ -537,3 +538,37 @@ class ParentTeacherMessageSerializer(serializers.ModelSerializer):
         if obj.student:
             return f"{obj.student.user.first_name} {obj.student.user.last_name}"
         return None
+
+
+class HomeworkSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    teacher_name = serializers.SerializerMethodField()
+    class_name = serializers.CharField(source='assigned_class.name', read_only=True)
+
+    class Meta:
+        model = Homework
+        fields = [
+            'id', 'title', 'subject', 'subject_name', 'teacher', 'teacher_name',
+            'assigned_class', 'class_name', 'description', 'file',
+            'due_date', 'date_created'
+        ]
+
+    def get_teacher_name(self, obj):
+        return f"{obj.teacher.user.first_name} {obj.teacher.user.last_name}"
+
+
+class AssignmentSubmissionSerializer(serializers.ModelSerializer):
+    student_name = serializers.SerializerMethodField()
+    assignment_title = serializers.CharField(source='assignment.title', read_only=True)
+
+    class Meta:
+        model = AssignmentSubmission
+        fields = [
+            'id', 'assignment', 'assignment_title', 'student', 'student_name',
+            'submitted_file', 'text_submission', 'submitted_at',
+            'grade', 'feedback', 'status'
+        ]
+        read_only_fields = ['submitted_at']
+
+    def get_student_name(self, obj):
+        return f"{obj.student.user.first_name} {obj.student.user.last_name}"

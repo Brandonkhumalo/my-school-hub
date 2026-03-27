@@ -215,12 +215,6 @@ class SchoolEvent(models.Model):
 
 
 class Assignment(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('submitted', 'Submitted'),
-        ('overdue', 'Overdue'),
-    ]
-    
     title = models.CharField(max_length=200)
     description = models.TextField()
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')
