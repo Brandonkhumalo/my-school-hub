@@ -49,6 +49,7 @@ const AdminParentLinkRequests = lazy(() => import("./pages/admin/AdminParentLink
 const AdminExtras = lazy(() => import("./pages/admin/AdminExtras"));
 const AdminStaff = lazy(() => import("./pages/admin/AdminStaff"));
 const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminReportConfig = lazy(() => import("./pages/admin/AdminReportConfig"));
 const AdminFees = lazy(() => import("./pages/admin/AdminFees"));
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminSuspensions = lazy(() => import("./pages/admin/AdminSuspensions"));
@@ -165,6 +166,7 @@ function App() {
         <Route path="/admin/extras" element={<RequireAuth allowedRoles={['admin']}><AdminExtras /></RequireAuth>} />
         <Route path="/admin/staff" element={<RequireAuth allowedRoles={['admin']}><AdminStaff /></RequireAuth>} />
         <Route path="/admin/settings" element={<RequireAuth allowedRoles={['admin']}><AdminSettings /></RequireAuth>} />
+        <Route path="/admin/report-config" element={<RequireAuth allowedRoles={['admin']}><AdminReportConfig /></RequireAuth>} />
         <Route path="/admin/fees" element={<RequireAuth allowedRoles={['admin']}><AdminFees /></RequireAuth>} />
         <Route path="/admin/reports" element={<RequireAuth allowedRoles={['admin']}><AdminReports /></RequireAuth>} />
         <Route path="/admin/suspensions" element={<RequireAuth allowedRoles={['admin']}><AdminSuspensions /></RequireAuth>} />

@@ -394,6 +394,16 @@ const apiService = {
   getSchoolSettings: () => request("/auth/school/settings/", "GET"),
   updateSchoolSettings: (data) => request("/auth/school/settings/", "PUT", data),
 
+  // Report card config (admin)
+  getReportCardConfig: () => request("/auth/school/report-config/", "GET"),
+  updateReportCardConfig: (data) => request("/auth/school/report-config/", "PUT", data),
+  uploadReportCardImage: (field, file) => {
+    const formData = new FormData();
+    formData.append('field', field);
+    formData.append('file', file);
+    return requestMultipart("/auth/school/report-config/upload/", "POST", formData);
+  },
+
   // Audit logs (admin)
   getAuditLogs: () => request("/auth/audit-logs/", "GET"),
 

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser, School, SchoolSettings
+from .models import CustomUser, School, SchoolSettings, ReportCardConfig
 from academics.models import Parent
 import random
 import secrets
@@ -240,3 +240,29 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
             'paynow_integration_id', 'paynow_integration_key',
         ]
         read_only_fields = ['id', 'school_name']
+
+
+class ReportCardConfigSerializer(serializers.ModelSerializer):
+    logo_url = serializers.SerializerMethodField()
+    stamp_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReportCardConfig
+        exclude = ['school']
+        read_only_fields = ['id']
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None
+
+    def get_stamp_url(self, obj):
+        if obj.stamp_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.stamp_image.url)
+            return obj.stamp_image.url
+        return None

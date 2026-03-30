@@ -35,6 +35,7 @@ function Layout() {
       { path: '/admin/library', icon: 'fa-book-reader', title: 'Library' },
       { path: '/admin/health', icon: 'fa-heartbeat', title: 'Health Records' },
       { path: '/admin/analytics', icon: 'fa-chart-pie', title: 'Analytics' },
+      { path: '/admin/report-config', icon: 'fa-file-pdf', title: 'Report Card Design' },
       { path: '/admin/settings', icon: 'fa-sliders-h', title: 'School Settings' },
     ],
     teacher: [

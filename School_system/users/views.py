@@ -357,6 +357,62 @@ def school_settings_view(request):
 
 
 # ---------------------------------------------------------------
+# Report Card Config
+# ---------------------------------------------------------------
+
+@api_view(['GET', 'PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_config_view(request):
+    """Get or update report card configuration (admin only)."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .models import ReportCardConfig
+    from .serializers import ReportCardConfigSerializer
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+
+    if request.method == 'GET':
+        return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
+
+    serializer = ReportCardConfigSerializer(config, data=request.data, partial=True, context={'request': request})
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_upload_image(request):
+    """Upload logo or stamp image for report card config."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .models import ReportCardConfig
+    from .serializers import ReportCardConfigSerializer
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+
+    field = request.data.get('field')  # 'logo' or 'stamp_image'
+    file = request.FILES.get('file')
+
+    if field not in ('logo', 'stamp_image') or not file:
+        return Response({'error': 'field must be "logo" or "stamp_image" and file is required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    setattr(config, field, file)
+    config.save(update_fields=[field])
+    return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
+
+
+# ---------------------------------------------------------------
 # Audit Logs
 # ---------------------------------------------------------------
 
