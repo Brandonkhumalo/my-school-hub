@@ -145,6 +145,7 @@ def create_school_with_admin(request):
         with transaction.atomic():
             school = School.objects.create(
                 name=school_name,
+                code=School.generate_school_code(),
                 city=school_location,
                 school_type=school_type,
                 curriculum=curriculum

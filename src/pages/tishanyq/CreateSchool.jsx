@@ -7,7 +7,7 @@ export default function CreateSchool() {
     school_name: "",
     school_location: "",
     school_type: "secondary",
-    curriculum: "ZIMSEC",
+    curriculum: "zimsec",
     admin_email: "",
     admin_phone: "",
     admin_password: "",
@@ -45,7 +45,7 @@ export default function CreateSchool() {
         school_name: "",
         school_location: "",
         school_type: "secondary",
-        curriculum: "ZIMSEC",
+        curriculum: "zimsec",
         admin_email: "",
         admin_phone: "",
         admin_password: "",
@@ -150,9 +150,9 @@ export default function CreateSchool() {
                 value={formData.curriculum}
                 onChange={(e) => setFormData({ ...formData, curriculum: e.target.value })}
               >
-                <option value="ZIMSEC">ZIMSEC</option>
-                <option value="Cambridge">Cambridge International</option>
-                <option value="Both">Both ZIMSEC & Cambridge</option>
+                <option value="zimsec">ZIMSEC</option>
+                <option value="cambridge">Cambridge International</option>
+                <option value="both">Both ZIMSEC & Cambridge</option>
               </select>
             </div>
           </div>
