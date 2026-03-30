@@ -532,8 +532,8 @@ The workflow file already exists at `.github/workflows/deploy.yml`. You just nee
 
 Now every push to `main` automatically:
 1. Runs all tests against a fresh PostgreSQL database
-2. Builds the Docker image and pushes to ECR
-3. SSHs into EC2, pulls the new image, rebuilds the frontend, and reloads Nginx
+2. Builds all 4 Docker images (Django + Go Gateway + Go Workers + Go Services) and pushes to ECR
+3. SSHs into EC2, pulls all new images, rebuilds the frontend, restarts all services, and reloads Nginx
 
 ### Step 15: Set Up S3 for Media Files (optional)
 
@@ -877,8 +877,8 @@ aws rds create-db-instance-read-replica \
 | `go-services/main.go` | PDF reports, PayNow, email, WhatsApp handlers |
 | `docker-compose.yml` | Dev compose: builds all services locally with Redis |
 | `docker-compose.prod.yml` | Production compose: ECR images, external RDS/Redis |
-| `deploy-ec2.sh` | Deploy script: backend + frontend + SSL, with rollback |
-| `.github/workflows/deploy.yml` | CI/CD: test → build → push → SSH deploy |
+| `deploy-ec2.sh` | Deploy script: all 4 images + frontend + SSL, with rollback |
+| `.github/workflows/deploy.yml` | CI/CD: test → build all 4 images → push to ECR → SSH deploy |
 | `infrastructure/nginx/schoolhub.conf` | Nginx HTTP-only config (pre-SSL) |
 | `infrastructure/nginx/schoolhub-ssl.conf` | Nginx HTTPS config (post-SSL) |
 | `infrastructure/fix-ssl.sh` | SSL recovery: Nginx + Let's Encrypt + auto-renewal |

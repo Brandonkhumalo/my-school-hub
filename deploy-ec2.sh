@@ -1,8 +1,8 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────
 # My School Hub — EC2 Deploy Script
-# Builds backend Docker image, pushes to ECR, builds frontend,
-# restarts services, and ensures Nginx + SSL are configured.
+# Builds all Docker images (Django + Go services), pushes to ECR,
+# builds frontend, restarts services, and ensures Nginx + SSL.
 #
 # Usage:
 #   ./deploy-ec2.sh              # Full deploy (backend + frontend + SSL)
@@ -29,7 +29,10 @@ fi
 
 ECR_REGISTRY="${ECR_REGISTRY%/schoolhub-web}"
 
-IMAGE="${ECR_REGISTRY}/schoolhub-web"
+IMAGE_WEB="${ECR_REGISTRY}/schoolhub-web"
+IMAGE_GATEWAY="${ECR_REGISTRY}/schoolhub-gateway"
+IMAGE_WORKERS="${ECR_REGISTRY}/schoolhub-workers"
+IMAGE_SERVICES="${ECR_REGISTRY}/schoolhub-services"
 cd "$REPO_DIR"
 
 # ── Helper: Deploy frontend ──────────────────────────────────
@@ -53,17 +56,26 @@ deploy_backend() {
     echo "==> Logging in to ECR..."
     aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-    # Tag current as previous (for rollback)
-    echo "==> Tagging current image as 'previous'..."
-    docker tag "${IMAGE}:latest" "${IMAGE}:previous" 2>/dev/null || true
+    # Tag current images as previous (for rollback)
+    echo "==> Tagging current images as 'previous'..."
+    docker tag "${IMAGE_WEB}:latest" "${IMAGE_WEB}:previous" 2>/dev/null || true
+    docker tag "${IMAGE_GATEWAY}:latest" "${IMAGE_GATEWAY}:previous" 2>/dev/null || true
+    docker tag "${IMAGE_WORKERS}:latest" "${IMAGE_WORKERS}:previous" 2>/dev/null || true
+    docker tag "${IMAGE_SERVICES}:latest" "${IMAGE_SERVICES}:previous" 2>/dev/null || true
 
-    echo "==> Building Docker image..."
-    docker build -t "${IMAGE}:latest" ./School_system/
+    echo "==> Building all Docker images..."
+    docker build -t "${IMAGE_WEB}:latest" ./School_system/
+    docker build -t "${IMAGE_GATEWAY}:latest" ./go-gateway/
+    docker build -t "${IMAGE_WORKERS}:latest" ./go-workers/
+    docker build -t "${IMAGE_SERVICES}:latest" ./go-services/
 
-    echo "==> Pushing to ECR..."
-    docker push "${IMAGE}:latest"
+    echo "==> Pushing all images to ECR..."
+    docker push "${IMAGE_WEB}:latest"
+    docker push "${IMAGE_GATEWAY}:latest"
+    docker push "${IMAGE_WORKERS}:latest"
+    docker push "${IMAGE_SERVICES}:latest"
 
-    echo "==> Pulling latest image..."
+    echo "==> Pulling latest images..."
     docker compose -f "$COMPOSE_FILE" config | grep image
     docker compose -f "$COMPOSE_FILE" pull
 
@@ -86,10 +98,17 @@ check_health() {
     echo "==> Waiting for health check..."
     sleep 10
 
-    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
-        echo "==> Health check passed!"
+    if curl -sf http://localhost:8080/health/ > /dev/null 2>&1; then
+        echo "==> Gateway health check passed!"
     else
-        echo "==> WARNING: Health check failed. Check logs:"
+        echo "==> WARNING: Gateway health check failed. Check logs:"
+        echo "    docker compose -f $COMPOSE_FILE logs gateway"
+    fi
+
+    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+        echo "==> Django health check passed!"
+    else
+        echo "==> WARNING: Django health check failed. Check logs:"
         echo "    docker compose -f $COMPOSE_FILE logs web"
     fi
 
@@ -101,12 +120,15 @@ check_health() {
 # ── Main ──────────────────────────────────────────────────────
 case "${1:-full}" in
     rollback)
-        echo "==> Rolling back to previous image..."
+        echo "==> Rolling back all images to previous..."
         docker compose -f "$COMPOSE_FILE" down
-        docker tag "${IMAGE}:previous" "${IMAGE}:latest" 2>/dev/null || {
-            echo "ERROR: No previous image found."
+        docker tag "${IMAGE_WEB}:previous" "${IMAGE_WEB}:latest" 2>/dev/null || {
+            echo "ERROR: No previous web image found."
             exit 1
         }
+        docker tag "${IMAGE_GATEWAY}:previous" "${IMAGE_GATEWAY}:latest" 2>/dev/null || true
+        docker tag "${IMAGE_WORKERS}:previous" "${IMAGE_WORKERS}:latest" 2>/dev/null || true
+        docker tag "${IMAGE_SERVICES}:previous" "${IMAGE_SERVICES}:latest" 2>/dev/null || true
         docker compose -f "$COMPOSE_FILE" up -d
         check_health
         ;;

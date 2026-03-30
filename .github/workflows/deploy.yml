@@ -1,8 +1,8 @@
 # ──────────────────────────────────────────────────────────────
 # My School Hub — CI/CD Pipeline
 # ──────────────────────────────────────────────────────────────
-# Test → Build Docker image → Push to ECR → Deploy to EC2
-# EC2 runs: Nginx (SSL) + Docker (Django) + Frontend (React)
+# Test → Build all Docker images (Django + Go) → Push to ECR → Deploy to EC2
+# EC2 runs: Nginx (SSL) + Docker (Go Gateway + Django + Go Workers + Go Services) + Frontend (React)
 #
 # Phase 2: Replace SSH deploy step with `aws ecs update-service`
 # ──────────────────────────────────────────────────────────────
@@ -14,6 +14,9 @@ on:
     branches: [main]
     paths:
       - 'School_system/**'
+      - 'go-gateway/**'
+      - 'go-workers/**'
+      - 'go-services/**'
       - 'src/**'
       - 'public/**'
       - 'package.json'
@@ -26,7 +29,6 @@ on:
 
 env:
   AWS_REGION: af-south-1
-  ECR_REPOSITORY: schoolhub-web
 
 jobs:
 
@@ -70,7 +72,7 @@ jobs:
           ALLOWED_HOSTS: '*'
         run: python manage.py test --verbosity=2 --parallel
 
-  # ── 2. Build & Push Docker Image to ECR ─────────────────────
+  # ── 2. Build & Push All Docker Images to ECR ─────────────────
   build-and-push:
     runs-on: ubuntu-latest
     needs: test
@@ -89,16 +91,38 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push Docker image
+      - name: Build, tag, and push all Docker images
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-                        -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+          # Django (core API)
+          docker build -t $ECR_REGISTRY/schoolhub-web:latest \
+                        -t $ECR_REGISTRY/schoolhub-web:$IMAGE_TAG \
                         ./School_system/
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/schoolhub-web:latest
+          docker push $ECR_REGISTRY/schoolhub-web:$IMAGE_TAG
+
+          # Go API Gateway
+          docker build -t $ECR_REGISTRY/schoolhub-gateway:latest \
+                        -t $ECR_REGISTRY/schoolhub-gateway:$IMAGE_TAG \
+                        ./go-gateway/
+          docker push $ECR_REGISTRY/schoolhub-gateway:latest
+          docker push $ECR_REGISTRY/schoolhub-gateway:$IMAGE_TAG
+
+          # Go Bulk Workers
+          docker build -t $ECR_REGISTRY/schoolhub-workers:latest \
+                        -t $ECR_REGISTRY/schoolhub-workers:$IMAGE_TAG \
+                        ./go-workers/
+          docker push $ECR_REGISTRY/schoolhub-workers:latest
+          docker push $ECR_REGISTRY/schoolhub-workers:$IMAGE_TAG
+
+          # Go Services (PDF, PayNow, email, WhatsApp)
+          docker build -t $ECR_REGISTRY/schoolhub-services:latest \
+                        -t $ECR_REGISTRY/schoolhub-services:$IMAGE_TAG \
+                        ./go-services/
+          docker push $ECR_REGISTRY/schoolhub-services:latest
+          docker push $ECR_REGISTRY/schoolhub-services:$IMAGE_TAG
 
   # ── 3. Deploy to EC2 (Phase 1) ─────────────────────────────
   deploy:
@@ -144,8 +168,9 @@ jobs:
             bash infrastructure/fix-ssl.sh
 
             # ── Verify ──
-            sleep 5
-            curl -sf http://localhost:8000/health/ && echo "Backend OK" || echo "WARNING: backend health check failed"
+            sleep 10
+            curl -sf http://localhost:8080/health/ && echo "Gateway OK" || echo "WARNING: gateway health check failed"
+            curl -sf http://localhost:8000/health/ && echo "Django OK" || echo "WARNING: django health check failed"
             docker compose -f docker-compose.prod.yml ps
 
       # ── Phase 2: Replace the SSH step above with this: ──────
