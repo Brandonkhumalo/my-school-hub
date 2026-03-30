@@ -10,6 +10,9 @@ export default function ParentPerformance() {
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
+  const [reportTerm, setReportTerm] = useState('Term 1');
 
   useEffect(() => {
     loadData();
@@ -48,6 +51,29 @@ export default function ParentPerformance() {
       } finally {
         setLoading(false);
       }
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!selectedChild) return;
+    setDownloading(true);
+    try {
+      const blob = await apiService.downloadReportCard(selectedChild.id, {
+        year: reportYear,
+        term: reportTerm,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_card_${selectedChild.name}_${reportTerm}_${reportYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || 'Failed to download report card');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -114,6 +140,68 @@ export default function ParentPerformance() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+        )}
+
+        {/* Download Report Card */}
+        {selectedChild && (
+          <div className="bg-white rounded-lg shadow-lg p-5 mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              <i className="fas fa-file-pdf text-red-500 mr-2"></i>
+              Download Report Card
+              <span className="text-gray-500 font-normal"> — {selectedChild.name} {selectedChild.surname}</span>
+            </h3>
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Year</label>
+                <select
+                  value={reportYear}
+                  onChange={(e) => setReportYear(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {[...Array(5)].map((_, i) => {
+                    const y = new Date().getFullYear() - i;
+                    return <option key={y} value={y}>{y}</option>;
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Term</label>
+                <select
+                  value={reportTerm}
+                  onChange={(e) => setReportTerm(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="Term 1">Term 1</option>
+                  <option value="Term 2">Term 2</option>
+                  <option value="Term 3">Term 3</option>
+                </select>
+              </div>
+              <button
+                onClick={handleDownloadReport}
+                disabled={downloading}
+                className={`flex items-center space-x-2 px-5 py-2 rounded-lg font-medium text-white transition-all ${
+                  downloading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-red-600 hover:bg-red-700 active:bg-red-800'
+                }`}
+              >
+                {downloading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Downloading...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-download"></i>
+                    <span>Download PDF</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}

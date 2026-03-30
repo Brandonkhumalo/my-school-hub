@@ -758,19 +758,14 @@ def generate_report_card(request, student_id):
     """
     Generate a PDF report card for a student.
     Query params: ?year=2025&term=Term+1
+    Allowed: admin (any student in school), student (own report only),
+             parent (confirmed linked children only),
+             teacher (students in classes they teach / are class teacher of).
     """
     from django.http import HttpResponse
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from io import BytesIO
 
-    if request.user.role not in ('admin', 'teacher', 'parent'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    school = request.user.school
+    user = request.user
+    school = user.school
     year = request.query_params.get('year', '')
     term = request.query_params.get('term', '')
 
@@ -779,13 +774,65 @@ def generate_report_card(request, student_id):
     except Student.DoesNotExist:
         return Response({'error': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    # ── Permission checks per role ──────────────────────────────────────
+    if user.role == 'student':
+        try:
+            if user.student.id != student.id:
+                return Response({'error': 'You can only view your own report card.'}, status=status.HTTP_403_FORBIDDEN)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student profile not found.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'parent':
+        from .models import ParentChildLink
+        is_linked = ParentChildLink.objects.filter(
+            parent=user.parent, student=student, is_confirmed=True
+        ).exists()
+        if not is_linked:
+            return Response({'error': 'You can only view report cards for your confirmed children.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'teacher':
+        from .models import Timetable
+        teacher = user.teacher
+        is_class_teacher = Class.objects.filter(
+            id=student.student_class_id, class_teacher=user
+        ).exists() if student.student_class_id else False
+        teaches_class = Timetable.objects.filter(
+            teacher=teacher, class_assigned_id=student.student_class_id
+        ).exists() if student.student_class_id else False
+        if not is_class_teacher and not teaches_class:
+            return Response({'error': 'You can only view report cards for students in your classes.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'admin':
+        pass  # admins can access any student in their school
+
+    else:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # ── Build PDF ───────────────────────────────────────────────────────
     results = Result.objects.filter(
         student=student, academic_year=year, academic_term=term
     ).select_related('subject').order_by('subject__name')
 
-    attendance = student.attendance_records.filter(
-        date__isnull=False
-    ).count()
+    buffer = _build_report_card_pdf(student, results, school, year, term)
+
+    response = HttpResponse(buffer.read(), content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="report_card_{student.user.student_number}_{term}_{year}.pdf"'
+    )
+    return response
+
+
+def _build_report_card_pdf(student, results, school, year, term):
+    """Build a single student report card PDF and return a BytesIO buffer (seeked to 0)."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from .grading import percentage_to_grade, score_to_percentage
+    from io import BytesIO
+
+    attendance_total = student.attendance_records.filter(date__isnull=False).count()
     present_count = student.attendance_records.filter(status='present').count()
 
     buffer = BytesIO()
@@ -793,19 +840,18 @@ def generate_report_card(request, student_id):
     styles = getSampleStyleSheet()
     elements = []
 
-    # Header
     header_style = ParagraphStyle('Header', parent=styles['Title'], fontSize=18, spaceAfter=6)
     sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=11, spaceAfter=4)
 
     elements.append(Paragraph(school.name, header_style))
-    elements.append(Paragraph(f'Student Report Card — {term} {year}', sub_style))
+    elements.append(Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style))
     elements.append(Spacer(1, 0.5*cm))
 
     # Student info table
     info_data = [
         ['Student Name:', student.user.full_name, 'Student Number:', student.user.student_number or '-'],
         ['Class:', student.student_class.name if student.student_class else '-', 'Gender:', student.gender or '-'],
-        ['Admission Date:', str(student.admission_date), 'Attendance:', f'{present_count}/{attendance} days'],
+        ['Admission Date:', str(student.admission_date), 'Attendance:', f'{present_count}/{attendance_total} days'],
     ]
     info_table = Table(info_data, colWidths=[3*cm, 7*cm, 3.5*cm, 5*cm])
     info_table.setStyle(TableStyle([
@@ -819,22 +865,26 @@ def generate_report_card(request, student_id):
     elements.append(info_table)
     elements.append(Spacer(1, 0.5*cm))
 
-    # Results table
+    # Results table — uses Zimbabwe grading system
     elements.append(Paragraph('Academic Results', styles['Heading2']))
-    result_header = ['Subject', 'Exam Type', 'Score', 'Max Score', 'Percentage', 'Grade']
+    result_header = ['Subject', 'Exam Type', 'Score', 'Max Score', 'Percentage', 'Grade', 'Remark']
     result_rows = [result_header]
 
+    total_pct = 0
+    subject_count = 0
+
     for r in results:
-        pct = round((r.score / r.max_score) * 100, 1) if r.max_score else 0
-        if pct >= 80: grade = 'A'
-        elif pct >= 70: grade = 'B'
-        elif pct >= 60: grade = 'C'
-        elif pct >= 50: grade = 'D'
-        else: grade = 'F'
-        result_rows.append([r.subject.name, r.exam_type, str(r.score), str(r.max_score), f'{pct}%', grade])
+        pct = score_to_percentage(r.score, r.max_score)
+        grade_info = percentage_to_grade(pct)
+        result_rows.append([
+            r.subject.name, r.exam_type, str(r.score), str(r.max_score),
+            f'{pct}%', grade_info['grade'], grade_info['description']
+        ])
+        total_pct += pct
+        subject_count += 1
 
     if len(result_rows) > 1:
-        result_table = Table(result_rows, colWidths=[5*cm, 3*cm, 2*cm, 2.5*cm, 3*cm, 2*cm])
+        result_table = Table(result_rows, colWidths=[4.2*cm, 2.5*cm, 1.8*cm, 2*cm, 2.2*cm, 1.8*cm, 3*cm])
         result_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -846,21 +896,48 @@ def generate_report_card(request, student_id):
             ('PADDING', (0, 0), (-1, -1), 5),
         ]))
         elements.append(result_table)
+        elements.append(Spacer(1, 0.3*cm))
+
+        # Overall average
+        if subject_count > 0:
+            avg_pct = round(total_pct / subject_count, 1)
+            avg_grade = percentage_to_grade(avg_pct)
+            elements.append(Paragraph(
+                f'<b>Overall Average:</b> {avg_pct}% &mdash; Grade {avg_grade["grade"]} ({avg_grade["description"]})',
+                styles['Normal']
+            ))
     else:
         elements.append(Paragraph('No results recorded for this term.', styles['Normal']))
 
+    # Grading key
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph('Grading Key', styles['Heading3']))
+    key_data = [
+        ['Grade', 'Description', 'Range'],
+        ['A', 'Distinction', '70 - 100%'],
+        ['B', 'Merit', '60 - 69%'],
+        ['C', 'Credit (Pass)', '50 - 59%'],
+        ['D', 'Satisfactory', '40 - 49%'],
+        ['E', 'Fail', '0 - 39%'],
+    ]
+    key_table = Table(key_data, colWidths=[2*cm, 3.5*cm, 3*cm])
+    key_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#374151')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('PADDING', (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(key_table)
+
     # Footer
-    elements.append(Spacer(1, 1*cm))
+    elements.append(Spacer(1, 0.8*cm))
     elements.append(Paragraph(f'Generated on {timezone.now().strftime("%d %B %Y")} | {school.name}', styles['Normal']))
 
     doc.build(elements)
     buffer.seek(0)
-
-    response = HttpResponse(buffer.read(), content_type='application/pdf')
-    response['Content-Disposition'] = (
-        f'attachment; filename="report_card_{student.user.student_number}_{term}_{year}.pdf"'
-    )
-    return response
+    return buffer
 
 
 # ---------------------------------------------------------------
