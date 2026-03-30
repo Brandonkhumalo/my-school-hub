@@ -149,6 +149,13 @@ class SchoolSettings(models.Model):
     current_term = models.CharField(max_length=50, default='Term 1')
     term_start_date = models.DateField(null=True, blank=True)
     term_end_date = models.DateField(null=True, blank=True)
+    # Per-term opening and closing dates
+    term_1_start = models.DateField(null=True, blank=True)
+    term_1_end = models.DateField(null=True, blank=True)
+    term_2_start = models.DateField(null=True, blank=True)
+    term_2_end = models.DateField(null=True, blank=True)
+    term_3_start = models.DateField(null=True, blank=True)
+    term_3_end = models.DateField(null=True, blank=True)
     grading_system = models.CharField(max_length=20, choices=GRADING_CHOICES, default='zimsec')
     school_motto = models.CharField(max_length=255, blank=True)
     currency = models.CharField(max_length=10, default='USD')

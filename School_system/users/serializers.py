@@ -231,7 +231,11 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
         model = SchoolSettings
         fields = [
             'id', 'school_name', 'current_academic_year', 'current_term',
-            'term_start_date', 'term_end_date', 'grading_system', 'school_motto',
+            'term_start_date', 'term_end_date',
+            'term_1_start', 'term_1_end',
+            'term_2_start', 'term_2_end',
+            'term_3_start', 'term_3_end',
+            'grading_system', 'school_motto',
             'currency', 'timezone', 'max_students_per_class', 'late_fee_percentage',
             'paynow_integration_id', 'paynow_integration_key',
         ]
