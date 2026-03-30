@@ -224,8 +224,8 @@ class UserListView(generics.ListAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
-    from academics.models import Class, Subject
-    from finances.models import Invoice, Payment
+    from academics.models import Class, Subject, ParentChildLink
+    from finances.models import Invoice, StudentPaymentRecord
 
     school = request.user.school
 
@@ -233,14 +233,17 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
-            'total_parents': CustomUser.objects.filter(role='parent', is_active=True, school=school).count(),
+            'total_parents': ParentChildLink.objects.filter(
+                is_confirmed=True,
+                student__user__school=school
+            ).values('parent').distinct().count(),
             'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True, school=school).count(),
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
             'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
-            'total_revenue': Payment.objects.filter(
-                payment_status='completed', student_fee__student__user__school=school
-            ).aggregate(total=models.Sum('amount'))['total'] or 0,
+            'total_revenue': StudentPaymentRecord.objects.filter(
+                school=school
+            ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
             'school_type': school.school_type,
             'school_name': school.name,
         }
@@ -351,6 +354,62 @@ def school_settings_view(request):
         serializer.save()
         return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ---------------------------------------------------------------
+# Report Card Config
+# ---------------------------------------------------------------
+
+@api_view(['GET', 'PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_config_view(request):
+    """Get or update report card configuration (admin only)."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .models import ReportCardConfig
+    from .serializers import ReportCardConfigSerializer
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+
+    if request.method == 'GET':
+        return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
+
+    serializer = ReportCardConfigSerializer(config, data=request.data, partial=True, context={'request': request})
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_upload_image(request):
+    """Upload logo or stamp image for report card config."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .models import ReportCardConfig
+    from .serializers import ReportCardConfigSerializer
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+
+    field = request.data.get('field')  # 'logo' or 'stamp_image'
+    file = request.FILES.get('file')
+
+    if field not in ('logo', 'stamp_image') or not file:
+        return Response({'error': 'field must be "logo" or "stamp_image" and file is required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    setattr(config, field, file)
+    config.save(update_fields=[field])
+    return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
 
 
 # ---------------------------------------------------------------

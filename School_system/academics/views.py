@@ -557,9 +557,17 @@ def approve_parent_link_request(request, link_id):
         ).get(id=link_id, is_confirmed=False, student__user__school=school)
         
         link.is_confirmed = True
-        link.confirmed_by = request.user
-        link.confirmed_at = timezone.now()
+        link.confirmed_date = timezone.now()
         link.save()
+
+        # Add the child to parent's children M2M
+        link.parent.children.add(link.student)
+
+        # Add the child's school to parent's schools M2M
+        # This supports parents with children at multiple schools
+        child_school = link.student.user.school
+        if child_school:
+            link.parent.schools.add(child_school)
 
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}".strip()
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}".strip()
@@ -750,19 +758,14 @@ def generate_report_card(request, student_id):
     """
     Generate a PDF report card for a student.
     Query params: ?year=2025&term=Term+1
+    Allowed: admin (any student in school), student (own report only),
+             parent (confirmed linked children only),
+             teacher (students in classes they teach / are class teacher of).
     """
     from django.http import HttpResponse
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from io import BytesIO
 
-    if request.user.role not in ('admin', 'teacher', 'parent'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    school = request.user.school
+    user = request.user
+    school = user.school
     year = request.query_params.get('year', '')
     term = request.query_params.get('term', '')
 
@@ -771,38 +774,185 @@ def generate_report_card(request, student_id):
     except Student.DoesNotExist:
         return Response({'error': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    # ── Permission checks per role ──────────────────────────────────────
+    if user.role == 'student':
+        try:
+            if user.student.id != student.id:
+                return Response({'error': 'You can only view your own report card.'}, status=status.HTTP_403_FORBIDDEN)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student profile not found.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'parent':
+        from .models import ParentChildLink
+        is_linked = ParentChildLink.objects.filter(
+            parent=user.parent, student=student, is_confirmed=True
+        ).exists()
+        if not is_linked:
+            return Response({'error': 'You can only view report cards for your confirmed children.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'teacher':
+        from .models import Timetable
+        teacher = user.teacher
+        is_class_teacher = Class.objects.filter(
+            id=student.student_class_id, class_teacher=user
+        ).exists() if student.student_class_id else False
+        teaches_class = Timetable.objects.filter(
+            teacher=teacher, class_assigned_id=student.student_class_id
+        ).exists() if student.student_class_id else False
+        if not is_class_teacher and not teaches_class:
+            return Response({'error': 'You can only view report cards for students in your classes.'}, status=status.HTTP_403_FORBIDDEN)
+
+    elif user.role == 'admin':
+        pass  # admins can access any student in their school
+
+    else:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # ── Build PDF ───────────────────────────────────────────────────────
     results = Result.objects.filter(
         student=student, academic_year=year, academic_term=term
     ).select_related('subject').order_by('subject__name')
 
-    attendance = student.attendance_records.filter(
-        date__isnull=False
-    ).count()
+    buffer = _build_report_card_pdf(student, results, school, year, term)
+
+    response = HttpResponse(buffer.read(), content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="report_card_{student.user.student_number}_{term}_{year}.pdf"'
+    )
+    return response
+
+
+def _get_report_config(school):
+    """Get the ReportCardConfig for a school, or return None for defaults."""
+    from users.models import ReportCardConfig
+    try:
+        return ReportCardConfig.objects.get(school=school)
+    except ReportCardConfig.DoesNotExist:
+        return None
+
+
+def _build_report_card_pdf(student, results, school, year, term):
+    """Build a single student report card PDF and return a BytesIO buffer (seeked to 0)."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm, mm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Frame, PageTemplate
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from .grading import percentage_to_grade, score_to_percentage
+    from io import BytesIO
+    import os
+
+    cfg = _get_report_config(school)
+
+    # ── Config values (with defaults) ───────────────────────────────
+    primary = cfg.primary_color if cfg else '#1d4ed8'
+    secondary = cfg.secondary_color if cfg else '#f3f4f6'
+    show_grading_key = cfg.show_grading_key if cfg else True
+    show_attendance = cfg.show_attendance if cfg else True
+    show_overall_avg = cfg.show_overall_average if cfg else True
+    show_grade_remark = cfg.show_grade_remark if cfg else True
+    show_exam_types = cfg.show_exam_types if cfg else True
+    highlight_pf = cfg.highlight_pass_fail if cfg else False
+    principal_name = cfg.principal_name if cfg else ''
+    principal_title = cfg.principal_title if cfg else 'Head of School'
+    show_class_teacher = cfg.show_class_teacher if cfg else True
+    teacher_comment = cfg.teacher_comments_default if cfg else ''
+    principal_comment = cfg.principal_comments_default if cfg else ''
+    show_next_term = cfg.show_next_term_dates if cfg else True
+    footer_text = cfg.custom_footer_text if cfg else ''
+    watermark = cfg.watermark_text if cfg else ''
+    border_style = cfg.border_style if cfg else 'simple'
+    show_conduct = cfg.show_conduct_section if cfg else False
+    show_activities = cfg.show_activities_section if cfg else False
+
+    attendance_total = student.attendance_records.filter(date__isnull=False).count()
     present_count = student.attendance_records.filter(status='present').count()
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    pagesize = A4
+    doc = SimpleDocTemplate(buffer, pagesize=pagesize, topMargin=1.5*cm, bottomMargin=1.5*cm,
+                            leftMargin=1.5*cm, rightMargin=1.5*cm)
     styles = getSampleStyleSheet()
     elements = []
 
-    # Header
-    header_style = ParagraphStyle('Header', parent=styles['Title'], fontSize=18, spaceAfter=6)
-    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=11, spaceAfter=4)
+    primary_color = colors.HexColor(primary)
+    secondary_color = colors.HexColor(secondary)
+
+    # ── Border / page decorator ─────────────────────────────────────
+    def _page_decorator(canvas, doc):
+        canvas.saveState()
+        w, h = pagesize
+        # Watermark
+        if watermark:
+            canvas.setFont('Helvetica-Bold', 48)
+            canvas.setFillColor(colors.Color(0, 0, 0, alpha=0.04))
+            canvas.translate(w/2, h/2)
+            canvas.rotate(45)
+            canvas.drawCentredString(0, 0, watermark)
+            canvas.restoreState()
+            canvas.saveState()
+        # Border
+        if border_style == 'simple':
+            canvas.setStrokeColor(primary_color)
+            canvas.setLineWidth(1.5)
+            canvas.rect(1*cm, 1*cm, w - 2*cm, h - 2*cm)
+        elif border_style == 'decorative':
+            canvas.setStrokeColor(primary_color)
+            canvas.setLineWidth(2.5)
+            canvas.rect(0.8*cm, 0.8*cm, w - 1.6*cm, h - 1.6*cm)
+            canvas.setLineWidth(0.5)
+            canvas.rect(1.1*cm, 1.1*cm, w - 2.2*cm, h - 2.2*cm)
+        canvas.restoreState()
+
+    doc.addPageTemplates([
+        PageTemplate(id='decorated',
+                     frames=[Frame(1.5*cm, 1.5*cm, pagesize[0]-3*cm, pagesize[1]-3*cm,
+                                   id='main')],
+                     onPage=_page_decorator)
+    ])
+
+    # ── Header with optional logo ───────────────────────────────────
+    header_style = ParagraphStyle('Header', parent=styles['Title'], fontSize=18,
+                                  spaceAfter=2, textColor=primary_color, alignment=TA_CENTER)
+    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=11,
+                                spaceAfter=4, alignment=TA_CENTER)
+
+    if cfg and cfg.logo and hasattr(cfg.logo, 'path') and os.path.exists(cfg.logo.path):
+        try:
+            logo_img = Image(cfg.logo.path, width=2.5*cm, height=2.5*cm)
+            logo_img.hAlign = 'CENTER'
+            elements.append(logo_img)
+            elements.append(Spacer(1, 0.2*cm))
+        except Exception:
+            pass
 
     elements.append(Paragraph(school.name, header_style))
-    elements.append(Paragraph(f'Student Report Card — {term} {year}', sub_style))
-    elements.append(Spacer(1, 0.5*cm))
+    if cfg and cfg.school and hasattr(cfg.school, 'settings') and cfg.school.settings.school_motto:
+        motto_style = ParagraphStyle('Motto', parent=styles['Normal'], fontSize=8,
+                                      textColor=colors.grey, alignment=TA_CENTER, spaceAfter=4)
+        elements.append(Paragraph(f'<i>{cfg.school.settings.school_motto}</i>', motto_style))
+    elements.append(Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style))
+    elements.append(Spacer(1, 0.4*cm))
 
-    # Student info table
+    # ── Student info table ──────────────────────────────────────────
     info_data = [
         ['Student Name:', student.user.full_name, 'Student Number:', student.user.student_number or '-'],
         ['Class:', student.student_class.name if student.student_class else '-', 'Gender:', student.gender or '-'],
-        ['Admission Date:', str(student.admission_date), 'Attendance:', f'{present_count}/{attendance} days'],
     ]
+    if show_attendance:
+        info_data.append(['Admission Date:', str(student.admission_date),
+                          'Attendance:', f'{present_count}/{attendance_total} days'])
+    if show_class_teacher and student.student_class and student.student_class.class_teacher:
+        ct = student.student_class.class_teacher
+        info_data.append(['Class Teacher:', ct.full_name, '', ''])
+
     info_table = Table(info_data, colWidths=[3*cm, 7*cm, 3.5*cm, 5*cm])
     info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightblue),
-        ('BACKGROUND', (2, 0), (2, -1), colors.lightblue),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e0e7ff')),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#e0e7ff')),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
@@ -811,48 +961,198 @@ def generate_report_card(request, student_id):
     elements.append(info_table)
     elements.append(Spacer(1, 0.5*cm))
 
-    # Results table
+    # ── Results table ───────────────────────────────────────────────
     elements.append(Paragraph('Academic Results', styles['Heading2']))
-    result_header = ['Subject', 'Exam Type', 'Score', 'Max Score', 'Percentage', 'Grade']
-    result_rows = [result_header]
 
-    for r in results:
-        pct = round((r.score / r.max_score) * 100, 1) if r.max_score else 0
-        if pct >= 80: grade = 'A'
-        elif pct >= 70: grade = 'B'
-        elif pct >= 60: grade = 'C'
-        elif pct >= 50: grade = 'D'
-        else: grade = 'F'
-        result_rows.append([r.subject.name, r.exam_type, str(r.score), str(r.max_score), f'{pct}%', grade])
+    if show_exam_types:
+        result_header = ['Subject', 'Exam Type', 'Score', 'Max Score', '%', 'Grade']
+        if show_grade_remark:
+            result_header.append('Remark')
+    else:
+        result_header = ['Subject', '%', 'Grade']
+        if show_grade_remark:
+            result_header.append('Remark')
+
+    result_rows = [result_header]
+    total_pct = 0
+    subject_count = 0
+    row_colors = []  # for highlight_pass_fail
+
+    if show_exam_types:
+        for r in results:
+            pct = score_to_percentage(r.score, r.max_score)
+            gi = percentage_to_grade(pct)
+            row = [r.subject.name, r.exam_type, str(r.score), str(r.max_score), f'{pct}%', gi['grade']]
+            if show_grade_remark:
+                row.append(gi['description'])
+            result_rows.append(row)
+            row_colors.append(gi['colour'])
+            total_pct += pct
+            subject_count += 1
+    else:
+        # Aggregate by subject
+        from collections import defaultdict
+        subject_scores = defaultdict(list)
+        for r in results:
+            pct = score_to_percentage(r.score, r.max_score)
+            subject_scores[r.subject.name].append(pct)
+        for subj_name, pcts in sorted(subject_scores.items()):
+            avg = round(sum(pcts) / len(pcts), 1)
+            gi = percentage_to_grade(avg)
+            row = [subj_name, f'{avg}%', gi['grade']]
+            if show_grade_remark:
+                row.append(gi['description'])
+            result_rows.append(row)
+            row_colors.append(gi['colour'])
+            total_pct += avg
+            subject_count += 1
 
     if len(result_rows) > 1:
-        result_table = Table(result_rows, colWidths=[5*cm, 3*cm, 2*cm, 2.5*cm, 3*cm, 2*cm])
-        result_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
+        if show_exam_types:
+            col_widths = [4*cm, 2.3*cm, 1.6*cm, 1.8*cm, 1.8*cm, 1.5*cm]
+            if show_grade_remark:
+                col_widths.append(2.8*cm)
+        else:
+            col_widths = [7*cm, 3*cm, 2*cm]
+            if show_grade_remark:
+                col_widths.append(4*cm)
+
+        result_table = Table(result_rows, colWidths=col_widths)
+        table_style_cmds = [
+            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f3f4f6')]),
-            ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (-3, 0), (-1, -1), 'CENTER'),
             ('PADDING', (0, 0), (-1, -1), 5),
-        ]))
+        ]
+        if not highlight_pf:
+            table_style_cmds.append(
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, secondary_color])
+            )
+        result_table.setStyle(TableStyle(table_style_cmds))
+
+        # Per-row colouring for pass/fail highlighting
+        if highlight_pf:
+            for i, colour_hex in enumerate(row_colors, start=1):
+                c = colors.HexColor(colour_hex)
+                light = colors.Color(c.red, c.green, c.blue, alpha=0.12)
+                result_table.setStyle(TableStyle([('BACKGROUND', (0, i), (-1, i), light)]))
+
         elements.append(result_table)
+        elements.append(Spacer(1, 0.3*cm))
+
+        if show_overall_avg and subject_count > 0:
+            avg_pct = round(total_pct / subject_count, 1)
+            avg_grade = percentage_to_grade(avg_pct)
+            elements.append(Paragraph(
+                f'<b>Overall Average:</b> {avg_pct}% &mdash; Grade {avg_grade["grade"]} ({avg_grade["description"]})',
+                styles['Normal']
+            ))
     else:
         elements.append(Paragraph('No results recorded for this term.', styles['Normal']))
 
-    # Footer
-    elements.append(Spacer(1, 1*cm))
-    elements.append(Paragraph(f'Generated on {timezone.now().strftime("%d %B %Y")} | {school.name}', styles['Normal']))
+    # ── Conduct section ─────────────────────────────────────────────
+    if show_conduct:
+        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Paragraph('Conduct &amp; Discipline', styles['Heading3']))
+        elements.append(Paragraph('___________________________________________________________', styles['Normal']))
+        elements.append(Spacer(1, 0.3*cm))
+
+    # ── Activities section ──────────────────────────────────────────
+    if show_activities:
+        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Paragraph('Extra-Curricular Activities', styles['Heading3']))
+        elements.append(Paragraph('___________________________________________________________', styles['Normal']))
+        elements.append(Spacer(1, 0.3*cm))
+
+    # ── Comments section ────────────────────────────────────────────
+    if teacher_comment or principal_comment:
+        elements.append(Spacer(1, 0.4*cm))
+        comment_style = ParagraphStyle('Comment', parent=styles['Normal'], fontSize=9, spaceAfter=6)
+        if teacher_comment:
+            elements.append(Paragraph(f"<b>Class Teacher's Comment:</b> {teacher_comment}", comment_style))
+        if principal_comment:
+            elements.append(Paragraph(f"<b>Head of School's Comment:</b> {principal_comment}", comment_style))
+
+    # ── Next term dates ─────────────────────────────────────────────
+    if show_next_term and term != 'Term 3':
+        try:
+            settings = school.settings
+            next_num = {'Term 1': 2, 'Term 2': 3}.get(term)
+            if next_num:
+                ns = getattr(settings, f'term_{next_num}_start', None)
+                ne = getattr(settings, f'term_{next_num}_end', None)
+                if ns or ne:
+                    elements.append(Spacer(1, 0.3*cm))
+                    parts = [f'<b>Next Term (Term {next_num}):</b>']
+                    if ns:
+                        parts.append(f'Opens {ns.strftime("%d %B %Y")}')
+                    if ne:
+                        parts.append(f'Closes {ne.strftime("%d %B %Y")}')
+                    elements.append(Paragraph(' &mdash; '.join(parts), styles['Normal']))
+        except Exception:
+            pass
+
+    # ── Grading key ─────────────────────────────────────────────────
+    if show_grading_key:
+        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Paragraph('Grading Key', styles['Heading3']))
+        key_data = [
+            ['Grade', 'Description', 'Range'],
+            ['A', 'Distinction', '70 - 100%'],
+            ['B', 'Merit', '60 - 69%'],
+            ['C', 'Credit (Pass)', '50 - 59%'],
+            ['D', 'Satisfactory', '40 - 49%'],
+            ['E', 'Fail', '0 - 39%'],
+        ]
+        key_table = Table(key_data, colWidths=[2*cm, 3.5*cm, 3*cm])
+        key_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#374151')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('PADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(key_table)
+
+    # ── Signature section ───────────────────────────────────────────
+    if principal_name:
+        elements.append(Spacer(1, 1*cm))
+        sig_data = [['', ''], ['_____________________', '_____________________'],
+                    ['Class Teacher', f'{principal_name}']]
+        if show_class_teacher and student.student_class and student.student_class.class_teacher:
+            sig_data[2][0] = student.student_class.class_teacher.full_name
+        sig_table = Table(sig_data, colWidths=[9*cm, 9*cm])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(sig_table)
+
+        if cfg and cfg.stamp_image and hasattr(cfg.stamp_image, 'path') and os.path.exists(cfg.stamp_image.path):
+            try:
+                stamp = Image(cfg.stamp_image.path, width=2*cm, height=2*cm)
+                stamp.hAlign = 'RIGHT'
+                elements.append(stamp)
+            except Exception:
+                pass
+
+    # ── Footer ──────────────────────────────────────────────────────
+    elements.append(Spacer(1, 0.6*cm))
+    footer_parts = [f'Generated on {timezone.now().strftime("%d %B %Y")}', school.name]
+    if footer_text:
+        footer_parts.append(footer_text)
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
+                                   textColor=colors.grey, alignment=TA_CENTER)
+    elements.append(Paragraph(' | '.join(footer_parts), footer_style))
 
     doc.build(elements)
     buffer.seek(0)
-
-    response = HttpResponse(buffer.read(), content_type='application/pdf')
-    response['Content-Disposition'] = (
-        f'attachment; filename="report_card_{student.user.student_number}_{term}_{year}.pdf"'
-    )
-    return response
+    return buffer
 
 
 # ---------------------------------------------------------------

@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
 
-const GRADING_SYSTEMS = ["percentage", "letter", "gpa"];
+const GRADING_SYSTEMS = [
+  { value: "zimsec", label: "ZIMSEC (A-U)" },
+  { value: "cambridge", label: "Cambridge International" },
+  { value: "percentage", label: "Percentage Only" },
+];
 const CURRENCIES = ["USD", "ZWL", "ZAR", "GBP"];
 const TIMEZONES = ["Africa/Harare", "Africa/Johannesburg", "UTC", "Africa/Nairobi"];
 
@@ -44,14 +48,14 @@ export default function AdminSettings() {
       {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4">{success}</div>}
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Academic Settings */}
+        {/* Academic Year & Current Term */}
         <section className="bg-white rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Academic Settings</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Current Academic Year</label>
               <input type="text" className="border rounded w-full p-2 text-sm"
-                placeholder="e.g. 2025" value={settings?.current_academic_year || ""}
+                placeholder="e.g. 2026" value={settings?.current_academic_year || ""}
                 onChange={(e) => handleChange("current_academic_year", e.target.value)} />
             </div>
             <div>
@@ -66,23 +70,11 @@ export default function AdminSettings() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-600 mb-1 block">Term Start Date</label>
-              <input type="date" className="border rounded w-full p-2 text-sm"
-                value={settings?.term_start_date || ""}
-                onChange={(e) => handleChange("term_start_date", e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">Term End Date</label>
-              <input type="date" className="border rounded w-full p-2 text-sm"
-                value={settings?.term_end_date || ""}
-                onChange={(e) => handleChange("term_end_date", e.target.value)} />
-            </div>
-            <div>
               <label className="text-xs text-gray-600 mb-1 block">Grading System</label>
               <select className="border rounded w-full p-2 text-sm"
-                value={settings?.grading_system || "percentage"}
+                value={settings?.grading_system || "zimsec"}
                 onChange={(e) => handleChange("grading_system", e.target.value)}>
-                {GRADING_SYSTEMS.map((g) => <option key={g} value={g}>{g}</option>)}
+                {GRADING_SYSTEMS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
               </select>
             </div>
             <div>
@@ -91,6 +83,58 @@ export default function AdminSettings() {
                 value={settings?.max_students_per_class || ""}
                 onChange={(e) => handleChange("max_students_per_class", e.target.value)} />
             </div>
+          </div>
+        </section>
+
+        {/* Term Dates — all 3 terms */}
+        <section className="bg-white rounded-lg shadow p-5">
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">Academic Calendar</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Set the opening and closing dates for each term in the {settings?.current_academic_year || ''} academic year.
+          </p>
+
+          <div className="space-y-4">
+            {[
+              { num: 1, label: "Term 1", color: "blue" },
+              { num: 2, label: "Term 2", color: "green" },
+              { num: 3, label: "Term 3", color: "purple" },
+            ].map(({ num, label, color }) => {
+              const startKey = `term_${num}_start`;
+              const endKey = `term_${num}_end`;
+              const isCurrent = settings?.current_term === label;
+              return (
+                <div key={num}
+                  className={`border rounded-lg p-4 ${isCurrent ? `border-${color}-400 bg-${color}-50` : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-800">{label}</h3>
+                    {isCurrent && (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-${color}-100 text-${color}-700`}>
+                        Current Term
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Opening Date</label>
+                      <input type="date" className="border rounded w-full p-2 text-sm"
+                        value={settings?.[startKey] || ""}
+                        onChange={(e) => handleChange(startKey, e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Closing Date</label>
+                      <input type="date" className="border rounded w-full p-2 text-sm"
+                        value={settings?.[endKey] || ""}
+                        onChange={(e) => handleChange(endKey, e.target.value)} />
+                    </div>
+                  </div>
+                  {settings?.[startKey] && settings?.[endKey] && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Duration: {Math.ceil((new Date(settings[endKey]) - new Date(settings[startKey])) / (1000 * 60 * 60 * 24))} days
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
 

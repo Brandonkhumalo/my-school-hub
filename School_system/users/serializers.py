@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser, School, SchoolSettings
+from .models import CustomUser, School, SchoolSettings, ReportCardConfig
 from academics.models import Parent
 import random
 import secrets
@@ -231,8 +231,38 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
         model = SchoolSettings
         fields = [
             'id', 'school_name', 'current_academic_year', 'current_term',
-            'term_start_date', 'term_end_date', 'grading_system', 'school_motto',
+            'term_start_date', 'term_end_date',
+            'term_1_start', 'term_1_end',
+            'term_2_start', 'term_2_end',
+            'term_3_start', 'term_3_end',
+            'grading_system', 'school_motto',
             'currency', 'timezone', 'max_students_per_class', 'late_fee_percentage',
             'paynow_integration_id', 'paynow_integration_key',
         ]
         read_only_fields = ['id', 'school_name']
+
+
+class ReportCardConfigSerializer(serializers.ModelSerializer):
+    logo_url = serializers.SerializerMethodField()
+    stamp_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReportCardConfig
+        exclude = ['school']
+        read_only_fields = ['id']
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None
+
+    def get_stamp_url(self, obj):
+        if obj.stamp_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.stamp_image.url)
+            return obj.stamp_image.url
+        return None

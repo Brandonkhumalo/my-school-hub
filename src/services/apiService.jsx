@@ -146,6 +146,7 @@ const apiService = {
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
 
   fetchStudents: () => request("/academics/students/", "GET"),
+  fetchStudentsByClass: (classId) => request(`/academics/students/?class=${classId}`, "GET"),
   fetchStudentById: (id) => request(`/academics/students/${id}/`, "GET"),
   fetchStudentPerformance: (studentId) => request(`/academics/students/${studentId}/performance/`, "GET"),
   createStudent: (data) => request("/academics/students/", "POST", data),
@@ -355,8 +356,11 @@ const apiService = {
   // Timetable conflict detection
   getTimetableConflicts: () => request("/academics/timetables/conflicts/", "GET"),
 
-  // Report card (returns PDF blob)
-  downloadReportCard: (studentId) => requestFile(`/academics/students/${studentId}/report-card/`),
+  // Report card (returns PDF blob, optional year & term query params)
+  downloadReportCard: (studentId, params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return requestFile(`/academics/students/${studentId}/report-card/${q ? '?' + q : ''}`);
+  },
 
   // Grade predictions
   getStudentGradePredictions: (studentId) => request(`/academics/students/${studentId}/grade-prediction/`, "GET"),
@@ -388,6 +392,16 @@ const apiService = {
   // School settings (admin)
   getSchoolSettings: () => request("/auth/school/settings/", "GET"),
   updateSchoolSettings: (data) => request("/auth/school/settings/", "PUT", data),
+
+  // Report card config (admin)
+  getReportCardConfig: () => request("/auth/school/report-config/", "GET"),
+  updateReportCardConfig: (data) => request("/auth/school/report-config/", "PUT", data),
+  uploadReportCardImage: (field, file) => {
+    const formData = new FormData();
+    formData.append('field', field);
+    formData.append('file', file);
+    return requestMultipart("/auth/school/report-config/upload/", "POST", formData);
+  },
 
   // Audit logs (admin)
   getAuditLogs: () => request("/auth/audit-logs/", "GET"),

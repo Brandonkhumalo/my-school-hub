@@ -149,6 +149,13 @@ class SchoolSettings(models.Model):
     current_term = models.CharField(max_length=50, default='Term 1')
     term_start_date = models.DateField(null=True, blank=True)
     term_end_date = models.DateField(null=True, blank=True)
+    # Per-term opening and closing dates
+    term_1_start = models.DateField(null=True, blank=True)
+    term_1_end = models.DateField(null=True, blank=True)
+    term_2_start = models.DateField(null=True, blank=True)
+    term_2_end = models.DateField(null=True, blank=True)
+    term_3_start = models.DateField(null=True, blank=True)
+    term_3_end = models.DateField(null=True, blank=True)
     grading_system = models.CharField(max_length=20, choices=GRADING_CHOICES, default='zimsec')
     school_motto = models.CharField(max_length=255, blank=True)
     currency = models.CharField(max_length=10, default='USD')
@@ -160,6 +167,51 @@ class SchoolSettings(models.Model):
 
     def __str__(self):
         return f"Settings for {self.school.name}"
+
+
+class ReportCardConfig(models.Model):
+    """Per-school report card customisation — controls PDF appearance and content."""
+    BORDER_CHOICES = [
+        ('simple', 'Simple Line'),
+        ('decorative', 'Decorative'),
+        ('none', 'No Border'),
+    ]
+
+    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name='report_config')
+
+    # ── Branding ────────────────────────────────────────────────────
+    logo = models.ImageField(upload_to='report_logos/', blank=True)
+    stamp_image = models.ImageField(upload_to='report_stamps/', blank=True)
+    primary_color = models.CharField(max_length=7, default='#1d4ed8')
+    secondary_color = models.CharField(max_length=7, default='#f3f4f6')
+
+    # ── Layout ──────────────────────────────────────────────────────
+    show_grading_key = models.BooleanField(default=True)
+    show_attendance = models.BooleanField(default=True)
+    show_overall_average = models.BooleanField(default=True)
+
+    # ── Content ─────────────────────────────────────────────────────
+    principal_name = models.CharField(max_length=120, blank=True)
+    principal_title = models.CharField(max_length=120, blank=True, default='Head of School')
+    show_class_teacher = models.BooleanField(default=True)
+    teacher_comments_default = models.TextField(blank=True, help_text='Default teacher comment on every report')
+    principal_comments_default = models.TextField(blank=True, help_text='Default principal comment on every report')
+    show_next_term_dates = models.BooleanField(default=True, help_text='Show next term opening/closing (hidden for Term 3)')
+    custom_footer_text = models.CharField(max_length=255, blank=True)
+
+    # ── Grading display ─────────────────────────────────────────────
+    show_grade_remark = models.BooleanField(default=True, help_text='Show Distinction/Merit/Credit etc.')
+    show_exam_types = models.BooleanField(default=True, help_text='Show individual exam types vs aggregated average')
+    highlight_pass_fail = models.BooleanField(default=False, help_text='Color-code rows by grade')
+
+    # ── Extras ──────────────────────────────────────────────────────
+    watermark_text = models.CharField(max_length=60, blank=True)
+    border_style = models.CharField(max_length=15, choices=BORDER_CHOICES, default='simple')
+    show_conduct_section = models.BooleanField(default=False)
+    show_activities_section = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Report Card Config for {self.school.name}"
 
 
 class AuditLog(models.Model):
