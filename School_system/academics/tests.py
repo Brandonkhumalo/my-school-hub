@@ -23,7 +23,7 @@ from users.models import CustomUser, School
 from academics.models import (
     Assignment,
     AssignmentSubmission,
-    Attendance,
+    ClassAttendance,
     Class,
     Result,
     Student,
@@ -585,8 +585,9 @@ class StudentAttendanceAPITest(APITestCase):
         self.student_user.role = "student"
         self.student_user.save()
 
-        Attendance.objects.create(
+        ClassAttendance.objects.create(
             student=self.student,
+            class_assigned=self.cls,
             date=datetime.date(2026, 3, 1),
             status="present",
             recorded_by=self.admin,

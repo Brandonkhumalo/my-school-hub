@@ -168,11 +168,29 @@ class Announcement(models.Model):
     content = models.TextField()
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     target_audience = models.CharField(max_length=50)  # all, students, parents, teachers, staff
+    target_class = models.ForeignKey('Class', on_delete=models.CASCADE, null=True, blank=True,
+        help_text='If set, only users in this class see the announcement')
     date_posted = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
-    
+
     def __str__(self):
         return f"{self.title} - {self.target_audience}"
+
+
+class ReportCardRelease(models.Model):
+    """Tracks which class/year/term report cards have been published by the admin."""
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='report_releases')
+    class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='report_releases')
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=50)
+    published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    published_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'class_obj', 'academic_year', 'academic_term')
+
+    def __str__(self):
+        return f"{self.class_obj.name} - {self.academic_term} {self.academic_year}"
 
 
 class Complaint(models.Model):
@@ -252,26 +270,51 @@ class WeeklyMessage(models.Model):
         return f"{self.subject.name} - {self.student.user.first_name} {self.student.user.last_name} (Week {self.week_number})"
 
 
-class Attendance(models.Model):
-    STATUS_CHOICES = [
-        ('present', 'Present'),
-        ('absent', 'Absent'),
-        ('late', 'Late'),
-        ('excused', 'Excused'),
-    ]
-    
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_records', db_index=True)
+ATTENDANCE_STATUS_CHOICES = [
+    ('present', 'Present'),
+    ('absent', 'Absent'),
+    ('late', 'Late'),
+    ('excused', 'Excused'),
+]
+
+
+class ClassAttendance(models.Model):
+    """Daily class attendance — marked once per day by the class teacher."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='class_attendance_records', db_index=True)
+    class_assigned = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='class_attendance_records')
     date = models.DateField(db_index=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, db_index=True)
+    status = models.CharField(max_length=20, choices=ATTENDANCE_STATUS_CHOICES, db_index=True)
     remarks = models.TextField(blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     date_recorded = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('student', 'date')
-    
+
     def __str__(self):
         return f"{self.student.user.first_name} {self.student.user.last_name} - {self.date} ({self.status})"
+
+
+class SubjectAttendance(models.Model):
+    """Per-subject attendance — marked by the subject teacher at lesson start."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='subject_attendance_records', db_index=True)
+    class_assigned = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='subject_attendance_records')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='subject_attendance_records')
+    date = models.DateField(db_index=True)
+    status = models.CharField(max_length=20, choices=ATTENDANCE_STATUS_CHOICES, db_index=True)
+    remarks = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    date_recorded = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('student', 'date', 'subject')
+
+    def __str__(self):
+        return f"{self.student.user.first_name} {self.student.user.last_name} - {self.subject.name} - {self.date} ({self.status})"
+
+
+# Keep backward-compatible alias so existing imports (report card, etc.) don't break immediately
+Attendance = ClassAttendance
 
 
 class ParentTeacherMessage(models.Model):

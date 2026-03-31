@@ -373,7 +373,7 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         if user.school:
             queryset = Announcement.objects.filter(
                 is_active=True, author__school=user.school
-            ).select_related('author')
+            ).select_related('author', 'target_class')
         else:
             queryset = Announcement.objects.none()
         user_role = user.role
@@ -381,6 +381,51 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         queryset = queryset.filter(
             Q(target_audience='all') | Q(target_audience=user_role)
         )
+
+        # Filter by target_class: show announcements with no class (general)
+        # or where the user belongs to that class
+        user_class_id = None
+        if user_role == 'student':
+            try:
+                user_class_id = user.student.student_class_id
+            except Exception:
+                pass
+        elif user_role == 'parent':
+            from .models import ParentChildLink
+            child_class_ids = list(
+                ParentChildLink.objects.filter(parent=user.parent, is_confirmed=True)
+                .values_list('student__student_class_id', flat=True)
+            )
+            if child_class_ids:
+                queryset = queryset.filter(
+                    Q(target_class__isnull=True) | Q(target_class_id__in=child_class_ids)
+                )
+                return queryset.order_by('-date_posted')
+        elif user_role == 'teacher':
+            from .models import Timetable
+            try:
+                teacher = user.teacher
+                teacher_class_ids = list(
+                    set(Class.objects.filter(class_teacher=user).values_list('id', flat=True)) |
+                    set(Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True).distinct())
+                )
+                if teacher_class_ids:
+                    queryset = queryset.filter(
+                        Q(target_class__isnull=True) | Q(target_class_id__in=teacher_class_ids)
+                    )
+                    return queryset.order_by('-date_posted')
+            except Exception:
+                pass
+
+        if user_class_id:
+            queryset = queryset.filter(
+                Q(target_class__isnull=True) | Q(target_class_id=user_class_id)
+            )
+        else:
+            # Admin or no class — see all
+            queryset = queryset.filter(
+                Q(target_class__isnull=True) | Q(target_class__isnull=False)
+            )
 
         return queryset.order_by('-date_posted')
 
@@ -808,6 +853,19 @@ def generate_report_card(request, student_id):
     else:
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+    # ── Check if reports are published (students and parents only) ─────
+    if user.role in ('student', 'parent') and student.student_class_id:
+        from .models import ReportCardRelease
+        is_published = ReportCardRelease.objects.filter(
+            school=school, class_obj_id=student.student_class_id,
+            academic_year=year, academic_term=term,
+        ).exists()
+        if not is_published:
+            return Response(
+                {'error': 'Report cards for this term have not been published yet. Please check back later.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
     # ── Build PDF ───────────────────────────────────────────────────────
     # Only include results marked for the report card.
     # Use report_term override when set, otherwise fall back to academic_term.
@@ -877,8 +935,8 @@ def _build_report_card_pdf(student, results, school, year, term):
     show_conduct = cfg.show_conduct_section if cfg else False
     show_activities = cfg.show_activities_section if cfg else False
 
-    attendance_total = student.attendance_records.filter(date__isnull=False).count()
-    present_count = student.attendance_records.filter(status='present').count()
+    attendance_total = student.class_attendance_records.filter(date__isnull=False).count()
+    present_count = student.class_attendance_records.filter(status='present').count()
 
     buffer = BytesIO()
     pagesize = A4
@@ -1493,3 +1551,132 @@ def remove_teacher_from_subject(request, subject_id, teacher_id):
 
     teacher.subjects_taught.remove(subject)
     return Response({'message': f'{teacher.user.first_name} {teacher.user.last_name} removed from {subject.name}'})
+
+
+# ── Report Card Publishing ─────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def publish_reports(request):
+    """
+    Publish report cards for a single class/year/term.
+    Creates a ReportCardRelease record and sends announcements to
+    students, parents, and the class teacher.
+    Body: { "class_id": 5, "year": "2026", "term": "Term 1" }
+    """
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can publish reports'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.data.get('class_id')
+    year = request.data.get('year')
+    term = request.data.get('term')
+
+    if not all([class_id, year, term]):
+        return Response({'error': 'class_id, year, and term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    try:
+        class_obj = Class.objects.get(id=class_id, school=school)
+    except Class.DoesNotExist:
+        return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import ReportCardRelease, Announcement
+    release, created = ReportCardRelease.objects.get_or_create(
+        school=school, class_obj=class_obj, academic_year=year, academic_term=term,
+        defaults={'published_by': request.user}
+    )
+
+    if not created:
+        return Response({'message': f'Reports for {class_obj.name} - {term} {year} were already published',
+                         'already_published': True})
+
+    # Create announcements for students + parents + class teacher
+    for audience in ['student', 'parent', 'teacher']:
+        Announcement.objects.create(
+            title=f'Report Cards Available — {term} {year}',
+            content=f'Report cards for {class_obj.name} ({term} {year}) are now available for download. '
+                    f'Go to your Results page to download the PDF.',
+            author=request.user,
+            target_audience=audience,
+            target_class=class_obj,
+        )
+
+    return Response({
+        'message': f'Reports published for {class_obj.name} - {term} {year}',
+        'class_name': class_obj.name,
+        'published': True,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def publish_all_reports(request):
+    """
+    Publish report cards for ALL classes in the school for a given year/term.
+    Body: { "year": "2026", "term": "Term 1" }
+    """
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can publish reports'}, status=status.HTTP_403_FORBIDDEN)
+
+    year = request.data.get('year')
+    term = request.data.get('term')
+
+    if not all([year, term]):
+        return Response({'error': 'year and term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    classes = Class.objects.filter(school=school)
+
+    from .models import ReportCardRelease, Announcement
+    published = []
+    skipped = []
+
+    for class_obj in classes:
+        _, created = ReportCardRelease.objects.get_or_create(
+            school=school, class_obj=class_obj, academic_year=year, academic_term=term,
+            defaults={'published_by': request.user}
+        )
+        if created:
+            published.append(class_obj.name)
+            for audience in ['student', 'parent', 'teacher']:
+                Announcement.objects.create(
+                    title=f'Report Cards Available — {term} {year}',
+                    content=f'Report cards for {class_obj.name} ({term} {year}) are now available for download. '
+                            f'Go to your Results page to download the PDF.',
+                    author=request.user,
+                    target_audience=audience,
+                    target_class=class_obj,
+                )
+        else:
+            skipped.append(class_obj.name)
+
+    return Response({
+        'message': f'{len(published)} class(es) published, {len(skipped)} already published',
+        'published_classes': published,
+        'skipped_classes': skipped,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def list_published_reports(request):
+    """List all published report card releases for the school."""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can view this'}, status=status.HTTP_403_FORBIDDEN)
+
+    from .models import ReportCardRelease
+    releases = ReportCardRelease.objects.filter(
+        school=request.user.school
+    ).select_related('class_obj', 'published_by').order_by('-published_at')
+
+    data = [{
+        'id': r.id,
+        'class_id': r.class_obj.id,
+        'class_name': r.class_obj.name,
+        'academic_year': r.academic_year,
+        'academic_term': r.academic_term,
+        'published_by': r.published_by.full_name,
+        'published_at': r.published_at.isoformat(),
+    } for r in releases]
+
+    return Response({'releases': data})

@@ -54,6 +54,11 @@ urlpatterns = [
     # Report card PDF
     path('students/<int:student_id>/report-card/', views.generate_report_card, name='report-card'),
 
+    # Report card publishing
+    path('reports/publish/', views.publish_reports, name='publish-reports'),
+    path('reports/publish-all/', views.publish_all_reports, name='publish-all-reports'),
+    path('reports/published/', views.list_published_reports, name='list-published-reports'),
+
     # Grade predictions
     path('students/<int:student_id>/grade-prediction/', views.student_grade_prediction, name='grade-prediction'),
 

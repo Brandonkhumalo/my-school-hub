@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result,
     Timetable, Announcement, Complaint, Suspension,
-    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, Attendance, ParentTeacherMessage,
+    ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, ClassAttendance, SubjectAttendance, ParentTeacherMessage,
     Homework, AssignmentSubmission
 )
 from users.serializers import UserSerializer
@@ -170,10 +170,12 @@ class TimetableSerializer(serializers.ModelSerializer):
 
 class AnnouncementSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.full_name', read_only=True)
+    class_name = serializers.CharField(source='target_class.name', read_only=True, default=None)
 
     class Meta:
         model = Announcement
-        fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience', 'date_posted', 'is_active']
+        fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience',
+                  'target_class', 'class_name', 'date_posted', 'is_active']
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
@@ -512,15 +514,28 @@ class AssignmentSerializer(serializers.ModelSerializer):
         return 'pending'
 
 
-class AttendanceSerializer(serializers.ModelSerializer):
+class ClassAttendanceSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.user.first_name', read_only=True)
     student_surname = serializers.CharField(source='student.user.last_name', read_only=True)
     recorded_by_name = serializers.CharField(source='recorded_by.first_name', read_only=True)
-    
+
     class Meta:
-        model = Attendance
-        fields = ['id', 'student', 'student_name', 'student_surname', 'date', 'status', 
-                  'remarks', 'recorded_by', 'recorded_by_name', 'date_recorded']
+        model = ClassAttendance
+        fields = ['id', 'student', 'student_name', 'student_surname', 'class_assigned',
+                  'date', 'status', 'remarks', 'recorded_by', 'recorded_by_name', 'date_recorded']
+
+
+class SubjectAttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.first_name', read_only=True)
+    student_surname = serializers.CharField(source='student.user.last_name', read_only=True)
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.first_name', read_only=True)
+
+    class Meta:
+        model = SubjectAttendance
+        fields = ['id', 'student', 'student_name', 'student_surname', 'class_assigned',
+                  'subject', 'subject_name', 'date', 'status', 'remarks',
+                  'recorded_by', 'recorded_by_name', 'date_recorded']
 
 class ParentTeacherMessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()

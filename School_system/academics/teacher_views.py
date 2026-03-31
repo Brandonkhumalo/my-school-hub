@@ -9,9 +9,9 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from .models import (
-    Teacher, Student, Subject, Result, Attendance, Class
+    Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable
 )
-from .serializers import ResultSerializer, AttendanceSerializer
+from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
 
 @api_view(['GET'])
@@ -309,43 +309,36 @@ def subject_performance(request, subject_id):
                        status=status.HTTP_404_NOT_FOUND)
 
 
+## --------------- helpers ---------------
+
+def _parse_date(raw):
+    """Return a date object or None."""
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
+
+VALID_STATUSES = {'present', 'absent', 'late', 'excused'}
+
+
+## --------------- CLASS attendance ---------------
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def attendance_register(request):
-    """Get attendance register for the teacher's assigned class"""
+def class_attendance_register(request):
+    """Return the class attendance register for the class teacher's class."""
     if request.user.role != 'teacher':
-        return Response({'error': 'Only teachers can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
-    
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
     try:
         teacher = request.user.teacher
-        date_str = request.query_params.get('date', str(datetime.now().date()))
-        
-        # Parse date
-        try:
-            attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Support class_id parameter — teacher can select any class they teach
-        class_id = request.query_params.get('class_id')
+        attendance_date = _parse_date(request.query_params.get('date', str(datetime.now().date())))
+        if not attendance_date:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        if class_id:
-            try:
-                teacher_class = Class.objects.get(id=class_id)
-                # Verify teacher is authorized (class teacher OR teaches via timetable)
-                from .models import Timetable
-                is_class_teacher = teacher_class.class_teacher == request.user
-                teaches_class = Timetable.objects.filter(teacher=teacher, class_assigned=teacher_class).exists()
-                if not is_class_teacher and not teaches_class:
-                    return Response({'error': 'You are not authorized to mark attendance for this class'},
-                                   status=status.HTTP_403_FORBIDDEN)
-            except Class.DoesNotExist:
-                return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            teacher_class = Class.objects.filter(class_teacher=request.user).first()
-
+        # Class attendance is only for the class teacher's own class
+        teacher_class = Class.objects.filter(class_teacher=request.user).first()
         if not teacher_class:
             return Response({
                 'no_class': True,
@@ -353,140 +346,271 @@ def attendance_register(request):
                 'students': [],
                 'class_name': ''
             })
-        
-        # Get students from teacher's class only
-        students = Student.objects.filter(
-            student_class=teacher_class
-        ).select_related('user', 'student_class').order_by('user__last_name', 'user__first_name')
-        
-        # Get attendance records for this date
-        attendance_records = Attendance.objects.filter(
-            date=attendance_date,
-            student__in=students
-        )
-        
-        # Create a map of student_id to attendance status
-        attendance_map = {
-            record.student.id: {
-                'status': record.status,
-                'remarks': record.remarks,
-                'id': record.id
-            }
-            for record in attendance_records
-        }
-        
+
+        students = (Student.objects.filter(student_class=teacher_class)
+                    .select_related('user', 'student_class')
+                    .order_by('user__last_name', 'user__first_name'))
+
+        records = ClassAttendance.objects.filter(date=attendance_date, student__in=students)
+        att_map = {r.student_id: {'status': r.status, 'remarks': r.remarks, 'id': r.id} for r in records}
+
+        # locked = at least one record already exists for this date+class
+        locked = records.exists()
+
         data = []
-        for student in students:
-            attendance_info = attendance_map.get(student.id, {
-                'status': None,
-                'remarks': '',
-                'id': None
-            })
-            
+        for s in students:
+            info = att_map.get(s.id, {'status': None, 'remarks': '', 'id': None})
             data.append({
-                'student_id': student.id,
-                'student_number': student.user.student_number or '',
-                'name': student.user.first_name,
-                'surname': student.user.last_name,
-                'class': student.student_class.name if student.student_class else 'Not Assigned',
-                'attendance_id': attendance_info['id'],
-                'status': attendance_info['status'],
-                'remarks': attendance_info['remarks']
+                'student_id': s.id,
+                'student_number': s.user.student_number or '',
+                'name': s.user.first_name,
+                'surname': s.user.last_name,
+                'class': s.student_class.name if s.student_class else 'Not Assigned',
+                'attendance_id': info['id'],
+                'status': info['status'],
+                'remarks': info['remarks'],
             })
-        
+
         return Response({
             'date': str(attendance_date),
             'class_name': teacher_class.name,
             'class_id': teacher_class.id,
-            'students': data
+            'locked': locked,
+            'students': data,
         })
     except Teacher.DoesNotExist:
-        return Response({'error': 'Teacher profile not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
-def mark_attendance(request):
-    """Mark attendance for students"""
+def mark_class_attendance(request):
+    """Bulk-create class attendance for a day. Rejects if already marked."""
     if request.user.role != 'teacher':
-        return Response({'error': 'Only teachers can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
-    
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
     try:
         teacher = request.user.teacher
         attendance_data = request.data.get('attendance', [])
-        date_str = request.data.get('date', str(datetime.now().date()))
-        
-        # Parse date
-        try:
-            attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, 
-                           status=status.HTTP_400_BAD_REQUEST)
-        
+        attendance_date = _parse_date(request.data.get('date', str(datetime.now().date())))
+        if not attendance_date:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
         if not attendance_data:
             return Response({'error': 'Attendance data is required'},
-                           status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        # Get classes this teacher is authorized for (class teacher OR teaches via timetable)
-        from .models import Timetable
-        class_teacher_ids = set(Class.objects.filter(class_teacher=request.user).values_list('id', flat=True))
-        timetable_class_ids = set(Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True).distinct())
-        allowed_class_ids = class_teacher_ids | timetable_class_ids
+        # Only class teacher can mark class attendance
+        teacher_class = Class.objects.filter(class_teacher=request.user).first()
+        if not teacher_class:
+            return Response({'error': 'You are not a class teacher'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Lock check — if any record already exists for this class+date, reject
+        already_exists = ClassAttendance.objects.filter(
+            class_assigned=teacher_class, date=attendance_date
+        ).exists()
+        if already_exists:
+            return Response({'error': 'Class attendance for this date has already been submitted and cannot be changed.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         created_count = 0
-        updated_count = 0
         errors = []
-        
         for item in attendance_data:
             student_id = item.get('student_id')
             status_value = item.get('status')
             remarks = item.get('remarks', '')
-            
+
             if not student_id or not status_value:
-                errors.append(f"Missing student_id or status for an entry")
+                errors.append('Missing student_id or status for an entry')
                 continue
-            
-            if status_value not in ['present', 'absent', 'late', 'excused']:
+            if status_value not in VALID_STATUSES:
                 errors.append(f"Invalid status '{status_value}' for student {student_id}")
                 continue
-            
             try:
                 student = Student.objects.get(id=student_id)
-
-                # Verify student belongs to a class this teacher is authorized for
-                if student.student_class_id not in allowed_class_ids:
-                    errors.append(f"Student {student_id} is not in your class")
+                if student.student_class_id != teacher_class.id:
+                    errors.append(f'Student {student_id} is not in your class')
                     continue
-
-                # Check if attendance already exists for this date
-                attendance, created = Attendance.objects.update_or_create(
+                ClassAttendance.objects.create(
                     student=student,
+                    class_assigned=teacher_class,
                     date=attendance_date,
-                    defaults={
-                        'status': status_value,
-                        'remarks': remarks,
-                        'recorded_by': request.user
-                    }
+                    status=status_value,
+                    remarks=remarks,
+                    recorded_by=request.user,
                 )
-                
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                created_count += 1
             except Student.DoesNotExist:
-                errors.append(f"Student with ID {student_id} not found")
-        
+                errors.append(f'Student with ID {student_id} not found')
+
         return Response({
-            'message': 'Attendance processed successfully',
+            'message': 'Class attendance submitted successfully',
             'created': created_count,
-            'updated': updated_count,
-            'errors': errors if errors else None
-        }, status=status.HTTP_201_CREATED if created_count > 0 else status.HTTP_200_OK)
+            'errors': errors if errors else None,
+        }, status=status.HTTP_201_CREATED)
     except Teacher.DoesNotExist:
-        return Response({'error': 'Teacher profile not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+## --------------- SUBJECT attendance ---------------
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_attendance_register(request):
+    """Return the subject attendance register for a specific class+subject the teacher teaches."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+        attendance_date = _parse_date(request.query_params.get('date', str(datetime.now().date())))
+        if not attendance_date:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        class_id = request.query_params.get('class_id')
+        subject_id = request.query_params.get('subject_id')
+        if not class_id or not subject_id:
+            return Response({'error': 'class_id and subject_id are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify the teacher teaches this subject in this class via timetable
+        teaches = Timetable.objects.filter(
+            teacher=teacher, class_assigned_id=class_id, subject_id=subject_id
+        ).exists()
+        if not teaches:
+            return Response({'error': 'You do not teach this subject in this class'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            the_class = Class.objects.get(id=class_id)
+            the_subject = Subject.objects.get(id=subject_id)
+        except (Class.DoesNotExist, Subject.DoesNotExist):
+            return Response({'error': 'Class or subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        students = (Student.objects.filter(student_class=the_class)
+                    .select_related('user', 'student_class')
+                    .order_by('user__last_name', 'user__first_name'))
+
+        records = SubjectAttendance.objects.filter(
+            date=attendance_date, subject=the_subject, student__in=students
+        )
+        att_map = {r.student_id: {'status': r.status, 'remarks': r.remarks, 'id': r.id} for r in records}
+
+        locked = records.exists()
+
+        data = []
+        for s in students:
+            info = att_map.get(s.id, {'status': None, 'remarks': '', 'id': None})
+            data.append({
+                'student_id': s.id,
+                'student_number': s.user.student_number or '',
+                'name': s.user.first_name,
+                'surname': s.user.last_name,
+                'class': s.student_class.name if s.student_class else 'Not Assigned',
+                'attendance_id': info['id'],
+                'status': info['status'],
+                'remarks': info['remarks'],
+            })
+
+        return Response({
+            'date': str(attendance_date),
+            'class_name': the_class.name,
+            'class_id': the_class.id,
+            'subject_name': the_subject.name,
+            'subject_id': the_subject.id,
+            'locked': locked,
+            'students': data,
+        })
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_subject_attendance(request):
+    """Bulk-create subject attendance for a class+subject+day. Rejects if already marked."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+        attendance_data = request.data.get('attendance', [])
+        attendance_date = _parse_date(request.data.get('date', str(datetime.now().date())))
+        class_id = request.data.get('class_id')
+        subject_id = request.data.get('subject_id')
+
+        if not attendance_date:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not attendance_data:
+            return Response({'error': 'Attendance data is required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not class_id or not subject_id:
+            return Response({'error': 'class_id and subject_id are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Verify teacher teaches this subject in this class
+        teaches = Timetable.objects.filter(
+            teacher=teacher, class_assigned_id=class_id, subject_id=subject_id
+        ).exists()
+        if not teaches:
+            return Response({'error': 'You do not teach this subject in this class'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            the_class = Class.objects.get(id=class_id)
+            the_subject = Subject.objects.get(id=subject_id)
+        except (Class.DoesNotExist, Subject.DoesNotExist):
+            return Response({'error': 'Class or subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Lock check
+        already_exists = SubjectAttendance.objects.filter(
+            class_assigned=the_class, subject=the_subject, date=attendance_date
+        ).exists()
+        if already_exists:
+            return Response({'error': 'Subject attendance for this class and date has already been submitted and cannot be changed.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        created_count = 0
+        errors = []
+        for item in attendance_data:
+            student_id = item.get('student_id')
+            status_value = item.get('status')
+            remarks = item.get('remarks', '')
+
+            if not student_id or not status_value:
+                errors.append('Missing student_id or status for an entry')
+                continue
+            if status_value not in VALID_STATUSES:
+                errors.append(f"Invalid status '{status_value}' for student {student_id}")
+                continue
+            try:
+                student = Student.objects.get(id=student_id)
+                if student.student_class_id != the_class.id:
+                    errors.append(f'Student {student_id} is not in this class')
+                    continue
+                SubjectAttendance.objects.create(
+                    student=student,
+                    class_assigned=the_class,
+                    subject=the_subject,
+                    date=attendance_date,
+                    status=status_value,
+                    remarks=remarks,
+                    recorded_by=request.user,
+                )
+                created_count += 1
+            except Student.DoesNotExist:
+                errors.append(f'Student with ID {student_id} not found')
+
+        return Response({
+            'message': 'Subject attendance submitted successfully',
+            'created': created_count,
+            'errors': errors if errors else None,
+        }, status=status.HTTP_201_CREATED)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 # ── Assignment Submission Management ─────────────────────────────────────────
@@ -725,5 +849,25 @@ def teacher_classes(request):
         } for c in classes]
 
         return Response({'classes': data})
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_class_subjects(request, class_id):
+    """Get subjects this teacher teaches in a specific class (from timetable)."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+        subject_ids = (Timetable.objects
+                       .filter(teacher=teacher, class_assigned_id=class_id)
+                       .values_list('subject_id', flat=True)
+                       .distinct())
+        subjects = Subject.objects.filter(id__in=subject_ids).order_by('name')
+        data = [{'id': s.id, 'name': s.name, 'code': s.code} for s in subjects]
+        return Response(data)
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)

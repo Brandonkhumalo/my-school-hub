@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
@@ -26,15 +27,147 @@ const SECTION_LABELS = {
 
 export default function AdminReportConfig() {
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm } = useSchoolSettings();
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [uploading, setUploading] = useState(null);
 
+  // Generate reports state
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [students, setStudents] = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [genYear, setGenYear] = useState(currentAcademicYear);
+  const [genTerm, setGenTerm] = useState(currentTerm);
+  const [publishedReleases, setPublishedReleases] = useState([]);
+  const [publishing, setPublishing] = useState(false);
+  const [publishingAll, setPublishingAll] = useState(false);
+  const [publishMessage, setPublishMessage] = useState(null);
+
   useEffect(() => {
     loadConfig();
+    loadClasses();
+    loadPublished();
   }, []);
+
+  const loadClasses = async () => {
+    try {
+      const data = await apiService.fetchClasses();
+      setClasses(Array.isArray(data) ? data : data?.results || []);
+    } catch (error) {
+      console.error("Error loading classes:", error);
+    }
+  };
+
+  const loadPublished = async () => {
+    try {
+      const data = await apiService.getPublishedReports();
+      setPublishedReleases(data.releases || []);
+    } catch (error) {
+      console.error("Error loading published reports:", error);
+    }
+  };
+
+  const isPublished = (classId) => {
+    return publishedReleases.some(
+      r => r.class_id === parseInt(classId) && r.academic_year === genYear && r.academic_term === genTerm
+    );
+  };
+
+  const handlePublishClass = async () => {
+    if (!selectedClassId) return;
+    setPublishing(true);
+    setPublishMessage(null);
+    try {
+      const data = await apiService.publishReports({
+        class_id: selectedClassId, year: genYear, term: genTerm,
+      });
+      setPublishMessage({ type: 'success', text: data.message });
+      await loadPublished();
+    } catch (error) {
+      setPublishMessage({ type: 'error', text: error.message || 'Failed to publish' });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handlePublishAll = async () => {
+    setPublishingAll(true);
+    setPublishMessage(null);
+    try {
+      const data = await apiService.publishAllReports({ year: genYear, term: genTerm });
+      setPublishMessage({ type: 'success', text: data.message });
+      await loadPublished();
+    } catch (error) {
+      setPublishMessage({ type: 'error', text: error.message || 'Failed to publish' });
+    } finally {
+      setPublishingAll(false);
+    }
+  };
+
+  const handleClassSelect = async (classId) => {
+    setSelectedClassId(classId);
+    if (!classId) { setStudents([]); return; }
+    setLoadingStudents(true);
+    try {
+      const data = await apiService.fetchStudentsByClass(classId);
+      const list = Array.isArray(data) ? data : data.results || [];
+      setStudents(list.map(s => ({
+        id: s.id,
+        student_number: s.user?.student_number || s.student_number || '',
+        full_name: s.user?.full_name || s.full_name || `${s.user?.first_name || ''} ${s.user?.last_name || ''}`.trim(),
+        class_name: s.class_name || '',
+      })));
+    } catch (error) {
+      console.error("Error fetching students:", error);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  const handleDownloadReport = async (studentId, studentName) => {
+    setDownloadingId(studentId);
+    try {
+      const blob = await apiService.downloadReportCard(studentId, { year: genYear, term: genTerm });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_card_${studentName}_${genTerm}_${genYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.message || 'Failed to download report card');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (students.length === 0) return;
+    setDownloadingAll(true);
+    for (const student of students) {
+      try {
+        const blob = await apiService.downloadReportCard(student.id, { year: genYear, term: genTerm });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report_card_${student.full_name}_${genTerm}_${genYear}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error(`Failed for ${student.full_name}:`, error);
+      }
+    }
+    setDownloadingAll(false);
+  };
 
   const loadConfig = async () => {
     try {
@@ -226,6 +359,152 @@ export default function AdminReportConfig() {
               className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all">
               {saving ? "Saving..." : "Save Report Card Settings"}
             </button>
+
+            {/* ── Publish & Download Reports ── */}
+            <div className="bg-white rounded-lg shadow p-5 mt-5">
+              <h2 className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <i className="fas fa-file-pdf text-red-500"></i>
+                Publish & Download Report Cards
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Publish reports to make them available to students and parents. They will receive a notification on the announcements page.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Class</label>
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => handleClassSelect(e.target.value)}
+                    className="border rounded w-full p-2 text-sm"
+                  >
+                    <option value="">Select a class</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} {isPublished(cls.id) ? '✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Year</label>
+                  <select
+                    value={genYear}
+                    onChange={(e) => setGenYear(e.target.value)}
+                    className="border rounded w-full p-2 text-sm"
+                  >
+                    {[...Array(5)].map((_, i) => {
+                      const y = parseInt(currentAcademicYear) - i;
+                      return <option key={y} value={y}>{y}</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Term</label>
+                  <select
+                    value={genTerm}
+                    onChange={(e) => setGenTerm(e.target.value)}
+                    className="border rounded w-full p-2 text-sm"
+                  >
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Publish buttons */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <button
+                  onClick={handlePublishClass}
+                  disabled={!selectedClassId || publishing || (selectedClassId && isPublished(selectedClassId))}
+                  className="py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                >
+                  {publishing ? (
+                    <><i className="fas fa-spinner fa-spin mr-2"></i>Publishing...</>
+                  ) : selectedClassId && isPublished(selectedClassId) ? (
+                    <><i className="fas fa-check mr-2"></i>Already Published</>
+                  ) : (
+                    <><i className="fas fa-bullhorn mr-2"></i>Publish This Class</>
+                  )}
+                </button>
+                <button
+                  onClick={handlePublishAll}
+                  disabled={publishingAll}
+                  className="py-2.5 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 disabled:opacity-50 transition-all text-sm"
+                >
+                  {publishingAll ? (
+                    <><i className="fas fa-spinner fa-spin mr-2"></i>Publishing All...</>
+                  ) : (
+                    <><i className="fas fa-bullhorn mr-2"></i>Publish All Classes</>
+                  )}
+                </button>
+              </div>
+
+              {publishMessage && (
+                <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
+                  publishMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {publishMessage.text}
+                </div>
+              )}
+
+              {loadingStudents ? (
+                <div className="flex justify-center py-6">
+                  <svg className="animate-spin h-6 w-6 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : selectedClassId && students.length > 0 ? (
+                <>
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">Download Reports (Admin Preview)</h3>
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll}
+                    className="w-full mb-3 py-2.5 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-60 transition-all text-sm"
+                  >
+                    {downloadingAll ? (
+                      <><i className="fas fa-spinner fa-spin mr-2"></i>Downloading All...</>
+                    ) : (
+                      <><i className="fas fa-download mr-2"></i>Download All Reports ({students.length} students)</>
+                    )}
+                  </button>
+                  <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">
+                    {students.map((student) => (
+                      <div key={student.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                        <div>
+                          <span className="text-sm font-medium text-gray-800">{student.full_name}</span>
+                          <span className="text-xs text-gray-400 ml-2">{student.student_number || ''}</span>
+                        </div>
+                        <button
+                          onClick={() => handleDownloadReport(student.id, student.full_name)}
+                          disabled={downloadingId === student.id}
+                          className={`text-xs px-3 py-1 rounded-md font-medium transition-all ${
+                            downloadingId === student.id
+                              ? 'bg-gray-200 text-gray-400'
+                              : 'bg-red-100 text-red-700 hover:bg-red-200'
+                          }`}
+                        >
+                          {downloadingId === student.id ? (
+                            <><i className="fas fa-spinner fa-spin mr-1"></i>Generating...</>
+                          ) : (
+                            <><i className="fas fa-download mr-1"></i>PDF</>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : selectedClassId && students.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No students in this class.</p>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-4">
+                  <i className="fas fa-hand-pointer mr-1"></i>Select a class to publish and download reports.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* ── RIGHT: Live Preview ── */}

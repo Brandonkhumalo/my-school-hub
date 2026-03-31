@@ -193,6 +193,7 @@ const apiService = {
 
   fetchTeacherClasses: () => request("/academics/classes/", "GET"),
   getTeacherClasses: () => request("/teachers/classes/", "GET"),
+  getTeacherClassSubjects: (classId) => request(`/teachers/classes/${classId}/subjects/`, "GET"),
   fetchTeacherStudents: () => request("/academics/students/", "GET"),
   fetchTeacherResults: () => request("/academics/results/", "GET"),
   getResultsForReport: (params) => {
@@ -200,6 +201,11 @@ const apiService = {
     return request(`/teachers/results/for-report/?${q}`, "GET");
   },
   updateReportSettings: (data) => request("/teachers/results/report-settings/", "PATCH", data),
+
+  // Report card publishing
+  publishReports: (data) => request("/academics/reports/publish/", "POST", data),
+  publishAllReports: (data) => request("/academics/reports/publish-all/", "POST", data),
+  getPublishedReports: () => request("/academics/reports/published/", "GET"),
 
   fetchParentChildren: () => request("/academics/students/", "GET"),
   fetchParentResults: () => request("/academics/results/", "GET"),
@@ -241,13 +247,23 @@ const apiService = {
   getSubjectStudents: (subjectId) => request(`/teachers/subjects/${subjectId}/students/`, "GET"),
   getSubjectPerformance: (subjectId) => request(`/teachers/subjects/${subjectId}/performance/`, "GET"),
   addStudentMark: (data) => request("/teachers/marks/add/", "POST", data),
-  getAttendanceRegister: (date, classId) => {
+  // Class attendance (class teacher only)
+  getClassAttendanceRegister: (date) => {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    return request(`/teachers/attendance/class/register/?${params.toString()}`, "GET");
+  },
+  markClassAttendance: (data) => request("/teachers/attendance/class/mark/", "POST", data),
+
+  // Subject attendance (per subject per class)
+  getSubjectAttendanceRegister: (date, classId, subjectId) => {
     const params = new URLSearchParams();
     if (date) params.append('date', date);
     if (classId) params.append('class_id', classId);
-    return request(`/teachers/attendance/register/?${params.toString()}`, "GET");
+    if (subjectId) params.append('subject_id', subjectId);
+    return request(`/teachers/attendance/subject/register/?${params.toString()}`, "GET");
   },
-  markAttendance: (data) => request("/teachers/attendance/mark/", "POST", data),
+  markSubjectAttendance: (data) => request("/teachers/attendance/subject/mark/", "POST", data),
 
   // Admin Parent-Child Link Management endpoints
   getPendingParentLinkRequests: () => request("/academics/parent-link-requests/", "GET"),

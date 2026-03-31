@@ -9,7 +9,7 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import datetime
 from .models import (
-    Parent, Student, ParentChildLink, Result, WeeklyMessage, Attendance
+    Parent, Student, ParentChildLink, Result, WeeklyMessage, ClassAttendance
 )
 from .serializers import ParentChildLinkSerializer, WeeklyMessageSerializer
 from finances.models import StudentFee, Payment
@@ -292,9 +292,9 @@ def child_dashboard_stats(request, child_id):
         total_subjects = student.student_class.timetable.values('subject').distinct().count() if student.student_class else 0
         
         # Calculate attendance percentage
-        total_days = Attendance.objects.filter(student=student).count()
-        present_days = Attendance.objects.filter(
-            student=student, 
+        total_days = ClassAttendance.objects.filter(student=student).count()
+        present_days = ClassAttendance.objects.filter(
+            student=student,
             status__in=['present', 'late']
         ).count()
         attendance_percentage = round((present_days / total_days * 100), 1) if total_days > 0 else 100

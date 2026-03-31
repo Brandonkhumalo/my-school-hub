@@ -9,8 +9,8 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import timedelta, datetime
 from .models import (
-    Student, Subject, Result, Timetable, Teacher, 
-    Announcement, Assignment, SchoolEvent, Attendance
+    Student, Subject, Result, Timetable, Teacher,
+    Announcement, Assignment, SchoolEvent, ClassAttendance, SubjectAttendance
 )
 from .serializers import (
     StudentSerializer, ResultSerializer, TimetableSerializer,
@@ -82,10 +82,10 @@ def student_dashboard_stats(request):
             deadline__gt=timezone.now()
         ).count()
         
-        # Calculate attendance percentage
-        total_days = Attendance.objects.filter(student=student).count()
-        present_days = Attendance.objects.filter(
-            student=student, 
+        # Calculate attendance percentage (based on class attendance)
+        total_days = ClassAttendance.objects.filter(student=student).count()
+        present_days = ClassAttendance.objects.filter(
+            student=student,
             status__in=['present', 'late']
         ).count()
         attendance_percentage = round((present_days / total_days * 100), 1) if total_days > 0 else 100
@@ -362,7 +362,7 @@ def student_announcements(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def student_attendance(request):
-    """Get the logged-in student's own attendance records with stats."""
+    """Get the logged-in student's class and subject attendance records with stats."""
     if request.user.role != 'student':
         return Response({'error': 'Only students can access this endpoint'},
                         status=status.HTTP_403_FORBIDDEN)
@@ -371,45 +371,67 @@ def student_attendance(request):
     except Student.DoesNotExist:
         return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    records_qs = (
-        Attendance.objects
-        .filter(student=student)
-        .order_by('-date')
-    )
+    # --- Class attendance ---
+    class_qs = ClassAttendance.objects.filter(student=student).order_by('-date')
+    class_total = class_qs.count()
+    class_present = class_qs.filter(status__in=['present', 'late']).count()
+    class_absent = class_qs.filter(status='absent').count()
+    class_late = class_qs.filter(status='late').count()
+    class_pct = round(class_present / class_total * 100, 1) if class_total else 100.0
 
-    # Optional term/year filters
-    term = request.query_params.get('term')
-    year = request.query_params.get('year')
-    if term:
-        records_qs = records_qs.filter(academic_term=term)
-    if year:
-        records_qs = records_qs.filter(academic_year=year)
-
-    total = records_qs.count()
-    present = records_qs.filter(status__in=['present', 'late']).count()
-    absent = records_qs.filter(status='absent').count()
-    late = records_qs.filter(status='late').count()
-    percentage = round(present / total * 100, 1) if total else 100.0
-
-    records = [
+    class_records = [
         {
             'id': r.id,
             'date': r.date.strftime('%Y-%m-%d'),
             'status': r.status,
-            'remarks': getattr(r, 'remarks', ''),
+            'remarks': r.remarks or '',
         }
-        for r in records_qs[:60]  # last 60 records
+        for r in class_qs[:60]
+    ]
+
+    # --- Subject attendance ---
+    subj_qs = (SubjectAttendance.objects
+               .filter(student=student)
+               .select_related('subject')
+               .order_by('-date'))
+    subj_total = subj_qs.count()
+    subj_present = subj_qs.filter(status__in=['present', 'late']).count()
+    subj_absent = subj_qs.filter(status='absent').count()
+    subj_late = subj_qs.filter(status='late').count()
+    subj_pct = round(subj_present / subj_total * 100, 1) if subj_total else 100.0
+
+    subject_records = [
+        {
+            'id': r.id,
+            'date': r.date.strftime('%Y-%m-%d'),
+            'subject': r.subject.name,
+            'status': r.status,
+            'remarks': r.remarks or '',
+        }
+        for r in subj_qs[:100]
     ]
 
     return Response({
-        'stats': {
-            'total_days': total,
-            'present': present,
-            'absent': absent,
-            'late': late,
-            'attendance_percentage': percentage,
+        'class_attendance': {
+            'stats': {
+                'total_days': class_total,
+                'present': class_present,
+                'absent': class_absent,
+                'late': class_late,
+                'attendance_percentage': class_pct,
+            },
+            'records': class_records,
         },
-        'records': records,
+        'subject_attendance': {
+            'stats': {
+                'total_days': subj_total,
+                'present': subj_present,
+                'absent': subj_absent,
+                'late': subj_late,
+                'attendance_percentage': subj_pct,
+            },
+            'records': subject_records,
+        },
     })
 
 
