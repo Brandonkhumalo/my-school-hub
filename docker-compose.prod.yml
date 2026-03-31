@@ -5,9 +5,9 @@
 # Database (RDS) and Redis (ElastiCache) are external — no
 # local containers for them.
 #
-# Nginx runs on the host (not in Docker) and handles:
+# Nginx runs on the EC2 host (not in Docker) and handles:
 #   - SSL termination (Let's Encrypt)
-#   - Serving the React frontend from /var/www/schoolhub/dist
+#   - Serving the React frontend build from /var/www/schoolhub/dist
 #   - Proxying /api/ and /admin/ to Django on :8000
 #
 # Usage:

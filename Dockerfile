@@ -1,8 +1,8 @@
 # ──────────────────────────────────────────────────────────────
-# MySchoolHub — Backend Dockerfile (Railway deployment)
+# MySchoolHub — Backend Dockerfile (EC2 deployment)
 # Build context: repo root
-# Only the Django backend is built here.
-# The React frontend is hosted separately on cPanel.
+# Django backend only — frontend is built separately and
+# served by Nginx from /var/www/schoolhub/dist on the host.
 # ──────────────────────────────────────────────────────────────
 
 # Stage 1 — install Python dependencies
