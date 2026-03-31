@@ -121,13 +121,19 @@ class ResultSerializer(serializers.ModelSerializer):
     percentage = serializers.SerializerMethodField()
     grade = serializers.SerializerMethodField()
 
+    effective_term = serializers.SerializerMethodField()
+
     class Meta:
         model = Result
         fields = [
             'id', 'student', 'student_name', 'student_number', 'subject', 'subject_name',
             'teacher', 'teacher_name', 'exam_type', 'score', 'max_score', 'percentage',
-            'grade', 'date_recorded', 'academic_term', 'academic_year'
+            'grade', 'date_recorded', 'academic_term', 'academic_year',
+            'include_in_report', 'report_term', 'effective_term'
         ]
+
+    def get_effective_term(self, obj):
+        return obj.report_term if obj.report_term else obj.academic_term
 
     def get_percentage(self, obj):
         if obj.max_score > 0:
@@ -218,7 +224,7 @@ class CreateResultSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Result
-        fields = ['student', 'subject', 'teacher', 'exam_type', 'score', 'max_score', 'academic_term', 'academic_year']
+        fields = ['student', 'subject', 'teacher', 'exam_type', 'score', 'max_score', 'academic_term', 'academic_year', 'include_in_report', 'report_term']
 
     def create(self, validated_data):
         user = self.context['request'].user

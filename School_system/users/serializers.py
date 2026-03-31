@@ -254,16 +254,10 @@ class ReportCardConfigSerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj):
         if obj.logo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo.url)
             return obj.logo.url
         return None
 
     def get_stamp_url(self, obj):
         if obj.stamp_image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.stamp_image.url)
             return obj.stamp_image.url
         return None

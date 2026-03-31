@@ -179,9 +179,16 @@ class ReportCardConfig(models.Model):
 
     school = models.OneToOneField(School, on_delete=models.CASCADE, related_name='report_config')
 
+    LOGO_POSITION_CHOICES = [
+        ('left', 'Left of School Name'),
+        ('right', 'Right of School Name'),
+        ('center', 'Centered Above Name'),
+    ]
+
     # ── Branding ────────────────────────────────────────────────────
     logo = models.ImageField(upload_to='report_logos/', blank=True)
     stamp_image = models.ImageField(upload_to='report_stamps/', blank=True)
+    logo_position = models.CharField(max_length=10, choices=LOGO_POSITION_CHOICES, default='center')
     primary_color = models.CharField(max_length=7, default='#1d4ed8')
     secondary_color = models.CharField(max_length=7, default='#f3f4f6')
 

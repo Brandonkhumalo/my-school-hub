@@ -195,6 +195,11 @@ const apiService = {
   getTeacherClasses: () => request("/teachers/classes/", "GET"),
   fetchTeacherStudents: () => request("/academics/students/", "GET"),
   fetchTeacherResults: () => request("/academics/results/", "GET"),
+  getResultsForReport: (params) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/teachers/results/for-report/?${q}`, "GET");
+  },
+  updateReportSettings: (data) => request("/teachers/results/report-settings/", "PATCH", data),
 
   fetchParentChildren: () => request("/academics/students/", "GET"),
   fetchParentResults: () => request("/academics/results/", "GET"),

@@ -116,8 +116,9 @@ jobs:
           script: |
             cd ~/my-school-hub
 
-            # Pull latest code (for frontend source + nginx configs)
-            git pull origin main
+            # Pull latest code (discard any local server changes)
+            git fetch origin main
+            git reset --hard origin/main
 
             # ── Backend: pull new Docker image and restart ──
             set -a

@@ -129,10 +129,15 @@ class Result(models.Model):
     date_recorded = models.DateTimeField(auto_now_add=True)
     academic_term = models.CharField(max_length=50, db_index=True)
     academic_year = models.CharField(max_length=20, db_index=True)
+    include_in_report = models.BooleanField(default=True, db_index=True,
+        help_text='Whether this result appears on the report card')
+    report_term = models.CharField(max_length=50, blank=True, default='', db_index=True,
+        help_text='Override term for report card (blank = use academic_term)')
 
     class Meta:
         indexes = [
             models.Index(fields=['student', 'academic_year', 'academic_term']),
+            models.Index(fields=['student', 'academic_year', 'include_in_report']),
         ]
 
     @property

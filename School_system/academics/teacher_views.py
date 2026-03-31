@@ -584,6 +584,111 @@ def grade_submission(request, submission_id):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def results_for_report(request):
+    """
+    List results for a class/subject so the teacher can manage which ones
+    appear on the report card and which term they count toward.
+    Query params: ?class_id=X&subject_id=Y&year=2025
+    """
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    class_id = request.query_params.get('class_id')
+    subject_id = request.query_params.get('subject_id')
+    year = request.query_params.get('year', str(datetime.now().year))
+
+    if not class_id or not subject_id:
+        return Response({'error': 'class_id and subject_id are required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    results = (
+        Result.objects.filter(
+            teacher=teacher,
+            subject_id=subject_id,
+            student__student_class_id=class_id,
+            academic_year=year,
+        )
+        .select_related('student__user', 'subject')
+        .order_by('student__user__last_name', 'student__user__first_name', 'exam_type')
+    )
+
+    data = []
+    for r in results:
+        data.append({
+            'id': r.id,
+            'student_id': r.student.id,
+            'student_name': r.student.user.full_name,
+            'student_number': r.student.user.student_number or '',
+            'subject_name': r.subject.name,
+            'exam_type': r.exam_type,
+            'score': r.score,
+            'max_score': r.max_score,
+            'percentage': round((r.score / r.max_score) * 100, 2) if r.max_score > 0 else 0,
+            'academic_term': r.academic_term,
+            'include_in_report': r.include_in_report,
+            'report_term': r.report_term,
+            'effective_term': r.report_term if r.report_term else r.academic_term,
+        })
+
+    return Response({'results': data})
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def update_report_settings(request):
+    """
+    Bulk update include_in_report and report_term on results.
+    Body: { "updates": [ { "id": 123, "include_in_report": true, "report_term": "Term 3" }, ... ] }
+    """
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    updates = request.data.get('updates', [])
+    if not updates:
+        return Response({'error': 'No updates provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate all IDs belong to this teacher
+    result_ids = [u['id'] for u in updates if 'id' in u]
+    teacher_results = Result.objects.filter(id__in=result_ids, teacher=teacher)
+    valid_ids = set(teacher_results.values_list('id', flat=True))
+
+    updated_count = 0
+    errors = []
+    for u in updates:
+        rid = u.get('id')
+        if rid not in valid_ids:
+            errors.append(f'Result {rid} not found or not yours')
+            continue
+
+        update_fields = {}
+        if 'include_in_report' in u:
+            update_fields['include_in_report'] = bool(u['include_in_report'])
+        if 'report_term' in u:
+            update_fields['report_term'] = u['report_term']
+
+        if update_fields:
+            Result.objects.filter(id=rid).update(**update_fields)
+            updated_count += 1
+
+    return Response({
+        'message': f'{updated_count} result(s) updated',
+        'updated': updated_count,
+        'errors': errors if errors else None,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def teacher_classes(request):
     """Get all classes this teacher is authorized for (class teacher + timetable)"""
     if request.user.role != 'teacher':

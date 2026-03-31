@@ -809,9 +809,18 @@ def generate_report_card(request, student_id):
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     # ── Build PDF ───────────────────────────────────────────────────────
+    # Only include results marked for the report card.
+    # Use report_term override when set, otherwise fall back to academic_term.
+    from django.db.models import Case, When, F, CharField
     results = Result.objects.filter(
-        student=student, academic_year=year, academic_term=term
-    ).select_related('subject').order_by('subject__name')
+        student=student, academic_year=year, include_in_report=True,
+    ).annotate(
+        effective_term=Case(
+            When(report_term='', then=F('academic_term')),
+            default=F('report_term'),
+            output_field=CharField(),
+        )
+    ).filter(effective_term=term).select_related('subject').order_by('subject__name')
 
     buffer = _build_report_card_pdf(student, results, school, year, term)
 
@@ -920,21 +929,53 @@ def _build_report_card_pdf(student, results, school, year, term):
     sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=11,
                                 spaceAfter=4, alignment=TA_CENTER)
 
+    logo_position = cfg.logo_position if cfg else 'center'
+    logo_img = None
     if cfg and cfg.logo and hasattr(cfg.logo, 'path') and os.path.exists(cfg.logo.path):
         try:
             logo_img = Image(cfg.logo.path, width=2.5*cm, height=2.5*cm)
-            logo_img.hAlign = 'CENTER'
-            elements.append(logo_img)
-            elements.append(Spacer(1, 0.2*cm))
         except Exception:
-            pass
+            logo_img = None
 
-    elements.append(Paragraph(school.name, header_style))
+    # Build motto paragraph
+    motto_para = None
     if cfg and cfg.school and hasattr(cfg.school, 'settings') and cfg.school.settings.school_motto:
         motto_style = ParagraphStyle('Motto', parent=styles['Normal'], fontSize=8,
                                       textColor=colors.grey, alignment=TA_CENTER, spaceAfter=4)
-        elements.append(Paragraph(f'<i>{cfg.school.settings.school_motto}</i>', motto_style))
-    elements.append(Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style))
+        motto_para = Paragraph(f'<i>{cfg.school.settings.school_motto}</i>', motto_style)
+
+    if logo_img and logo_position in ('left', 'right'):
+        # Logo beside school name using a table layout
+        from reportlab.platypus import KeepTogether
+        name_para = Paragraph(school.name, header_style)
+        term_para = Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style)
+        text_parts = [[name_para]]
+        if motto_para:
+            text_parts.append([motto_para])
+        text_parts.append([term_para])
+        text_col = Table(text_parts, colWidths=[13*cm])
+
+        if logo_position == 'left':
+            header_data = [[logo_img, text_col]]
+        else:
+            header_data = [[text_col, logo_img]]
+
+        header_table = Table(header_data, colWidths=[3*cm, 13*cm] if logo_position == 'left' else [13*cm, 3*cm])
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        elements.append(header_table)
+    else:
+        # Centered layout (logo above name)
+        if logo_img:
+            logo_img.hAlign = 'CENTER'
+            elements.append(logo_img)
+            elements.append(Spacer(1, 0.2*cm))
+        elements.append(Paragraph(school.name, header_style))
+        if motto_para:
+            elements.append(motto_para)
+        elements.append(Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style))
     elements.append(Spacer(1, 0.4*cm))
 
     # ── Student info table ──────────────────────────────────────────
@@ -964,58 +1005,40 @@ def _build_report_card_pdf(student, results, school, year, term):
     # ── Results table ───────────────────────────────────────────────
     elements.append(Paragraph('Academic Results', styles['Heading2']))
 
-    if show_exam_types:
-        result_header = ['Subject', 'Exam Type', 'Score', 'Max Score', '%', 'Grade']
-        if show_grade_remark:
-            result_header.append('Remark')
-    else:
-        result_header = ['Subject', '%', 'Grade']
-        if show_grade_remark:
-            result_header.append('Remark')
+    # ── Aggregate results per subject (combined score, max, %) ────────
+    from collections import defaultdict, OrderedDict
+    subject_data = OrderedDict()
+    for r in results:
+        name = r.subject.name
+        if name not in subject_data:
+            subject_data[name] = {'score': 0, 'max_score': 0}
+        subject_data[name]['score'] += r.score
+        subject_data[name]['max_score'] += r.max_score
+
+    result_header = ['Subject', 'Score', 'Max Score', '%', 'Grade']
+    if show_grade_remark:
+        result_header.append('Remark')
 
     result_rows = [result_header]
     total_pct = 0
     subject_count = 0
     row_colors = []  # for highlight_pass_fail
 
-    if show_exam_types:
-        for r in results:
-            pct = score_to_percentage(r.score, r.max_score)
-            gi = percentage_to_grade(pct)
-            row = [r.subject.name, r.exam_type, str(r.score), str(r.max_score), f'{pct}%', gi['grade']]
-            if show_grade_remark:
-                row.append(gi['description'])
-            result_rows.append(row)
-            row_colors.append(gi['colour'])
-            total_pct += pct
-            subject_count += 1
-    else:
-        # Aggregate by subject
-        from collections import defaultdict
-        subject_scores = defaultdict(list)
-        for r in results:
-            pct = score_to_percentage(r.score, r.max_score)
-            subject_scores[r.subject.name].append(pct)
-        for subj_name, pcts in sorted(subject_scores.items()):
-            avg = round(sum(pcts) / len(pcts), 1)
-            gi = percentage_to_grade(avg)
-            row = [subj_name, f'{avg}%', gi['grade']]
-            if show_grade_remark:
-                row.append(gi['description'])
-            result_rows.append(row)
-            row_colors.append(gi['colour'])
-            total_pct += avg
-            subject_count += 1
+    for subj_name, data in subject_data.items():
+        pct = score_to_percentage(data['score'], data['max_score'])
+        gi = percentage_to_grade(pct)
+        row = [subj_name, str(round(data['score'], 1)), str(round(data['max_score'], 1)), f'{pct}%', gi['grade']]
+        if show_grade_remark:
+            row.append(gi['description'])
+        result_rows.append(row)
+        row_colors.append(gi['colour'])
+        total_pct += pct
+        subject_count += 1
 
     if len(result_rows) > 1:
-        if show_exam_types:
-            col_widths = [4*cm, 2.3*cm, 1.6*cm, 1.8*cm, 1.8*cm, 1.5*cm]
-            if show_grade_remark:
-                col_widths.append(2.8*cm)
-        else:
-            col_widths = [7*cm, 3*cm, 2*cm]
-            if show_grade_remark:
-                col_widths.append(4*cm)
+        col_widths = [4.5*cm, 2*cm, 2*cm, 1.8*cm, 1.5*cm]
+        if show_grade_remark:
+            col_widths.append(3*cm)
 
         result_table = Table(result_rows, colWidths=col_widths)
         table_style_cmds = [

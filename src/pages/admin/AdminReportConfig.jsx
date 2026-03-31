@@ -10,6 +10,12 @@ const BORDER_OPTIONS = [
   { value: "none", label: "No Border" },
 ];
 
+const LOGO_POSITION_OPTIONS = [
+  { value: "left", label: "Left of School Name" },
+  { value: "right", label: "Right of School Name" },
+  { value: "center", label: "Centered Above Name" },
+];
+
 const SECTION_LABELS = {
   branding: { title: "Branding", icon: "fa-palette", color: "blue" },
   layout: { title: "Layout & Display", icon: "fa-th-large", color: "green" },
@@ -132,6 +138,15 @@ export default function AdminReportConfig() {
                     className="text-xs" disabled={uploading === "stamp_image"} />
                   {uploading === "stamp_image" && <p className="text-xs text-blue-500 mt-1">Uploading...</p>}
                 </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Logo Position</label>
+                <select value={c.logo_position || "center"}
+                  onChange={(e) => handleChange("logo_position", e.target.value)}
+                  className="border rounded w-full p-2 text-sm">
+                  {LOGO_POSITION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
             </Section>
 
@@ -300,12 +315,24 @@ function ReportPreview({ config }) {
       )}
 
       {/* Header */}
-      <div className="text-center mb-3 relative z-10">
-        {c.logo_url && <img src={c.logo_url} alt="Logo" className="w-12 h-12 mx-auto mb-1 object-contain" />}
-        <h1 className="text-lg font-bold" style={{ color: primary }}>Sample Academy</h1>
-        <p className="text-gray-400 italic text-[10px]">Excellence in Education</p>
-        <p className="text-sm mt-1">Student Report Card &mdash; Term 1 2026</p>
-      </div>
+      {c.logo_position === "left" || c.logo_position === "right" ? (
+        <div className={`flex items-center mb-3 relative z-10 gap-3 ${c.logo_position === "right" ? "flex-row-reverse" : ""}`}>
+          {c.logo_url && <img src={c.logo_url} alt="Logo" className="w-14 h-14 object-contain flex-shrink-0" />}
+          <div className="flex-1 text-center">
+            <h1 className="text-lg font-bold" style={{ color: primary }}>Sample Academy</h1>
+            <p className="text-gray-400 italic text-[10px]">Excellence in Education</p>
+            <p className="text-sm mt-1">Student Report Card &mdash; Term 1 2026</p>
+          </div>
+          {c.logo_url && <div className="w-14 flex-shrink-0" />}
+        </div>
+      ) : (
+        <div className="text-center mb-3 relative z-10">
+          {c.logo_url && <img src={c.logo_url} alt="Logo" className="w-12 h-12 mx-auto mb-1 object-contain" />}
+          <h1 className="text-lg font-bold" style={{ color: primary }}>Sample Academy</h1>
+          <p className="text-gray-400 italic text-[10px]">Excellence in Education</p>
+          <p className="text-sm mt-1">Student Report Card &mdash; Term 1 2026</p>
+        </div>
+      )}
 
       {/* Student Info */}
       <table className="w-full mb-3 border-collapse relative z-10" style={{ fontSize: "10px" }}>
