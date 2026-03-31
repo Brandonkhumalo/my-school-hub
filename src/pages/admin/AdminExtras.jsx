@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -7,6 +8,7 @@ import { formatDateFull, formatDateShort, formatDateTime } from "../../utils/dat
 
 export default function AdminExtras() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -506,6 +508,26 @@ export default function AdminExtras() {
                   <div className="mt-3 flex items-center text-xs text-gray-500">
                     <i className="fas fa-print mr-1"></i>
                     Print-ready reports
+                  </div>
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => navigate('/admin/reports')}
+              className="p-6 rounded-xl border-2 transition-all text-left border-gray-200 hover:border-green-300 bg-white"
+            >
+              <div className="flex items-start space-x-4">
+                <div className="w-14 h-14 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <i className="fas fa-file-alt text-green-600 text-2xl"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Reports</h3>
+                  <p className="text-gray-600 mt-1 text-sm">
+                    Generate and view financial reports, student performance summaries, and other school reports.
+                  </p>
+                  <div className="mt-3 flex items-center text-xs text-gray-500">
+                    <i className="fas fa-download mr-1"></i>
+                    Downloadable reports
                   </div>
                 </div>
               </div>

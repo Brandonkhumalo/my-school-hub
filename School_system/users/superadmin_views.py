@@ -76,8 +76,9 @@ def superadmin_login(request):
     if not email or not password:
         return Response({'error': 'Email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
     
+    from django.db.models import Q
     try:
-        user = CustomUser.objects.get(email=email)
+        user = CustomUser.objects.get(Q(email=email) | Q(username=email))
     except CustomUser.DoesNotExist:
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
     

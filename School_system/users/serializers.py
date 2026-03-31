@@ -164,17 +164,18 @@ class LoginSerializer(serializers.Serializer):
 
         user = None
 
-        # Try to find user by email first
+        # Try to find user by email or username first
+        from django.db.models import Q
         try:
-            user_obj = CustomUser.objects.get(email=identifier)
+            user_obj = CustomUser.objects.get(Q(email=identifier) | Q(username=identifier))
             user = authenticate(username=user_obj.username, password=password)
         except CustomUser.DoesNotExist:
-            # If no email found, try student_number
+            # If no email/username found, try student_number
             try:
                 user_obj = CustomUser.objects.get(student_number=identifier)
                 user = authenticate(username=user_obj.username, password=password)
             except CustomUser.DoesNotExist:
-                raise serializers.ValidationError("User not found with this email or student number.")
+                raise serializers.ValidationError("User not found with this email, username, or student number.")
 
         if user is None:
             raise serializers.ValidationError("Invalid credentials.")
