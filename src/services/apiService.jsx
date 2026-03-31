@@ -399,6 +399,9 @@ const apiService = {
   getSchoolSettings: () => request("/auth/school/settings/", "GET"),
   updateSchoolSettings: (data) => request("/auth/school/settings/", "PUT", data),
 
+  // Current academic period (all authenticated users)
+  getCurrentAcademicPeriod: () => request("/auth/school/current-period/", "GET"),
+
   // Report card config (admin)
   getReportCardConfig: () => request("/auth/school/report-config/", "GET"),
   updateReportCardConfig: (data) => request("/auth/school/report-config/", "PUT", data),

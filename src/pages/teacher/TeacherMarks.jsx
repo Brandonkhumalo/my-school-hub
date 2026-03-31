@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function TeacherMarks() {
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm } = useSchoolSettings();
   const [subjects, setSubjects] = useState([]);
   const [classes, setClasses] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -14,14 +16,16 @@ export default function TeacherMarks() {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  
-  const currentYear = new Date().getFullYear().toString();
-  
+
+  const currentYear = currentAcademicYear;
+
   const [selectedStudent, setSelectedStudent] = useState("");
   const [examType, setExamType] = useState("Midterm");
   const [score, setScore] = useState("");
   const [maxScore, setMaxScore] = useState("100");
-  const [academicTerm, setAcademicTerm] = useState("Term 1");
+  const [academicTerm, setAcademicTerm] = useState(currentTerm);
+  const [includeInReport, setIncludeInReport] = useState(true);
+  const [reportTerm, setReportTerm] = useState("");
 
   useEffect(() => {
     loadSubjects();
@@ -100,7 +104,9 @@ export default function TeacherMarks() {
         score: scoreNum,
         max_score: maxScoreNum,
         academic_term: academicTerm,
-        academic_year: currentYear
+        academic_year: currentYear,
+        include_in_report: includeInReport,
+        report_term: reportTerm
       });
 
       alert("Mark added successfully!");
@@ -258,7 +264,7 @@ export default function TeacherMarks() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Term
@@ -285,6 +291,41 @@ export default function TeacherMarks() {
                     disabled
                     readOnly
                   />
+                </div>
+              </div>
+
+              {/* Report Card Options */}
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="text-sm font-semibold text-blue-800 mb-3">
+                  <i className="fas fa-file-pdf mr-1"></i> Report Card Options
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-sm text-gray-700">Include in report card</span>
+                      <div
+                        onClick={() => setIncludeInReport(!includeInReport)}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${includeInReport ? 'bg-green-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${includeInReport ? 'left-[22px]' : 'left-0.5'}`}></span>
+                      </div>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">
+                      Report term <span className="text-xs text-gray-400">(override)</span>
+                    </label>
+                    <select
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={reportTerm}
+                      onChange={(e) => setReportTerm(e.target.value)}
+                    >
+                      <option value="">Same as term above</option>
+                      <option value="Term 1">Term 1</option>
+                      <option value="Term 2">Term 2</option>
+                      <option value="Term 3">Term 3</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

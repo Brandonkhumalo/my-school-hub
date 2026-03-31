@@ -133,6 +133,8 @@ def add_student_mark(request):
         max_score = request.data.get('max_score')
         academic_term = request.data.get('academic_term', 'Term 1')
         academic_year = request.data.get('academic_year', str(datetime.now().year))
+        include_in_report = request.data.get('include_in_report', True)
+        report_term = request.data.get('report_term', '')
         
         # Validation
         if not all([student_id, subject_id, exam_type, score, max_score]):
@@ -177,7 +179,9 @@ def add_student_mark(request):
             score=score,
             max_score=max_score,
             academic_term=academic_term,
-            academic_year=academic_year
+            academic_year=academic_year,
+            include_in_report=bool(include_in_report),
+            report_term=report_term or '',
         )
         
         return Response({

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
@@ -8,6 +9,8 @@ import { formatDateFull, formatDateShort, formatDateTime } from "../../utils/dat
 
 export default function AdminExtras() {
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm, currency } = useSchoolSettings();
+  const termMap = { 'Term 1': 'term_1', 'Term 2': 'term_2', 'Term 3': 'term_3' };
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -38,11 +41,11 @@ export default function AdminExtras() {
     student: '',
     student_class: '',
     apply_to: 'class',
-    academic_year: new Date().getFullYear().toString(),
-    academic_term: 'term_1',
-    currency: 'USD'
+    academic_year: currentAcademicYear,
+    academic_term: termMap[currentTerm] || 'term_1',
+    currency: currency || 'USD'
   });
-  
+
   const [feeForm, setFeeForm] = useState({
     grade_level: '',
     grade_name: '',
@@ -51,9 +54,9 @@ export default function AdminExtras() {
     sports_fee: '0',
     computer_fee: '0',
     other_fees: '0',
-    academic_year: new Date().getFullYear().toString(),
-    academic_term: 'term_1',
-    currency: 'USD'
+    academic_year: currentAcademicYear,
+    academic_term: termMap[currentTerm] || 'term_1',
+    currency: currency || 'USD'
   });
 
   useEffect(() => {
@@ -97,7 +100,7 @@ export default function AdminExtras() {
     
     try {
       const result = await apiService.generateTimetable({
-        academic_year: new Date().getFullYear().toString(),
+        academic_year: currentAcademicYear,
         clear_existing: true
       });
       
@@ -188,9 +191,9 @@ export default function AdminExtras() {
       sports_fee: '0',
       computer_fee: '0',
       other_fees: '0',
-      academic_year: new Date().getFullYear().toString(),
-      academic_term: 'term_1',
-      currency: 'USD'
+      academic_year: currentAcademicYear,
+      academic_term: termMap[currentTerm] || 'term_1',
+      currency: currency || 'USD'
     });
   };
 
@@ -260,9 +263,9 @@ export default function AdminExtras() {
       student: '',
       student_class: '',
       apply_to: 'class',
-      academic_year: new Date().getFullYear().toString(),
-      academic_term: 'term_1',
-      currency: 'USD'
+      academic_year: currentAcademicYear,
+      academic_term: termMap[currentTerm] || 'term_1',
+      currency: currency || 'USD'
     });
     setStudentSearch('');
     setSelectedStudentName('');

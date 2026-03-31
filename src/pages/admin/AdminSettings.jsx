@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 
 const GRADING_SYSTEMS = [
@@ -10,6 +11,7 @@ const CURRENCIES = ["USD", "ZWL", "ZAR", "GBP"];
 const TIMEZONES = ["Africa/Harare", "Africa/Johannesburg", "UTC", "Africa/Nairobi"];
 
 export default function AdminSettings() {
+  const { refreshSettings } = useSchoolSettings();
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,6 +32,7 @@ export default function AdminSettings() {
     setSaving(true); setError(""); setSuccess("");
     try {
       await apiService.updateSchoolSettings(settings);
+      await refreshSettings();
       setSuccess("Settings saved successfully.");
     } catch {
       setError("Failed to save settings.");

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
 export default function TeacherResults() {
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm } = useSchoolSettings();
   const [results, setResults] = useState([]);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -14,14 +16,14 @@ export default function TeacherResults() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
-  const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
-  const [reportTerm, setReportTerm] = useState('Term 1');
+  const [reportYear, setReportYear] = useState(currentAcademicYear);
+  const [reportTerm, setReportTerm] = useState(currentTerm);
 
   // Report settings state
   const [reportTab, setReportTab] = useState('cards'); // 'cards' or 'settings'
   const [settingsClassId, setSettingsClassId] = useState('');
   const [settingsSubjectId, setSettingsSubjectId] = useState('');
-  const [settingsYear, setSettingsYear] = useState(new Date().getFullYear().toString());
+  const [settingsYear, setSettingsYear] = useState(currentAcademicYear);
   const [reportResults, setReportResults] = useState([]);
   const [loadingReportResults, setLoadingReportResults] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -269,7 +271,7 @@ export default function TeacherResults() {
                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     {[...Array(5)].map((_, i) => {
-                      const y = new Date().getFullYear() - i;
+                      const y = parseInt(currentAcademicYear) - i;
                       return <option key={y} value={y}>{y}</option>;
                     })}
                   </select>
@@ -404,7 +406,7 @@ export default function TeacherResults() {
                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     {[...Array(5)].map((_, i) => {
-                      const y = new Date().getFullYear() - i;
+                      const y = parseInt(currentAcademicYear) - i;
                       return <option key={y} value={y}>{y}</option>;
                     })}
                   </select>

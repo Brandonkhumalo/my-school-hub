@@ -132,6 +132,15 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
+            # ── Media: ensure host directory exists for bind mount ──
+            sudo mkdir -p /var/www/schoolhub/media
+
+            # ── Migrate existing media from Docker volume (one-time) ──
+            if docker volume inspect my-school-hub_media_files >/dev/null 2>&1; then
+              echo "Copying media from old Docker volume to host path..."
+              docker run --rm -v my-school-hub_media_files:/src -v /var/www/schoolhub/media:/dst alpine sh -c "cp -rn /src/* /dst/ 2>/dev/null || true"
+            fi
+
             # ── Frontend: rebuild React app ──
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"

@@ -356,6 +356,35 @@ def school_settings_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def current_academic_period_view(request):
+    """Return all school settings for the user's school. Accessible by all authenticated users.
+    PayNow credentials are excluded for non-admin users."""
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    settings_obj, _ = SchoolSettings.objects.get_or_create(school=school)
+    data = {
+        'current_academic_year': settings_obj.current_academic_year,
+        'current_term': settings_obj.current_term,
+        'term_1_start': settings_obj.term_1_start,
+        'term_1_end': settings_obj.term_1_end,
+        'term_2_start': settings_obj.term_2_start,
+        'term_2_end': settings_obj.term_2_end,
+        'term_3_start': settings_obj.term_3_start,
+        'term_3_end': settings_obj.term_3_end,
+        'grading_system': settings_obj.grading_system,
+        'school_motto': settings_obj.school_motto,
+        'currency': settings_obj.currency,
+        'timezone': settings_obj.timezone,
+        'max_students_per_class': settings_obj.max_students_per_class,
+        'late_fee_percentage': settings_obj.late_fee_percentage,
+    }
+    return Response(data)
+
+
 # ---------------------------------------------------------------
 # Report Card Config
 # ---------------------------------------------------------------

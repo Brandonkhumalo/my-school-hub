@@ -29,7 +29,7 @@ services:
     environment:
       PORT: "8000"
     volumes:
-      - media_files:/app/media
+      - /var/www/schoolhub/media:/app/media
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
       interval: 30s
@@ -49,7 +49,7 @@ services:
     env_file:
       - ./School_system/.env
     volumes:
-      - media_files:/app/media
+      - /var/www/schoolhub/media:/app/media
     depends_on:
       web:
         condition: service_healthy
@@ -68,5 +68,4 @@ services:
       web:
         condition: service_healthy
 
-volumes:
-  media_files:
+volumes: {}

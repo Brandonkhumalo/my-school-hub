@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from "react";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
 export default function AdminClasses() {
+  const { currentAcademicYear } = useSchoolSettings();
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [schoolType, setSchoolType] = useState('combined');
-  
+
   const defaultFormData = {
     grade_level: '',
     section: '',
-    academic_year: new Date().getFullYear().toString(),
+    academic_year: currentAcademicYear,
     class_teacher: '',
     first_period_start: '07:30',
     last_period_end: '16:00',
@@ -85,7 +87,7 @@ export default function AdminClasses() {
     setFormData({
       grade_level: cls.grade_level?.toString() || '',
       section: '',
-      academic_year: cls.academic_year || new Date().getFullYear().toString(),
+      academic_year: cls.academic_year || currentAcademicYear,
       class_teacher: cls.class_teacher ? cls.class_teacher.toString() : '',
       first_period_start: formatTimeForInput(cls.first_period_start) || '07:30',
       last_period_end: formatTimeForInput(cls.last_period_end) || '16:00',

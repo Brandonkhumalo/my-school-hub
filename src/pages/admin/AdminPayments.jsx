@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
@@ -9,6 +10,7 @@ import { formatDate, formatDateLong, formatDateTime, formatTime } from "../../ut
 export default function AdminPayments() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm, currency } = useSchoolSettings();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("records");
   const [classes, setClasses] = useState([]);
@@ -24,18 +26,18 @@ export default function AdminPayments() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
 
-  const currentYear = new Date().getFullYear();
-  const academicYears = [`${currentYear}`, `${currentYear - 1}`, `${currentYear + 1}`];
+  const termMap = { 'Term 1': 'term_1', 'Term 2': 'term_2', 'Term 3': 'term_3' };
+  const academicYears = [currentAcademicYear, `${parseInt(currentAcademicYear) - 1}`, `${parseInt(currentAcademicYear) + 1}`];
 
   const [formData, setFormData] = useState({
     student: "",
     payment_type: "school_fees",
     payment_plan: "one_term",
-    academic_year: `${currentYear}`,
-    academic_term: "term_1",
+    academic_year: currentAcademicYear,
+    academic_term: termMap[currentTerm] || "term_1",
     total_amount_due: "",
     amount_paid: "",
-    currency: "USD",
+    currency: currency || "USD",
     payment_method: "cash",
     due_date: "",
     next_payment_due: "",
@@ -130,11 +132,11 @@ export default function AdminPayments() {
         student: "",
         payment_type: "school_fees",
         payment_plan: "one_term",
-        academic_year: `${currentYear}`,
-        academic_term: "term_1",
+        academic_year: currentAcademicYear,
+        academic_term: termMap[currentTerm] || "term_1",
         total_amount_due: "",
         amount_paid: "",
-        currency: "USD",
+        currency: currency || "USD",
         payment_method: "cash",
         due_date: "",
         next_payment_due: "",

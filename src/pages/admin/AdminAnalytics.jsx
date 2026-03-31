@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminAnalytics() {
+  const { currency } = useSchoolSettings();
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,9 +50,9 @@ export default function AdminAnalytics() {
   // Find max attendance total for bar scaling
   const maxAttendanceTotal = Math.max(...attendance_by_day.map((d) => d.total), 1);
 
-  // Format currency
+  // Format currency using school settings
   const formatCurrency = (amount) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount);
 
   // Color for attendance rate
   const rateColor = (rate) => {

@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 export default function ParentPerformance() {
   const { user } = useAuth();
+  const { currentAcademicYear, currentTerm } = useSchoolSettings();
   const [marks, setMarks] = useState([]);
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
-  const [reportYear, setReportYear] = useState(new Date().getFullYear().toString());
-  const [reportTerm, setReportTerm] = useState('Term 1');
+  const [reportYear, setReportYear] = useState(currentAcademicYear);
+  const [reportTerm, setReportTerm] = useState(currentTerm);
 
   useEffect(() => {
     loadData();
@@ -161,7 +163,7 @@ export default function ParentPerformance() {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {[...Array(5)].map((_, i) => {
-                    const y = new Date().getFullYear() - i;
+                    const y = parseInt(currentAcademicYear) - i;
                     return <option key={y} value={y}>{y}</option>;
                   })}
                 </select>
