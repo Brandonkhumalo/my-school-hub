@@ -3,10 +3,12 @@ from .models import HealthRecord, ClinicVisit
 
 
 class HealthRecordSerializer(serializers.ModelSerializer):
+    """Represents HealthRecordSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = HealthRecord
         fields = [
             'id', 'student', 'student_name', 'student_number',
@@ -20,10 +22,12 @@ class HealthRecordSerializer(serializers.ModelSerializer):
 
 
 class ClinicVisitSerializer(serializers.ModelSerializer):
+    """Represents ClinicVisitSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     recorded_by_name = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = ClinicVisit
         fields = [
             'id', 'student', 'student_name',
@@ -34,6 +38,7 @@ class ClinicVisitSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'visit_date', 'recorded_by', 'school']
 
     def get_recorded_by_name(self, obj):
+        """Return recorded by name."""
         if obj.recorded_by:
             return obj.recorded_by.full_name
         return ''

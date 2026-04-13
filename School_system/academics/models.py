@@ -5,6 +5,7 @@ from users.models import TenantAwareManager, TenantSoftDeleteManager
 
 
 class Subject(models.Model):
+    """Represents Subject."""
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
@@ -19,21 +20,26 @@ class Subject(models.Model):
     objects = TenantSoftDeleteManager()
 
     class Meta:
+        """Represents Meta."""
         unique_together = ('code', 'school')
 
     def delete(self, using=None, keep_parents=False):
+        """Execute delete."""
         self.is_deleted = True
         self.deleted_at = timezone.now()
         self.save()
 
     def hard_delete(self):
+        """Execute hard delete."""
         super().delete()
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.code} - {self.name}"
 
 
 class Class(models.Model):
+    """Represents Class."""
     name = models.CharField(max_length=50)
     grade_level = models.IntegerField()
     academic_year = models.CharField(max_length=20)
@@ -53,14 +59,17 @@ class Class(models.Model):
     include_transition_time = models.BooleanField(default=False, help_text="Include 5 minutes between periods for class changes")
     
     class Meta:
+        """Represents Meta."""
         verbose_name_plural = "Classes"
         ordering = ['name']
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.name} - {self.academic_year}"
 
 
 class Student(models.Model):
+    """Represents Student."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     student_class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='students')
     admission_date = models.DateField()
@@ -71,31 +80,38 @@ class Student(models.Model):
     emergency_contact = models.CharField(max_length=20, blank=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-id']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.user.student_number} - {self.user.full_name}"
 
 
 class Teacher(models.Model):
+    """Represents Teacher."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     subjects_taught = models.ManyToManyField(Subject, related_name='teachers')
     hire_date = models.DateField()
     qualification = models.CharField(max_length=200, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.user.full_name} - Teacher"
 
 
 class Parent(models.Model):
+    """Represents Parent."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     children = models.ManyToManyField(Student, related_name='parents', blank=True)
     occupation = models.CharField(max_length=100, blank=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-id']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.user.first_name} {self.user.last_name} - Parent"
 
 
@@ -108,14 +124,17 @@ class ParentChildLink(models.Model):
     confirmed_date = models.DateTimeField(null=True, blank=True)
     
     class Meta:
+        """Represents Meta."""
         unique_together = ('parent', 'student')
     
     def __str__(self):
+        """Return a human-readable string representation."""
         status = "Confirmed" if self.is_confirmed else "Pending"
         return f"{self.parent.user.first_name} {self.parent.user.last_name} -> {self.student.user.first_name} {self.student.user.last_name} ({status})"
 
 
 class Result(models.Model):
+    """Represents Result."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='results', db_index=True)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, db_index=True)
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, db_index=True)
@@ -128,21 +147,25 @@ class Result(models.Model):
     academic_year = models.CharField(max_length=20, db_index=True)
 
     class Meta:
+        """Represents Meta."""
         indexes = [
             models.Index(fields=['student', 'academic_year', 'academic_term']),
         ]
 
     @property
     def percentage(self):
+        """Execute percentage."""
         if self.max_score and self.max_score > 0:
             return round((self.score / self.max_score) * 100, 2)
         return 0.0
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.subject.name}: {self.score}/{self.max_score}"
 
 
 class Timetable(models.Model):
+    """Represents Timetable."""
     class_assigned = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='timetable')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
@@ -152,10 +175,12 @@ class Timetable(models.Model):
     room = models.CharField(max_length=50, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.class_assigned.name} - {self.subject.name} - {self.day_of_week}"
 
 
 class Announcement(models.Model):
+    """Represents Announcement."""
     title = models.CharField(max_length=200)
     content = models.TextField()
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -164,10 +189,12 @@ class Announcement(models.Model):
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} - {self.target_audience}"
 
 
 class Complaint(models.Model):
+    """Represents Complaint."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='complaints')
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
@@ -177,10 +204,12 @@ class Complaint(models.Model):
     date_resolved = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} - {self.status}"
 
 
 class Suspension(models.Model):
+    """Represents Suspension."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='suspensions')
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
     reason = models.TextField()
@@ -190,10 +219,12 @@ class Suspension(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.first_name} {self.student.user.last_name} - Suspended ({self.start_date} to {self.end_date})"
 
 
 class SchoolEvent(models.Model):
+    """Represents SchoolEvent."""
     EVENT_TYPE_CHOICES = [
         ('holiday', 'Holiday'),
         ('activity', 'Activity'),
@@ -211,10 +242,12 @@ class SchoolEvent(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} ({self.event_type}) - {self.start_date}"
 
 
 class Assignment(models.Model):
+    """Represents Assignment."""
     title = models.CharField(max_length=200)
     description = models.TextField()
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')
@@ -224,10 +257,12 @@ class Assignment(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} - {self.subject.name} ({self.assigned_class.name})"
 
 
 class WeeklyMessage(models.Model):
+    """Represents WeeklyMessage."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='weekly_messages')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='weekly_messages')
@@ -241,10 +276,12 @@ class WeeklyMessage(models.Model):
     academic_term = models.CharField(max_length=50)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.subject.name} - {self.student.user.first_name} {self.student.user.last_name} (Week {self.week_number})"
 
 
 class Attendance(models.Model):
+    """Represents Attendance."""
     STATUS_CHOICES = [
         ('present', 'Present'),
         ('absent', 'Absent'),
@@ -260,9 +297,11 @@ class Attendance(models.Model):
     date_recorded = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         unique_together = ('student', 'date')
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.first_name} {self.student.user.last_name} - {self.date} ({self.status})"
 
 
@@ -278,17 +317,21 @@ class ParentTeacherMessage(models.Model):
     date_sent = models.DateTimeField(auto_now_add=True)
     
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_sent']
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"From {self.sender.first_name} to {self.recipient.first_name} - {self.date_sent.strftime('%Y-%m-%d %H:%M')}"
 
 
 def homework_file_path(instance, filename):
+    """Execute homework file path."""
     return f'homework/{instance.subject.code}/{filename}'
 
 
 class Homework(models.Model):
+    """Represents Homework."""
     title = models.CharField(max_length=200)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='homework')
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='homework')
@@ -299,13 +342,16 @@ class Homework(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_created']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.subject.name} Homework - {self.title} ({self.assigned_class.name})"
 
 
 def submission_file_path(instance, filename):
+    """Execute submission file path."""
     return f'submissions/{instance.assignment.subject.code}/{filename}'
 
 
@@ -327,10 +373,12 @@ class AssignmentSubmission(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
 
     class Meta:
+        """Represents Meta."""
         unique_together = ('assignment', 'student')
         ordering = ['-submitted_at']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} → {self.assignment.title}"
 
 
@@ -352,13 +400,16 @@ class PromotionRecord(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, blank=True)
 
     class Meta:
+        """Represents Meta."""
         unique_together = ('student', 'academic_year')
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name}: {self.from_class} -> {self.to_class or 'Graduated'} ({self.action})"
 
 
 class Activity(models.Model):
+    """Represents Activity."""
     ACTIVITY_TYPES = [
         ('sport', 'Sport'),
         ('club', 'Club'),
@@ -378,14 +429,17 @@ class Activity(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         verbose_name_plural = "Activities"
         ordering = ['name']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.name} ({self.get_activity_type_display()})"
 
 
 class ActivityEnrollment(models.Model):
+    """Represents ActivityEnrollment."""
     ROLE_CHOICES = [
         ('member', 'Member'),
         ('captain', 'Captain'),
@@ -398,13 +452,16 @@ class ActivityEnrollment(models.Model):
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        """Represents Meta."""
         unique_together = ('student', 'activity')
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.activity.name} ({self.role})"
 
 
 class ActivityEvent(models.Model):
+    """Represents ActivityEvent."""
     EVENT_TYPES = [
         ('practice', 'Practice'),
         ('match', 'Match'),
@@ -423,13 +480,16 @@ class ActivityEvent(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-event_date']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.activity.name} - {self.title} ({self.event_date.strftime('%Y-%m-%d')})"
 
 
 class Accolade(models.Model):
+    """Represents Accolade."""
     CATEGORY_CHOICES = [
         ('academic', 'Academic'),
         ('sports', 'Sports'),
@@ -446,10 +506,12 @@ class Accolade(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='accolades')
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.name} ({self.category})"
 
 
 class StudentAccolade(models.Model):
+    """Represents StudentAccolade."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='accolades')
     accolade = models.ForeignKey(Accolade, on_delete=models.CASCADE, related_name='awards')
     awarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
@@ -459,13 +521,16 @@ class StudentAccolade(models.Model):
     academic_year = models.CharField(max_length=20, blank=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_awarded']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.accolade.name}"
 
 
 class ConferenceSlot(models.Model):
+    """Represents ConferenceSlot."""
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='conference_slots')
     date = models.DateField()
     start_time = models.TimeField()
@@ -474,14 +539,17 @@ class ConferenceSlot(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['date', 'start_time']
         unique_together = ('teacher', 'date', 'start_time')
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.teacher.user.full_name} - {self.date} {self.start_time}-{self.end_time}"
 
 
 class ConferenceBooking(models.Model):
+    """Represents ConferenceBooking."""
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
@@ -497,13 +565,16 @@ class ConferenceBooking(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_booked']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.parent.user.full_name} -> {self.slot.teacher.user.full_name} ({self.slot.date})"
 
 
 class DisciplinaryRecord(models.Model):
+    """Represents DisciplinaryRecord."""
     SEVERITY_CHOICES = [
         ('minor', 'Minor'),
         ('major', 'Major'),
@@ -523,13 +594,16 @@ class DisciplinaryRecord(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_of_incident']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.incident_type} ({self.severity})"
 
 
 class HealthRecord(models.Model):
+    """Represents HealthRecord."""
     BLOOD_TYPES = [
         ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
         ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-'),
@@ -548,10 +622,12 @@ class HealthRecord(models.Model):
     last_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"Health Record - {self.student.user.full_name}"
 
 
 class ClinicVisit(models.Model):
+    """Represents ClinicVisit."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='clinic_visits')
     visit_date = models.DateTimeField(auto_now_add=True)
     complaint = models.TextField()
@@ -564,7 +640,9 @@ class ClinicVisit(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-visit_date']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.visit_date.strftime('%Y-%m-%d')}"

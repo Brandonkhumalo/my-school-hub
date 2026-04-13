@@ -6,18 +6,22 @@ from datetime import date
 
 
 class FeeTypeSerializer(serializers.ModelSerializer):
+    """Represents FeeTypeSerializer."""
     class Meta:
+        """Represents Meta."""
         model = FeeType
         fields = '__all__'
 
 
 class StudentFeeSerializer(serializers.ModelSerializer):
+    """Represents StudentFeeSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     fee_type_name = serializers.CharField(source='fee_type.name', read_only=True)
     balance = serializers.ReadOnlyField()
 
     class Meta:
+        """Represents Meta."""
         model = StudentFee
         fields = [
             'id', 'student', 'student_name', 'student_number', 'fee_type', 'fee_type_name',
@@ -27,12 +31,14 @@ class StudentFeeSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    """Represents PaymentSerializer."""
     student_name = serializers.CharField(source='student_fee.student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student_fee.student.user.student_number', read_only=True)
     fee_type_name = serializers.CharField(source='student_fee.fee_type.name', read_only=True)
     processed_by_name = serializers.CharField(source='processed_by.full_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Payment
         fields = [
             'id', 'student_fee', 'student_name', 'student_number', 'fee_type_name',
@@ -42,17 +48,20 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         # Set processed_by from request user if not provided
+        """Create and return a new instance."""
         if 'processed_by' not in validated_data:
             validated_data['processed_by'] = self.context['request'].user
         return super().create(validated_data)
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    """Represents InvoiceSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     balance = serializers.ReadOnlyField()
 
     class Meta:
+        """Represents Meta."""
         model = Invoice
         fields = [
             'id', 'student', 'student_name', 'student_number', 'invoice_number',
@@ -62,10 +71,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
 
 class FinancialReportSerializer(serializers.ModelSerializer):
+    """Represents FinancialReportSerializer."""
     generated_by_name = serializers.CharField(source='generated_by.full_name', read_only=True)
     net_profit = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = FinancialReport
         fields = [
             'id', 'title', 'report_type', 'academic_year', 'academic_term',
@@ -74,15 +85,19 @@ class FinancialReportSerializer(serializers.ModelSerializer):
         ]
 
     def get_net_profit(self, obj):
+        """Return net profit."""
         return obj.total_revenue - obj.total_expenses
 
 
 class CreatePaymentSerializer(serializers.ModelSerializer):
+    """Represents CreatePaymentSerializer."""
     class Meta:
+        """Represents Meta."""
         model = Payment
         fields = ['student_fee', 'amount', 'payment_method', 'transaction_id', 'notes']
 
     def validate(self, attrs):
+        """Validate incoming data."""
         student_fee = attrs['student_fee']
         amount = attrs['amount']
         
@@ -95,6 +110,7 @@ class CreatePaymentSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        """Create and return a new instance."""
         payment = super().create(validated_data)
         
         # Update student fee balance
@@ -112,6 +128,7 @@ class CreatePaymentSerializer(serializers.ModelSerializer):
 
 
 class StudentFinancialSummarySerializer(serializers.Serializer):
+    """Represents StudentFinancialSummarySerializer."""
     student_id = serializers.IntegerField()
     student_name = serializers.CharField()
     student_number = serializers.CharField()
@@ -124,10 +141,12 @@ class StudentFinancialSummarySerializer(serializers.Serializer):
 
 
 class SchoolFeesSerializer(serializers.ModelSerializer):
+    """Represents SchoolFeesSerializer."""
     total_fee = serializers.ReadOnlyField()
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = SchoolFees
         fields = [
             'id', 'grade_level', 'grade_name', 'tuition_fee', 'levy_fee',
@@ -139,11 +158,13 @@ class SchoolFeesSerializer(serializers.ModelSerializer):
 
 
 class AdditionalFeeSerializer(serializers.ModelSerializer):
+    """Represents AdditionalFeeSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     class_name = serializers.CharField(source='student_class.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = AdditionalFee
         fields = [
             'id', 'student', 'student_name', 'student_class', 'class_name',
@@ -154,9 +175,11 @@ class AdditionalFeeSerializer(serializers.ModelSerializer):
 
 
 class PaymentTransactionSerializer(serializers.ModelSerializer):
+    """Represents PaymentTransactionSerializer."""
     processed_by_name = serializers.CharField(source='processed_by.full_name', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = PaymentTransaction
         fields = [
             'id', 'payment_record', 'amount', 'payment_method', 
@@ -167,6 +190,7 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
 
 
 class StudentPaymentRecordSerializer(serializers.ModelSerializer):
+    """Represents StudentPaymentRecordSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     class_name = serializers.CharField(source='student.student_class.name', read_only=True)
@@ -179,6 +203,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
     additional_fees_list = serializers.SerializerMethodField()
     
     def get_additional_fees_total(self, obj):
+        """Return additional fees total."""
         from django.db.models import Q
         additional_fees = AdditionalFee.objects.filter(
             school=obj.school,
@@ -187,16 +212,20 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
         return sum(float(f.amount) for f in additional_fees)
     
     def get_total_amount_due(self, obj):
+        """Return total amount due."""
         return float(obj.total_amount_due) + self.get_additional_fees_total(obj)
     
     def get_balance(self, obj):
+        """Return balance."""
         total = self.get_total_amount_due(obj)
         return total - float(obj.amount_paid)
     
     def get_is_fully_paid(self, obj):
+        """Return is fully paid."""
         return self.get_balance(obj) <= 0
     
     def get_additional_fees_list(self, obj):
+        """Return additional fees list."""
         from django.db.models import Q
         additional_fees = AdditionalFee.objects.filter(
             school=obj.school,
@@ -205,6 +234,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
         return [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
     
     class Meta:
+        """Represents Meta."""
         model = StudentPaymentRecord
         fields = [
             'id', 'student', 'student_name', 'student_number', 'class_name', 'school',
@@ -220,7 +250,9 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
 
 
 class CreatePaymentRecordSerializer(serializers.ModelSerializer):
+    """Represents CreatePaymentRecordSerializer."""
     class Meta:
+        """Represents Meta."""
         model = StudentPaymentRecord
         fields = [
             'student', 'payment_type', 'payment_plan', 'description',
@@ -230,6 +262,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
         ]
     
     def validate(self, attrs):
+        """Validate incoming data."""
         amount_paid = attrs.get('amount_paid', 0)
         total_due = attrs['total_amount_due']
         
@@ -241,6 +274,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
+        """Create and return a new instance."""
         user = self.context['request'].user
         validated_data['recorded_by'] = user
         validated_data['school'] = user.school
@@ -271,6 +305,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
         return payment_record
     
     def _create_invoice(self, payment_record, amount, user):
+        """Execute create invoice."""
         invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
         Invoice.objects.create(
             student=payment_record.student,
@@ -286,6 +321,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
 
 
 class AddPaymentSerializer(serializers.Serializer):
+    """Represents AddPaymentSerializer."""
     payment_record_id = serializers.IntegerField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     payment_method = serializers.ChoiceField(choices=StudentPaymentRecord.PAYMENT_METHOD_CHOICES)
@@ -294,6 +330,7 @@ class AddPaymentSerializer(serializers.Serializer):
     next_payment_due = serializers.DateField(required=False, allow_null=True)
     
     def validate(self, attrs):
+        """Validate incoming data."""
         payment_record_id = attrs['payment_record_id']
         amount = attrs['amount']
         
@@ -312,6 +349,7 @@ class AddPaymentSerializer(serializers.Serializer):
         return attrs
     
     def create(self, validated_data):
+        """Create and return a new instance."""
         user = self.context['request'].user
         payment_record = validated_data['payment_record']
         amount = validated_data['amount']
@@ -353,6 +391,7 @@ class AddPaymentSerializer(serializers.Serializer):
 
 
 class ClassFeesReportSerializer(serializers.Serializer):
+    """Represents ClassFeesReportSerializer."""
     class_id = serializers.IntegerField()
     class_name = serializers.CharField()
     total_students = serializers.IntegerField()
@@ -366,6 +405,7 @@ class ClassFeesReportSerializer(serializers.Serializer):
 
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
+    """Represents InvoiceDetailSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     class_name = serializers.SerializerMethodField()
@@ -377,6 +417,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     payment_details = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Invoice
         fields = [
             'id', 'student', 'student_name', 'student_number', 'class_name',
@@ -387,11 +428,13 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
         ]
     
     def get_class_name(self, obj):
+        """Return class name."""
         if obj.student and obj.student.student_class:
             return obj.student.student_class.name
         return ''
     
     def get_payment_details(self, obj):
+        """Return payment details."""
         if obj.payment_record:
             return {
                 'payment_type': obj.payment_record.get_payment_type_display(),

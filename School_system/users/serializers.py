@@ -9,7 +9,9 @@ import string
 
 
 class SchoolSerializer(serializers.ModelSerializer):
+    """Represents SchoolSerializer."""
     class Meta:
+        """Represents Meta."""
         model = School
         fields = [
             'id', 'name', 'code', 'school_type', 'curriculum',
@@ -40,6 +42,7 @@ class SchoolRegistrationSerializer(serializers.Serializer):
         return ''.join(secrets.choice(chars) for _ in range(length))
     
     def create(self, validated_data):
+        """Create and return a new instance."""
         school_code = School.generate_school_code()
         
         school = School.objects.create(
@@ -75,10 +78,12 @@ class SchoolRegistrationSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """Represents UserSerializer."""
     school_name = serializers.SerializerMethodField()
     school_code = serializers.SerializerMethodField()
     
     class Meta:
+        """Represents Meta."""
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
@@ -93,16 +98,20 @@ class UserSerializer(serializers.ModelSerializer):
         }
     
     def get_school_name(self, obj):
+        """Return school name."""
         return obj.school.name if obj.school else None
     
     def get_school_code(self, obj):
+        """Return school code."""
         return obj.school.code if obj.school else None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
+    """Represents UserRegistrationSerializer."""
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = CustomUser
         fields = [
             'username', 'email', 'password', 'confirm_password', 
@@ -110,6 +119,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        """Validate incoming data."""
         if attrs['password'] != attrs['confirm_password']:
             raise serializers.ValidationError("Passwords don't match.")
         
@@ -125,15 +135,18 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return attrs
 
     def generate_student_number(self):
+        """Execute generate student number."""
         while True:
             number = str(random.randint(100000, 999999))  # 6-digit number
             if not CustomUser.objects.filter(student_number=number).exists():
                 return number
 
     def generate_whatsapp_pin(self):
+        """Execute generate whatsapp pin."""
         return str(random.randint(1000, 9999))  # 4-digit PIN
 
     def create(self, validated_data):
+        """Create and return a new instance."""
         validated_data.pop('confirm_password')
 
         role = validated_data.get('role')
@@ -155,10 +168,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
     
 class LoginSerializer(serializers.Serializer):
+    """Represents LoginSerializer."""
     identifier = serializers.CharField()  # email or student_number
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        """Validate incoming data."""
         identifier = attrs.get('identifier')
         password = attrs.get('password')
 
@@ -183,10 +198,12 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 class WhatsAppPinVerificationSerializer(serializers.Serializer):
+    """Represents WhatsAppPinVerificationSerializer."""
     phone_number = serializers.CharField()
     pin = serializers.CharField(max_length=6)
 
     def validate(self, attrs):
+        """Validate incoming data."""
         phone_number = attrs.get('phone_number')
         pin = attrs.get('pin')
 
@@ -202,21 +219,25 @@ class WhatsAppPinVerificationSerializer(serializers.Serializer):
 
 
 class ChangePasswordSerializer(serializers.Serializer):
+    """Represents ChangePasswordSerializer."""
     old_password = serializers.CharField()
     new_password = serializers.CharField(min_length=8)
     confirm_password = serializers.CharField()
 
     def validate(self, attrs):
+        """Validate incoming data."""
         if attrs['new_password'] != attrs['confirm_password']:
             raise serializers.ValidationError("New passwords don't match.")
         return attrs
 
 
 class SetWhatsAppPinSerializer(serializers.Serializer):
+    """Represents SetWhatsAppPinSerializer."""
     pin = serializers.CharField(max_length=6, min_length=4)
     confirm_pin = serializers.CharField(max_length=6, min_length=4)
 
     def validate(self, attrs):
+        """Validate incoming data."""
         if attrs['pin'] != attrs['confirm_pin']:
             raise serializers.ValidationError("PINs don't match.")
         if not attrs['pin'].isdigit():
@@ -225,9 +246,11 @@ class SetWhatsAppPinSerializer(serializers.Serializer):
 
 
 class SchoolSettingsSerializer(serializers.ModelSerializer):
+    """Represents SchoolSettingsSerializer."""
     school_name = serializers.CharField(source='school.name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = SchoolSettings
         fields = [
             'id', 'school_name', 'current_academic_year', 'current_term',
@@ -243,15 +266,18 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
 
 
 class ReportCardConfigSerializer(serializers.ModelSerializer):
+    """Represents ReportCardConfigSerializer."""
     logo_url = serializers.SerializerMethodField()
     stamp_url = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = ReportCardConfig
         exclude = ['school']
         read_only_fields = ['id']
 
     def get_logo_url(self, obj):
+        """Return logo url."""
         if obj.logo:
             request = self.context.get('request')
             if request:
@@ -260,6 +286,7 @@ class ReportCardConfigSerializer(serializers.ModelSerializer):
         return None
 
     def get_stamp_url(self, obj):
+        """Return stamp url."""
         if obj.stamp_image:
             request = self.context.get('request')
             if request:

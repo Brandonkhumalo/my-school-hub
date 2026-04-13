@@ -5,6 +5,7 @@ from users.models import TenantAwareManager
 
 
 class FeeType(models.Model):
+    """Represents FeeType."""
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -14,10 +15,12 @@ class FeeType(models.Model):
     objects = TenantAwareManager()
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.name} - ${self.amount}"
 
 
 class StudentFee(models.Model):
+    """Represents StudentFee."""
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='fees', db_index=True)
     fee_type = models.ForeignKey(FeeType, on_delete=models.CASCADE, db_index=True)
     amount_due = models.DecimalField(max_digits=10, decimal_places=2)
@@ -28,14 +31,17 @@ class StudentFee(models.Model):
     is_paid = models.BooleanField(default=False, db_index=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.fee_type.name}"
     
     @property
     def balance(self):
+        """Execute balance."""
         return self.amount_due - self.amount_paid
 
 
 class Payment(models.Model):
+    """Represents Payment."""
     PAYMENT_METHOD_CHOICES = [
         ('cash', 'Cash'),
         ('bank_transfer', 'Bank Transfer'),
@@ -61,10 +67,12 @@ class Payment(models.Model):
     notes = models.TextField(blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student_fee.student.user.full_name} - ${self.amount} ({self.payment_status})"
 
 
 class Invoice(models.Model):
+    """Represents Invoice."""
     objects = TenantAwareManager()
 
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='invoices')
@@ -79,14 +87,17 @@ class Invoice(models.Model):
     payment_record = models.ForeignKey('StudentPaymentRecord', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"Invoice {self.invoice_number} - {self.student.user.full_name}"
     
     @property
     def balance(self):
+        """Execute balance."""
         return self.total_amount - self.amount_paid
 
 
 class StudentPaymentRecord(models.Model):
+    """Represents StudentPaymentRecord."""
     PAYMENT_TYPE_CHOICES = [
         ('school_fees', 'School Fees'),
         ('other', 'Other Payment'),
@@ -142,21 +153,26 @@ class StudentPaymentRecord(models.Model):
     notes = models.TextField(blank=True)
     
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_created']
     
     @property
     def balance(self):
+        """Execute balance."""
         return self.total_amount_due - self.amount_paid
     
     @property
     def is_fully_paid(self):
+        """Check whether fully paid."""
         return self.amount_paid >= self.total_amount_due
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.payment_type} ({self.payment_status})"
 
 
 class PaymentTransaction(models.Model):
+    """Represents PaymentTransaction."""
     PAYMENT_METHOD_CHOICES = [
         ('cash', 'Cash'),
         ('bank_transfer', 'Bank Transfer'),
@@ -176,10 +192,12 @@ class PaymentTransaction(models.Model):
     notes = models.TextField(blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.payment_record.student.user.full_name} - {self.amount}"
 
 
 class FinancialReport(models.Model):
+    """Represents FinancialReport."""
     title = models.CharField(max_length=200)
     report_type = models.CharField(max_length=50)  # monthly, quarterly, annual
     academic_year = models.CharField(max_length=20)
@@ -191,10 +209,12 @@ class FinancialReport(models.Model):
     file_path = models.CharField(max_length=500, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} - {self.report_type}"
 
 
 class SchoolFees(models.Model):
+    """Represents SchoolFees."""
     objects = TenantAwareManager()
 
     TERM_CHOICES = [
@@ -219,14 +239,17 @@ class SchoolFees(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     
     class Meta:
+        """Represents Meta."""
         unique_together = ('school', 'grade_level', 'academic_year', 'academic_term')
         verbose_name_plural = "School Fees"
     
     @property
     def total_fee(self):
+        """Execute total fee."""
         return self.tuition_fee + self.levy_fee + self.sports_fee + self.computer_fee + self.other_fees
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.grade_name} - {self.academic_term} {self.academic_year}: {self.currency}{self.total_fee}"
 
 
@@ -248,8 +271,10 @@ class AdditionalFee(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     
     class Meta:
+        """Represents Meta."""
         ordering = ['-created_at']
     
     def __str__(self):
+        """Return a human-readable string representation."""
         target = self.student.user.full_name if self.student else (self.student_class.name if self.student_class else 'All Students')
         return f"{self.fee_name} - {self.currency}{self.amount} ({target})"

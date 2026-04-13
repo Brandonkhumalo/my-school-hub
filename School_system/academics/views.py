@@ -28,26 +28,31 @@ from .serializers import (
 
 # Subject Views
 class SubjectListCreateView(generics.ListCreateAPIView):
+    """Represents SubjectListCreateView."""
     queryset = Subject.objects.all()
     serializer_class = SubjectSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
         return Subject.objects.none()
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(school=self.request.user.school)
 
 
 class SubjectDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents SubjectDetailView."""
     queryset = Subject.objects.all()
     serializer_class = SubjectSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
@@ -56,11 +61,13 @@ class SubjectDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Class Views
 class ClassListCreateView(generics.ListCreateAPIView):
+    """Represents ClassListCreateView."""
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Class.objects.filter(school=user.school).select_related('class_teacher').annotate(
@@ -76,15 +83,18 @@ class ClassListCreateView(generics.ListCreateAPIView):
         return queryset
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(school=self.request.user.school)
 
 
 class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents ClassDetailView."""
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Class.objects.filter(school=user.school).select_related('class_teacher').annotate(
@@ -95,15 +105,18 @@ class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Student Views
 class StudentListView(generics.ListCreateAPIView):
+    """Represents StudentListView."""
     queryset = Student.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreateStudentSerializer
         return StudentSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Student.objects.filter(user__school=user.school).select_related(
@@ -118,11 +131,13 @@ class StudentListView(generics.ListCreateAPIView):
 
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents StudentDetailView."""
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Student.objects.filter(user__school=user.school).select_related(
@@ -134,6 +149,7 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def student_performance_view(request, student_id):
+    """Execute student performance view."""
     try:
         student = Student.objects.get(id=student_id)
         
@@ -198,15 +214,18 @@ def student_performance_view(request, student_id):
 
 # Teacher Views
 class TeacherListView(generics.ListCreateAPIView):
+    """Represents TeacherListView."""
     queryset = Teacher.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreateTeacherSerializer
         return TeacherSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught')
@@ -215,15 +234,18 @@ class TeacherListView(generics.ListCreateAPIView):
 
 # Parent Views
 class ParentListView(generics.ListCreateAPIView):
+    """Represents ParentListView."""
     queryset = Parent.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreateParentSerializer
         return ParentSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Parent.objects.filter(
@@ -234,15 +256,18 @@ class ParentListView(generics.ListCreateAPIView):
 
 # Result Views
 class ResultListCreateView(generics.ListCreateAPIView):
+    """Represents ResultListCreateView."""
     queryset = Result.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreateResultSerializer
         return ResultSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Result.objects.filter(student__user__school=user.school).select_related(
@@ -280,6 +305,7 @@ class ResultListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_recorded')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         result = serializer.save()
         # Notify parents that a result has been posted for their child
         try:
@@ -311,11 +337,13 @@ class ResultListCreateView(generics.ListCreateAPIView):
 
 
 class ResultDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents ResultDetailView."""
     queryset = Result.objects.all()
     serializer_class = ResultSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Result.objects.filter(student__user__school=user.school).select_related(
@@ -330,11 +358,13 @@ class ResultDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Timetable Views
 class TimetableListView(generics.ListAPIView):
+    """Represents TimetableListView."""
     queryset = Timetable.objects.all()
     serializer_class = TimetableSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Timetable.objects.filter(class_assigned__school=user.school).select_related(
@@ -364,11 +394,13 @@ class TimetableListView(generics.ListAPIView):
 
 # Announcement Views
 class AnnouncementListCreateView(generics.ListCreateAPIView):
+    """Represents AnnouncementListCreateView."""
     queryset = Announcement.objects.all()
     serializer_class = AnnouncementSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Announcement.objects.filter(
@@ -385,6 +417,7 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_posted')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         announcement = serializer.save(author=self.request.user)
         # Notify parents if target_audience is 'all' or 'parent'
         if announcement.target_audience not in ('all', 'parent'):
@@ -428,11 +461,13 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
 
 # Complaint Views
 class ComplaintListCreateView(generics.ListCreateAPIView):
+    """Represents ComplaintListCreateView."""
     queryset = Complaint.objects.all()
     serializer_class = ComplaintSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Complaint.objects.filter(student__user__school=user.school).select_related(
@@ -452,15 +487,18 @@ class ComplaintListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_submitted')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(submitted_by=self.request.user)
 
 
 class ComplaintDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents ComplaintDetailView."""
     queryset = Complaint.objects.all()
     serializer_class = ComplaintSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return Complaint.objects.filter(student__user__school=user.school)
@@ -469,11 +507,13 @@ class ComplaintDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Suspension Views
 class SuspensionListCreateView(generics.ListCreateAPIView):
+    """Represents SuspensionListCreateView."""
     queryset = Suspension.objects.all()
     serializer_class = SuspensionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = Suspension.objects.filter(student__user__school=user.school).select_related(
@@ -493,6 +533,7 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_created')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         if self.request.user.role == 'teacher':
             serializer.save(teacher=self.request.user.teacher)
         else:
@@ -883,6 +924,7 @@ def _build_report_card_pdf(student, results, school, year, term):
 
     # ── Border / page decorator ─────────────────────────────────────
     def _page_decorator(canvas, doc):
+        """Execute page decorator."""
         canvas.saveState()
         w, h = pagesize
         # Watermark

@@ -264,6 +264,7 @@ func buildReportCardPDF(schoolName string, stu studentInfo, results []resultRow,
 	return buf.Bytes(), nil
 }
 
+// calcGrade converts a percentage into the letter grade used on report cards.
 func calcGrade(pct float64) string {
 	switch {
 	case pct >= 80:

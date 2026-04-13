@@ -20,10 +20,12 @@ import (
 // reportCardRe matches /api/v1/academics/students/{id}/report-card/
 var reportCardRe = regexp.MustCompile(`^/api/v1/academics/students/\d+/report-card/?$`)
 
+// isReportCardPath checks if a URL should be routed to go-services for PDF generation.
 func isReportCardPath(path string) bool {
 	return reportCardRe.MatchString(path)
 }
 
+// main boots the gateway, wires middleware + upstream routing, and serves HTTP traffic.
 func main() {
 	// Load .env (ignore error — env vars may come from Docker/EC2)
 	_ = godotenv.Load()
@@ -150,6 +152,7 @@ type Config struct {
 	CORSOrigins       []string
 }
 
+// LoadConfig reads required/optional environment variables and returns normalized config.
 func LoadConfig() Config {
 	port := getEnv("GATEWAY_PORT", "8080")
 	secret := getEnv("SECRET_KEY", "")
@@ -180,6 +183,7 @@ func LoadConfig() Config {
 	}
 }
 
+// getEnv reads an env var with fallback when not set.
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -199,6 +203,7 @@ var (
 	visitorsMu sync.Mutex
 )
 
+// RateLimitMiddleware applies a per-IP token-bucket limiter in memory.
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	// Clean up stale visitors every minute
 	go func() {
@@ -249,6 +254,7 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 
 // ─── CORS Middleware ─────────────────────────────────────────
 
+// CORSMiddleware sets CORS headers for configured origins and handles preflight requests.
 func CORSMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
 	originSet := make(map[string]bool, len(allowedOrigins))
 	for _, o := range allowedOrigins {

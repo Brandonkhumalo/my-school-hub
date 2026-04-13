@@ -43,6 +43,7 @@ type AuditLogger struct {
 	stopCh   chan struct{}
 }
 
+// NewAuditLogger creates a buffered logger and starts periodic background flushing.
 func NewAuditLogger(pool *pgxpool.Pool, maxSize int, interval time.Duration) *AuditLogger {
 	al := &AuditLogger{
 		pool:     pool,
@@ -55,6 +56,7 @@ func NewAuditLogger(pool *pgxpool.Pool, maxSize int, interval time.Duration) *Au
 	return al
 }
 
+// Log appends a new audit entry and triggers async flush when buffer is full.
 func (al *AuditLogger) Log(entry AuditEntry) {
 	al.mu.Lock()
 	al.buffer = append(al.buffer, entry)
@@ -66,6 +68,7 @@ func (al *AuditLogger) Log(entry AuditEntry) {
 	}
 }
 
+// Flush swaps the current buffer and persists it to DB outside the lock.
 func (al *AuditLogger) Flush() {
 	al.mu.Lock()
 	if len(al.buffer) == 0 {
@@ -79,6 +82,7 @@ func (al *AuditLogger) Flush() {
 	al.writeToDB(entries)
 }
 
+// flushLoop periodically flushes pending audit entries until stop is signaled.
 func (al *AuditLogger) flushLoop() {
 	ticker := time.NewTicker(al.interval)
 	defer ticker.Stop()
@@ -92,6 +96,7 @@ func (al *AuditLogger) flushLoop() {
 	}
 }
 
+// writeToDB inserts a batch of entries using one transaction for lower overhead.
 func (al *AuditLogger) writeToDB(entries []AuditEntry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -124,6 +129,7 @@ func (al *AuditLogger) writeToDB(entries []AuditEntry) {
 	}
 }
 
+// nilIfZero converts zero foreign-key values to NULL for optional DB columns.
 func nilIfZero(v int64) interface{} {
 	if v == 0 {
 		return nil
@@ -142,6 +148,7 @@ var auditMethods = map[string]string{
 
 var skipPaths = []string{"/django-admin/", "/api/v1/schema/", "/api/v1/docs/", "/media/", "/static/"}
 
+// AuditMiddleware records authenticated write operations after response completion.
 func AuditMiddleware(next http.Handler, al *AuditLogger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		action, shouldAudit := auditMethods[r.Method]
@@ -234,6 +241,7 @@ type statusRecorder struct {
 	statusCode int
 }
 
+// WriteHeader captures status code for audit logging before forwarding the call.
 func (sr *statusRecorder) WriteHeader(code int) {
 	sr.statusCode = code
 	sr.ResponseWriter.WriteHeader(code)

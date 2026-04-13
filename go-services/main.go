@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// main boots go-services and registers payment, reporting, and messaging endpoints.
 func main() {
 	_ = godotenv.Load()
 

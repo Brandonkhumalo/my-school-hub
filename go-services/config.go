@@ -23,6 +23,7 @@ type Config struct {
 	WhatsAppAccessToken string
 }
 
+// LoadConfig reads environment variables and applies defaults for optional fields.
 func LoadConfig() Config {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -41,6 +42,7 @@ func LoadConfig() Config {
 	}
 }
 
+// getEnv reads an env var with fallback when not set.
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

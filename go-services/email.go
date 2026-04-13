@@ -286,6 +286,7 @@ func renderEmailTemplate(template string, data map[string]string) string {
 	return wrapEmailHTML(title, preview, body, schoolName, year)
 }
 
+// buildPaymentReceivedBody renders the payment confirmation email body section.
 func buildPaymentReceivedBody(d map[string]string) string {
 	today := time.Now().Format("02 January 2006")
 	return fmt.Sprintf(`
@@ -309,6 +310,7 @@ func buildPaymentReceivedBody(d map[string]string) string {
 	)
 }
 
+// buildFeeAssignedBody renders a fee-assigned notification body.
 func buildFeeAssignedBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<div style="background:#f59e0b15;border:1px solid #f59e0b40;border-radius:8px;padding:14px 18px;margin:0 0 20px;">
@@ -330,6 +332,7 @@ func buildFeeAssignedBody(d map[string]string) string {
 	)
 }
 
+// buildParentLinkApprovedBody renders parent-link approval content.
 func buildParentLinkApprovedBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<div style="background:#dcfce715;border:1px solid #22c55e40;border-radius:8px;padding:14px 18px;margin:0 0 20px;">
@@ -348,6 +351,7 @@ func buildParentLinkApprovedBody(d map[string]string) string {
 	)
 }
 
+// buildResultEnteredBody renders an assessment result notification.
 func buildResultEnteredBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<h2 style="margin:0 0 6px;font-size:22px;font-weight:900;color:%s;">New Result Posted</h2>
@@ -368,6 +372,7 @@ func buildResultEnteredBody(d map[string]string) string {
 	)
 }
 
+// buildHomeworkBody renders a new-homework notification body.
 func buildHomeworkBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<div style="background:#6366f115;border:1px solid #6366f140;border-radius:8px;padding:14px 18px;margin:0 0 20px;">
@@ -389,6 +394,7 @@ func buildHomeworkBody(d map[string]string) string {
 	)
 }
 
+// buildAnnouncementBody renders school announcement content.
 func buildAnnouncementBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<div style="background:#17255415;border:1px solid #17255440;border-radius:8px;padding:14px 18px;margin:0 0 20px;">
@@ -404,6 +410,7 @@ func buildAnnouncementBody(d map[string]string) string {
 	)
 }
 
+// buildTeacherMessageBody renders direct teacher-to-parent message content.
 func buildTeacherMessageBody(d map[string]string) string {
 	return fmt.Sprintf(`
 		<h2 style="margin:0 0 6px;font-size:22px;font-weight:900;color:%s;">Message from %s</h2>
@@ -436,6 +443,7 @@ func emailInfoTable(heading string, rows [][2]string) string {
 	return sb.String()
 }
 
+// min returns the smaller of two integers (used for safe response-body truncation).
 func min(a, b int) int {
 	if a < b {
 		return a

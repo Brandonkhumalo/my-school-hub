@@ -13,6 +13,7 @@ from .serializers import (
 
 
 def _is_hr_or_admin(user):
+    """Execute is hr or admin."""
     return user.role in ('hr', 'admin', 'superadmin')
 
 
@@ -21,23 +22,28 @@ def _is_hr_or_admin(user):
 # ---------------------------------------------------------------
 
 class DepartmentListCreateView(generics.ListCreateAPIView):
+    """Represents DepartmentListCreateView."""
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Department.objects.filter(
             staff_members__user__school=self.request.user.school
         ).distinct()
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save()
 
 
 class DepartmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents DepartmentDetailView."""
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Department.objects.filter(
             staff_members__user__school=self.request.user.school
         ).distinct()
@@ -48,10 +54,12 @@ class DepartmentDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ---------------------------------------------------------------
 
 class StaffListView(generics.ListAPIView):
+    """Represents StaffListView."""
     serializer_class = StaffSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         qs = Staff.objects.filter(user__school=user.school).select_related('user', 'department')
         position = self.request.query_params.get('position')
@@ -86,10 +94,12 @@ def create_staff_view(request):
 
 
 class StaffDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents StaffDetailView."""
     serializer_class = StaffSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Staff.objects.filter(user__school=self.request.user.school).select_related('user', 'department')
 
 
@@ -98,10 +108,12 @@ class StaffDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ---------------------------------------------------------------
 
 class StaffAttendanceListCreateView(generics.ListCreateAPIView):
+    """Represents StaffAttendanceListCreateView."""
     serializer_class = StaffAttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         qs = Attendance.objects.filter(staff__user__school=self.request.user.school).select_related('staff__user')
         date = self.request.query_params.get('date')
         if date:
@@ -113,10 +125,12 @@ class StaffAttendanceListCreateView(generics.ListCreateAPIView):
 
 
 class StaffAttendanceDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents StaffAttendanceDetailView."""
     serializer_class = StaffAttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Attendance.objects.filter(staff__user__school=self.request.user.school)
 
 
@@ -125,10 +139,12 @@ class StaffAttendanceDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ---------------------------------------------------------------
 
 class LeaveListCreateView(generics.ListCreateAPIView):
+    """Represents LeaveListCreateView."""
     serializer_class = LeaveSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         qs = Leave.objects.filter(staff__user__school=user.school).select_related('staff__user', 'approved_by')
 
@@ -146,6 +162,7 @@ class LeaveListCreateView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         try:
             staff = Staff.objects.get(user=self.request.user)
         except Staff.DoesNotExist:
@@ -183,10 +200,12 @@ def review_leave_view(request, leave_id):
 # ---------------------------------------------------------------
 
 class PayrollListCreateView(generics.ListCreateAPIView):
+    """Represents PayrollListCreateView."""
     serializer_class = PayrollSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         qs = Payroll.objects.filter(staff__user__school=self.request.user.school).select_related('staff__user')
         month = self.request.query_params.get('month')
         year = self.request.query_params.get('year')
@@ -198,10 +217,12 @@ class PayrollListCreateView(generics.ListCreateAPIView):
 
 
 class PayrollDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents PayrollDetailView."""
     serializer_class = PayrollSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Payroll.objects.filter(staff__user__school=self.request.user.school)
 
 
@@ -239,24 +260,29 @@ def payroll_summary_view(request):
 # ---------------------------------------------------------------
 
 class MeetingListCreateView(generics.ListCreateAPIView):
+    """Represents MeetingListCreateView."""
     serializer_class = MeetingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         return Meeting.objects.filter(
             organizer__school=user.school
         ).prefetch_related('participants').select_related('organizer')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(organizer=self.request.user)
 
 
 class MeetingDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents MeetingDetailView."""
     serializer_class = MeetingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         return Meeting.objects.filter(organizer__school=self.request.user.school)
 
 

@@ -134,6 +134,7 @@ def _section(heading: str, rows: list[tuple]) -> str:
 
 
 def _cta_button(label: str, url: str = "https://myschoolhub.co.zw") -> str:
+    """Execute cta button."""
     return f"""
       <div style="text-align:center;margin:28px 0 8px;">
         <a href="{url}" style="display:inline-block;background:{GOLD};color:{DARK};
@@ -145,6 +146,7 @@ def _cta_button(label: str, url: str = "https://myschoolhub.co.zw") -> str:
 
 
 def _alert_badge(text: str, colour: str = "#22c55e") -> str:
+    """Execute alert badge."""
     return f"""<div style="background:{colour}15;border:1px solid {colour}40;
                            border-radius:8px;padding:14px 18px;margin:0 0 20px;">
                  <span style="color:{colour};font-weight:700;font-size:13px;">{text}</span>

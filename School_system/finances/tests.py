@@ -35,6 +35,7 @@ from finances.models import (
 # ---------------------------------------------------------------------------
 
 def make_school(name="Finance Test School"):
+    """Execute make school."""
     return School.objects.create(
         name=name,
         code=School.generate_school_code(),
@@ -44,6 +45,7 @@ def make_school(name="Finance Test School"):
 
 
 def make_user(school, username, role="admin", password="testpass123", email=None):
+    """Execute make user."""
     if email is None:
         email = f"{username}@finschool.test"
     return CustomUser.objects.create_user(
@@ -58,6 +60,7 @@ def make_user(school, username, role="admin", password="testpass123", email=None
 
 
 def make_class(school, name="Form 3A", grade_level=3):
+    """Execute make class."""
     return Class.objects.create(
         name=name,
         grade_level=grade_level,
@@ -67,6 +70,7 @@ def make_class(school, name="Form 3A", grade_level=3):
 
 
 def make_student(school, cls, username="fin_student1", student_number="FIN001"):
+    """Execute make student."""
     user = make_user(school, username, role="student")
     user.student_number = student_number
     user.save()
@@ -85,6 +89,7 @@ def get_list(response_data):
 
 
 def make_fee_type(school, name="Tuition Fee", amount=500.00, year="2026"):
+    """Execute make fee type."""
     return FeeType.objects.create(
         name=name,
         amount=Decimal(str(amount)),
@@ -93,6 +98,7 @@ def make_fee_type(school, name="Tuition Fee", amount=500.00, year="2026"):
 
 
 def make_student_fee(student, fee_type, amount_due=500.00, due_date=None, term="Term 1", year="2026"):
+    """Execute make student fee."""
     if due_date is None:
         due_date = datetime.date(2026, 3, 31)
     return StudentFee.objects.create(
@@ -106,6 +112,7 @@ def make_student_fee(student, fee_type, amount_due=500.00, due_date=None, term="
 
 
 def make_payment(student_fee, amount=200.00, method="cash", processed_by=None):
+    """Execute make payment."""
     return Payment.objects.create(
         student_fee=student_fee,
         amount=Decimal(str(amount)),
@@ -121,16 +128,20 @@ def make_payment(student_fee, amount=200.00, method="cash", processed_by=None):
 
 class FeeTypeModelTest(TestCase):
 
+    """Represents FeeTypeModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
 
     def test_fee_type_creation(self):
+        """Test that fee type creation."""
         ft = make_fee_type(self.school)
         self.assertIsNotNone(ft.pk)
         self.assertEqual(ft.name, "Tuition Fee")
         self.assertEqual(ft.amount, Decimal("500.00"))
 
     def test_fee_type_str(self):
+        """Test that fee type str."""
         ft = make_fee_type(self.school, name="Development Levy", amount=100)
         self.assertIn("Development Levy", str(ft))
         self.assertIn("100", str(ft))
@@ -138,32 +149,39 @@ class FeeTypeModelTest(TestCase):
 
 class StudentFeeModelTest(TestCase):
 
+    """Represents StudentFeeModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.cls = make_class(self.school)
         self.student = make_student(self.school, self.cls)
         self.fee_type = make_fee_type(self.school)
 
     def test_student_fee_creation(self):
+        """Test that student fee creation."""
         sf = make_student_fee(self.student, self.fee_type)
         self.assertIsNotNone(sf.pk)
         self.assertFalse(sf.is_paid)
         self.assertEqual(sf.academic_term, "Term 1")
 
     def test_student_fee_balance_property(self):
+        """Test that student fee balance property."""
         sf = make_student_fee(self.student, self.fee_type, amount_due=500.00)
         sf.amount_paid = Decimal("200.00")
         sf.save()
         self.assertEqual(sf.balance, Decimal("300.00"))
 
     def test_student_fee_str(self):
+        """Test that student fee str."""
         sf = make_student_fee(self.student, self.fee_type)
         self.assertIn("Tuition Fee", str(sf))
 
 
 class PaymentModelTest(TestCase):
 
+    """Represents PaymentModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.admin = make_user(self.school, "pay_admin", role="admin")
         self.cls = make_class(self.school)
@@ -172,17 +190,20 @@ class PaymentModelTest(TestCase):
         self.student_fee = make_student_fee(self.student, self.fee_type)
 
     def test_payment_creation(self):
+        """Test that payment creation."""
         payment = make_payment(self.student_fee, amount=250.00, processed_by=self.admin)
         self.assertIsNotNone(payment.pk)
         self.assertEqual(payment.payment_status, "completed")
         self.assertEqual(payment.payment_method, "cash")
 
     def test_payment_str(self):
+        """Test that payment str."""
         payment = make_payment(self.student_fee, amount=100.00)
         self.assertIn("100", str(payment))
         self.assertIn("completed", str(payment))
 
     def test_payment_status_choices(self):
+        """Test that payment status choices."""
         payment = Payment.objects.create(
             student_fee=self.student_fee,
             amount=Decimal("50.00"),
@@ -194,13 +215,16 @@ class PaymentModelTest(TestCase):
 
 class StudentPaymentRecordModelTest(TestCase):
 
+    """Represents StudentPaymentRecordModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.admin = make_user(self.school, "spr_admin", role="admin")
         self.cls = make_class(self.school)
         self.student = make_student(self.school, self.cls, username="spr_student", student_number="SPR001")
 
     def test_student_payment_record_creation(self):
+        """Test that student payment record creation."""
         record = StudentPaymentRecord.objects.create(
             student=self.student,
             school=self.school,
@@ -217,6 +241,7 @@ class StudentPaymentRecordModelTest(TestCase):
         self.assertFalse(record.is_fully_paid)
 
     def test_payment_record_balance_property(self):
+        """Test that payment record balance property."""
         record = StudentPaymentRecord.objects.create(
             student=self.student,
             school=self.school,
@@ -230,6 +255,7 @@ class StudentPaymentRecordModelTest(TestCase):
         self.assertEqual(record.balance, Decimal("200.00"))
 
     def test_payment_record_is_fully_paid(self):
+        """Test that payment record is fully paid."""
         record = StudentPaymentRecord.objects.create(
             student=self.student,
             school=self.school,
@@ -249,7 +275,9 @@ class StudentPaymentRecordModelTest(TestCase):
 
 class StudentFeeAPITest(APITestCase):
 
+    """Represents StudentFeeAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "sfee_admin", role="admin")
@@ -261,16 +289,19 @@ class StudentFeeAPITest(APITestCase):
         self.url = "/api/v1/finances/student-fees/"
 
     def test_list_fees_as_admin_returns_200(self):
+        """Test that list fees as admin returns 200."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_list_fees_as_accountant_returns_200(self):
+        """Test that list fees as accountant returns 200."""
         self.client.force_authenticate(user=self.accountant)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_list_fees_scoped_to_school(self):
+        """Test that list fees scoped to school."""
         other_school = make_school(name="Other School")
         other_cls = make_class(other_school, name="OtherCls")
         other_student = make_student(other_school, other_cls, username="other_stu", student_number="O999")
@@ -283,6 +314,7 @@ class StudentFeeAPITest(APITestCase):
         self.assertNotIn(other_student.pk, student_ids)
 
     def test_filter_fees_by_paid_status(self):
+        """Test that filter fees by paid status."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url, {"is_paid": "false"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -290,6 +322,7 @@ class StudentFeeAPITest(APITestCase):
             self.assertFalse(fee["is_paid"])
 
     def test_list_fees_requires_authentication(self):
+        """Test that list fees requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -300,7 +333,9 @@ class StudentFeeAPITest(APITestCase):
 
 class PaymentRecordAPITest(APITestCase):
 
+    """Represents PaymentRecordAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "pr_admin", role="admin")
@@ -309,6 +344,7 @@ class PaymentRecordAPITest(APITestCase):
         self.url = "/api/v1/finances/payment-records/"
 
     def test_list_payment_records_returns_200(self):
+        """Test that list payment records returns 200."""
         StudentPaymentRecord.objects.create(
             student=self.student,
             school=self.school,
@@ -324,6 +360,7 @@ class PaymentRecordAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_create_payment_record_as_admin_returns_201(self):
+        """Test that create payment record as admin returns 201."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "student": self.student.pk,
@@ -338,6 +375,7 @@ class PaymentRecordAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_list_payment_records_requires_authentication(self):
+        """Test that list payment records requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -348,7 +386,9 @@ class PaymentRecordAPITest(APITestCase):
 
 class PayNowInitiateAPITest(APITestCase):
 
+    """Represents PayNowInitiateAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(
@@ -365,6 +405,7 @@ class PayNowInitiateAPITest(APITestCase):
 
     @patch("finances.paynow_service.initiate_web_payment")
     def test_paynow_web_initiate_success(self, mock_web):
+        """Test that paynow web initiate success."""
         mock_web.return_value = {
             "success": True,
             "redirect_url": "https://paynow.co.zw/pay/abc123",
@@ -384,6 +425,7 @@ class PayNowInitiateAPITest(APITestCase):
 
     @patch("finances.paynow_service.initiate_mobile_payment")
     def test_paynow_ecocash_initiate_success(self, mock_mobile):
+        """Test that paynow ecocash initiate success."""
         mock_mobile.return_value = {
             "success": True,
             "redirect_url": None,
@@ -404,6 +446,7 @@ class PayNowInitiateAPITest(APITestCase):
 
     @patch("finances.paynow_service.initiate_mobile_payment")
     def test_paynow_mobile_requires_mobile_number(self, mock_mobile):
+        """Test that paynow mobile requires mobile number."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "amount": "100.00",
@@ -416,6 +459,7 @@ class PayNowInitiateAPITest(APITestCase):
 
     @patch("finances.paynow_service.initiate_web_payment")
     def test_paynow_rejects_zero_amount(self, mock_web):
+        """Test that paynow rejects zero amount."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "amount": "0",
@@ -426,6 +470,7 @@ class PayNowInitiateAPITest(APITestCase):
 
     @patch("finances.paynow_service.initiate_web_payment")
     def test_paynow_service_failure_returns_502(self, mock_web):
+        """Test that paynow service failure returns 502."""
         mock_web.return_value = {
             "success": False,
             "redirect_url": None,
@@ -440,6 +485,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
 
     def test_paynow_forbidden_for_hr_role(self):
+        """Test that paynow forbidden for hr role."""
         hr = make_user(self.school, "paynow_hr", role="hr")
         self.client.force_authenticate(user=hr)
         response = self.client.post(self.url, {
@@ -449,6 +495,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_paynow_requires_authentication(self):
+        """Test that paynow requires authentication."""
         response = self.client.post(self.url, {
             "amount": "100.00",
             "method": "web",
@@ -462,7 +509,9 @@ class PayNowInitiateAPITest(APITestCase):
 
 class BulkFeeImportAPITest(APITestCase):
 
+    """Represents BulkFeeImportAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "bulk_admin", role="admin")
@@ -485,6 +534,7 @@ class BulkFeeImportAPITest(APITestCase):
         return io.BytesIO(buf.read().encode("utf-8"))
 
     def test_bulk_import_valid_csv_returns_200(self):
+        """Test that bulk import valid csv returns 200."""
         csv_file = self._make_csv([{
             "student_number": "BLK001",
             "fee_type_name": "Tuition",
@@ -503,6 +553,7 @@ class BulkFeeImportAPITest(APITestCase):
         self.assertEqual(len(response.data["errors"]), 0)
 
     def test_bulk_import_as_accountant_returns_200(self):
+        """Test that bulk import as accountant returns 200."""
         csv_file = self._make_csv([{
             "student_number": "BLK001",
             "fee_type_name": "Development Levy",
@@ -519,6 +570,7 @@ class BulkFeeImportAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_bulk_import_with_unknown_student_number_reports_error(self):
+        """Test that bulk import with unknown student number reports error."""
         csv_file = self._make_csv([{
             "student_number": "XXXXXXX",
             "fee_type_name": "Tuition",
@@ -537,11 +589,13 @@ class BulkFeeImportAPITest(APITestCase):
         self.assertGreater(len(response.data["errors"]), 0)
 
     def test_bulk_import_without_file_returns_400(self):
+        """Test that bulk import without file returns 400."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_bulk_import_forbidden_for_teacher(self):
+        """Test that bulk import forbidden for teacher."""
         teacher_user = make_user(self.school, "bulk_teacher", role="teacher")
         self.client.force_authenticate(user=teacher_user)
         csv_file = self._make_csv([])
@@ -553,5 +607,6 @@ class BulkFeeImportAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_bulk_import_requires_authentication(self):
+        """Test that bulk import requires authentication."""
         response = self.client.post(self.url, {}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

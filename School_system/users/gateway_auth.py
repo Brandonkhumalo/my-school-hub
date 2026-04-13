@@ -31,6 +31,7 @@ class GatewayAuthentication(BaseAuthentication):
 
     def authenticate(self, request):
         # If request came through the Go gateway
+        """Execute authenticate."""
         if request.META.get('HTTP_X_GATEWAY_AUTH') == 'true':
             user_id = request.META.get('HTTP_X_USER_ID')
             if not user_id:

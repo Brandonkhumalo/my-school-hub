@@ -45,12 +45,15 @@ def generate_periods_for_class(class_obj):
                       ('10:30', '11:15'), ('11:15', '12:00'), ('14:00', '14:45')] for day in DAYS}
     
     def time_to_minutes(t):
+        """Execute time to minutes."""
         return t.hour * 60 + t.minute
     
     def minutes_to_time_str(mins):
+        """Execute minutes to time str."""
         return f"{mins // 60:02d}:{mins % 60:02d}"
     
     def generate_day_periods(end_time):
+        """Execute generate day periods."""
         periods = []
         current = time_to_minutes(first_start)
         end_mins = time_to_minutes(end_time)
@@ -123,7 +126,9 @@ def generate_periods_for_class(class_obj):
 
 
 class TimetableCSP:
+    """Represents TimetableCSP."""
     def __init__(self, classes, subjects, teachers, rooms, subjects_per_class, periods_per_subject, class_periods):
+        """Initialize instance state."""
         self.classes = classes
         self.subjects = subjects
         self.teachers = teachers
@@ -241,6 +246,7 @@ class TimetableCSP:
         subject_days = self.get_subject_days(class_id, subject_id)
         
         def slot_priority(slot):
+            """Execute slot priority."""
             day, start, end = slot
             day_already_has_subject = 1 if day in subject_days else 0
             return (day_already_has_subject, random.random())

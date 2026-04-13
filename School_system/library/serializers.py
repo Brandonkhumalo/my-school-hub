@@ -3,7 +3,9 @@ from .models import Book, BookLoan
 
 
 class BookSerializer(serializers.ModelSerializer):
+    """Represents BookSerializer."""
     class Meta:
+        """Represents Meta."""
         model = Book
         fields = [
             'id', 'title', 'author', 'isbn', 'category', 'description',
@@ -13,6 +15,7 @@ class BookSerializer(serializers.ModelSerializer):
 
 
 class BookLoanSerializer(serializers.ModelSerializer):
+    """Represents BookLoanSerializer."""
     book_title = serializers.CharField(source='book.title', read_only=True)
     book_author = serializers.CharField(source='book.author', read_only=True)
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
@@ -20,6 +23,7 @@ class BookLoanSerializer(serializers.ModelSerializer):
     issued_by_name = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = BookLoan
         fields = [
             'id', 'book', 'book_title', 'book_author',
@@ -31,6 +35,7 @@ class BookLoanSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'issued_date', 'issued_by', 'issued_by_name']
 
     def get_issued_by_name(self, obj):
+        """Return issued by name."""
         if obj.issued_by:
             return obj.issued_by.full_name
         return ''

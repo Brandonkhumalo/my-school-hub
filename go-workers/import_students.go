@@ -234,6 +234,7 @@ func mapColumns(header []string) map[string]int {
 	return m
 }
 
+// getCol safely extracts a trimmed column value by normalized header name.
 func getCol(record []string, colIdx map[string]int, name string) string {
 	if idx, ok := colIdx[name]; ok && idx < len(record) {
 		return strings.TrimSpace(record[idx])
@@ -241,6 +242,7 @@ func getCol(record []string, colIdx map[string]int, name string) string {
 	return ""
 }
 
+// generateStudentNumber creates a pseudo-random student number like STU123456.
 func generateStudentNumber() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return fmt.Sprintf("STU%06d", r.Intn(999999))
@@ -248,6 +250,7 @@ func generateStudentNumber() string {
 
 // ─── Helpers ────────────────────────────────────────────────
 
+// writeJSON writes a JSON response with status code and proper content type.
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -26,11 +26,13 @@ def _check_rate_limit(request, group='api', rate='10/m'):
 
 
 class UserRegistrationView(generics.CreateAPIView):
+    """Represents UserRegistrationView."""
     queryset = CustomUser.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
 
     def create(self, request, *args, **kwargs):
+        """Create and return a new instance."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -55,6 +57,7 @@ class UserRegistrationView(generics.CreateAPIView):
 @permission_classes([permissions.AllowAny])
 def login_view(request):
     # Rate limit: 5 attempts per minute per IP
+    """Execute login view."""
     if _check_rate_limit(request, group='login', rate='5/m'):
         return Response(
             {'error': 'Too many login attempts. Please wait a minute before trying again.'},
@@ -115,6 +118,7 @@ def login_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def whatsapp_pin_verification(request):
+    """Execute whatsapp pin verification."""
     if _check_rate_limit(request, group='whatsapp_login', rate='5/m'):
         return Response({'error': 'Too many attempts. Please wait.'}, status=429)
 
@@ -134,6 +138,7 @@ def whatsapp_pin_verification(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
+    """Execute logout view."""
     try:
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
@@ -161,6 +166,7 @@ def logout_view(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def profile_view(request):
+    """Execute profile view."""
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
 
@@ -168,6 +174,7 @@ def profile_view(request):
 @api_view(['PUT'])
 @permission_classes([permissions.IsAuthenticated])
 def update_profile_view(request):
+    """Update profile view."""
     serializer = UserSerializer(request.user, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -178,6 +185,7 @@ def update_profile_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def change_password_view(request):
+    """Execute change password view."""
     serializer = ChangePasswordSerializer(data=request.data)
     if serializer.is_valid():
         user = request.user
@@ -196,6 +204,7 @@ def change_password_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def set_whatsapp_pin_view(request):
+    """Set whatsapp pin view."""
     serializer = SetWhatsAppPinSerializer(data=request.data)
     if serializer.is_valid():
         request.user.whatsapp_pin = serializer.validated_data['whatsapp_pin']
@@ -205,11 +214,13 @@ def set_whatsapp_pin_view(request):
 
 
 class UserListView(generics.ListAPIView):
+    """Represents UserListView."""
     queryset = CustomUser.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = CustomUser.objects.filter(school=user.school)
@@ -224,6 +235,7 @@ class UserListView(generics.ListAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
+    """Execute dashboard stats view."""
     from academics.models import Class, Subject, ParentChildLink
     from finances.models import Invoice, StudentPaymentRecord
 
@@ -260,6 +272,7 @@ def dashboard_stats_view(request):
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def delete_user_view(request, user_id):
+    """Delete user view."""
     if request.user.role != 'admin':
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -278,6 +291,7 @@ def delete_user_view(request, user_id):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def register_school(request):
+    """Execute register school."""
     serializer = SchoolRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         result = serializer.save()
@@ -298,6 +312,7 @@ def register_school(request):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def search_schools(request):
+    """Execute search schools."""
     query = request.query_params.get('q', '').strip()
     if len(query) < 2:
         return Response({'error': 'Search query must be at least 2 characters'}, status=status.HTTP_400_BAD_REQUEST)
@@ -312,6 +327,7 @@ def search_schools(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def list_schools(request):
+    """List schools."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     schools = School.objects.all().order_by('-created_at')
@@ -321,6 +337,7 @@ def list_schools(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_school_details(request, school_id):
+    """Return school details."""
     try:
         school = School.objects.get(id=school_id)
         return Response(SchoolSerializer(school).data)

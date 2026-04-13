@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// main boots the bulk-import worker service and exposes CSV import endpoints.
 func main() {
 	_ = godotenv.Load()
 
@@ -64,6 +65,7 @@ func main() {
 	}
 }
 
+// getEnv reads an env var with fallback when not set.
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

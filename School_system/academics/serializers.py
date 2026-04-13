@@ -12,18 +12,22 @@ from django.db import transaction
 from django.utils import timezone
 
 class SubjectSerializer(serializers.ModelSerializer):
+    """Represents SubjectSerializer."""
     teachers = serializers.SerializerMethodField()
     teacher_names = serializers.SerializerMethodField()
     
     class Meta:
+        """Represents Meta."""
         model = Subject
         fields = ['id', 'name', 'code', 'description', 'teachers', 'teacher_names']
     
     def get_teachers(self, obj):
         # prefetch_related('teachers__user') in the view makes this a single query
+        """Return teachers."""
         return [{'id': t.id, 'name': t.user.get_full_name()} for t in obj.teachers.all()]
 
     def get_teacher_names(self, obj):
+        """Return teacher names."""
         teachers = obj.teachers.all()
         if teachers:
             return ', '.join([t.user.get_full_name() for t in teachers])
@@ -31,10 +35,12 @@ class SubjectSerializer(serializers.ModelSerializer):
 
 
 class ClassSerializer(serializers.ModelSerializer):
+    """Represents ClassSerializer."""
     class_teacher_name = serializers.CharField(source='class_teacher.full_name', read_only=True)
     student_count = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Class
         fields = [
             'id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'student_count',
@@ -46,12 +52,14 @@ class ClassSerializer(serializers.ModelSerializer):
     def get_student_count(self, obj):
         # If the view annotated the queryset with student_count, use that value.
         # Otherwise fall back to a direct count (single-object detail views).
+        """Return student count."""
         if hasattr(obj, '_student_count'):
             return obj._student_count
         return obj.students.count()
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    """Represents StudentSerializer."""
     user = UserSerializer(read_only=True)
     class_name = serializers.CharField(source='student_class.name', read_only=True)
     parent_names = serializers.SerializerMethodField()
@@ -59,6 +67,7 @@ class StudentSerializer(serializers.ModelSerializer):
     parent_email = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Student
         fields = [
             'id', 'user', 'student_class', 'class_name', 'admission_date', 
@@ -67,15 +76,18 @@ class StudentSerializer(serializers.ModelSerializer):
         ]
 
     def get_parent_names(self, obj):
+        """Return parent names."""
         return [parent.user.full_name for parent in obj.parents.all()]
 
     def get_parent_phone(self, obj):
+        """Return parent phone."""
         parent = obj.parents.first()
         if parent:
             return parent.user.phone_number
         return obj.parent_contact
 
     def get_parent_email(self, obj):
+        """Return parent email."""
         parent = obj.parents.first()
         if parent:
             return parent.user.email
@@ -83,28 +95,34 @@ class StudentSerializer(serializers.ModelSerializer):
 
 
 class TeacherSerializer(serializers.ModelSerializer):
+    """Represents TeacherSerializer."""
     user = UserSerializer(read_only=True)
     subjects = SubjectSerializer(source='subjects_taught', many=True, read_only=True)
     class_taught = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Teacher
         fields = ['id', 'user', 'subjects', 'hire_date', 'qualification', 'class_taught']
 
     def get_class_taught(self, obj):
+        """Return class taught."""
         classes = obj.user.taught_classes.all()
         return [{'id': cls.id, 'name': cls.name} for cls in classes]
 
 
 class ParentSerializer(serializers.ModelSerializer):
+    """Represents ParentSerializer."""
     user = UserSerializer(read_only=True)
     children_details = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Parent
         fields = ['id', 'user', 'occupation', 'children_details']
 
     def get_children_details(self, obj):
+        """Return children details."""
         return [{
             'id': child.id,
             'name': child.user.full_name,
@@ -114,6 +132,7 @@ class ParentSerializer(serializers.ModelSerializer):
 
 
 class ResultSerializer(serializers.ModelSerializer):
+    """Represents ResultSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     subject_name = serializers.CharField(source='subject.name', read_only=True)
@@ -122,6 +141,7 @@ class ResultSerializer(serializers.ModelSerializer):
     grade = serializers.SerializerMethodField()
 
     class Meta:
+        """Represents Meta."""
         model = Result
         fields = [
             'id', 'student', 'student_name', 'student_number', 'subject', 'subject_name',
@@ -130,11 +150,13 @@ class ResultSerializer(serializers.ModelSerializer):
         ]
 
     def get_percentage(self, obj):
+        """Return percentage."""
         if obj.max_score > 0:
             return round((obj.score / obj.max_score) * 100, 2)
         return 0
 
     def get_grade(self, obj):
+        """Return grade."""
         percentage = self.get_percentage(obj)
         if percentage >= 90: return 'A+'
         elif percentage >= 85: return 'A'
@@ -150,11 +172,13 @@ class ResultSerializer(serializers.ModelSerializer):
 
 
 class TimetableSerializer(serializers.ModelSerializer):
+    """Represents TimetableSerializer."""
     class_name = serializers.CharField(source='class_assigned.name', read_only=True)
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.full_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Timetable
         fields = [
             'id', 'class_assigned', 'class_name', 'subject', 'subject_name',
@@ -163,19 +187,23 @@ class TimetableSerializer(serializers.ModelSerializer):
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
+    """Represents AnnouncementSerializer."""
     author_name = serializers.CharField(source='author.full_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Announcement
         fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience', 'date_posted', 'is_active']
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
+    """Represents ComplaintSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Complaint
         fields = [
             'id', 'student', 'student_name', 'student_number', 'submitted_by',
@@ -185,11 +213,13 @@ class ComplaintSerializer(serializers.ModelSerializer):
 
 
 class SuspensionSerializer(serializers.ModelSerializer):
+    """Represents SuspensionSerializer."""
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.full_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Suspension
         fields = [
             'id', 'student', 'student_name', 'student_number', 'teacher',
@@ -199,6 +229,7 @@ class SuspensionSerializer(serializers.ModelSerializer):
 
 
 class StudentPerformanceSerializer(serializers.Serializer):
+    """Represents StudentPerformanceSerializer."""
     student_id = serializers.IntegerField()
     student_name = serializers.CharField()
     student_number = serializers.CharField()
@@ -212,15 +243,18 @@ class StudentPerformanceSerializer(serializers.Serializer):
 
 
 class CreateResultSerializer(serializers.ModelSerializer):
+    """Represents CreateResultSerializer."""
     teacher = serializers.PrimaryKeyRelatedField(
         queryset=Teacher.objects.all(), required=False, allow_null=True
     )
 
     class Meta:
+        """Represents Meta."""
         model = Result
         fields = ['student', 'subject', 'teacher', 'exam_type', 'score', 'max_score', 'academic_term', 'academic_year']
 
     def create(self, validated_data):
+        """Create and return a new instance."""
         user = self.context['request'].user
         if 'teacher' not in validated_data or validated_data.get('teacher') is None:
             # Fall back to the authenticated user's teacher profile
@@ -229,6 +263,7 @@ class CreateResultSerializer(serializers.ModelSerializer):
 
 
 class CreateStudentSerializer(serializers.Serializer):
+    """Represents CreateStudentSerializer."""
     user = UserSerializer()
     student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all())
     admission_date = serializers.DateField()
@@ -240,6 +275,7 @@ class CreateStudentSerializer(serializers.Serializer):
     emergency_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
     def validate(self, data):
+        """Validate incoming data."""
         phone = data.get('student_contact', '').strip()
         if phone and CustomUser.objects.filter(phone_number=phone).exists():
             raise serializers.ValidationError({"student_contact": "This phone number is already registered to another user."})
@@ -252,6 +288,7 @@ class CreateStudentSerializer(serializers.Serializer):
         return data
 
     def create(self, validated_data):
+        """Create and return a new instance."""
         user_data = validated_data.pop("user")
         first_name = user_data['first_name']
         last_name = user_data['last_name']
@@ -302,6 +339,7 @@ class CreateStudentSerializer(serializers.Serializer):
         return student
 
 class CreateTeacherSerializer(serializers.Serializer):
+    """Represents CreateTeacherSerializer."""
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
@@ -317,6 +355,7 @@ class CreateTeacherSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     
     def validate(self, data):
+        """Validate incoming data."""
         from users.models import CustomUser
         
         # Check for duplicate phone number
@@ -338,6 +377,7 @@ class CreateTeacherSerializer(serializers.Serializer):
         return data
     
     def create(self, validated_data):
+        """Create and return a new instance."""
         from users.models import CustomUser
         from django.db import transaction
         from .utils import generate_unique_staff_number
@@ -395,6 +435,7 @@ class CreateTeacherSerializer(serializers.Serializer):
 
 
 class CreateParentSerializer(serializers.Serializer):
+    """Represents CreateParentSerializer."""
     full_name = serializers.CharField(max_length=255, write_only=True)
     contact_number = serializers.CharField(max_length=20)
     email = serializers.EmailField()
@@ -404,6 +445,7 @@ class CreateParentSerializer(serializers.Serializer):
     student_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
     
     def create(self, validated_data):
+        """Create and return a new instance."""
         from users.models import CustomUser
         from django.db import transaction
         import random
@@ -456,12 +498,14 @@ class CreateParentSerializer(serializers.Serializer):
 
 
 class ParentChildLinkSerializer(serializers.ModelSerializer):
+    """Represents ParentChildLinkSerializer."""
     student_name = serializers.CharField(source='student.user.first_name', read_only=True)
     student_surname = serializers.CharField(source='student.user.last_name', read_only=True)
     student_class = serializers.CharField(source='student.student_class.name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = ParentChildLink
         fields = ['id', 'parent', 'student', 'student_name', 'student_surname', 
                   'student_class', 'student_number', 'is_confirmed', 'linked_date', 'confirmed_date']
@@ -469,36 +513,43 @@ class ParentChildLinkSerializer(serializers.ModelSerializer):
 
 
 class WeeklyMessageSerializer(serializers.ModelSerializer):
+    """Represents WeeklyMessageSerializer."""
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     teacher_surname = serializers.CharField(source='teacher.user.last_name', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = WeeklyMessage
         fields = '__all__'
 
 
 class SchoolEventSerializer(serializers.ModelSerializer):
+    """Represents SchoolEventSerializer."""
     created_by_name = serializers.CharField(source='created_by.first_name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = SchoolEvent
         fields = ['id', 'title', 'description', 'event_type', 'start_date',
                   'end_date', 'location', 'created_by', 'created_by_name', 'date_created']
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
+    """Represents AssignmentSerializer."""
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     class_name = serializers.CharField(source='assigned_class.name', read_only=True)
     status = serializers.SerializerMethodField()
     
     class Meta:
+        """Represents Meta."""
         model = Assignment
         fields = ['id', 'title', 'description', 'subject', 'subject_name', 'teacher', 
                   'teacher_name', 'assigned_class', 'class_name', 'deadline', 'date_created', 'status']
     
     def get_status(self, obj):
+        """Return status."""
         from datetime import datetime
         now = timezone.now()
         if obj.deadline < now:
@@ -507,21 +558,25 @@ class AssignmentSerializer(serializers.ModelSerializer):
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
+    """Represents AttendanceSerializer."""
     student_name = serializers.CharField(source='student.user.first_name', read_only=True)
     student_surname = serializers.CharField(source='student.user.last_name', read_only=True)
     recorded_by_name = serializers.CharField(source='recorded_by.first_name', read_only=True)
     
     class Meta:
+        """Represents Meta."""
         model = Attendance
         fields = ['id', 'student', 'student_name', 'student_surname', 'date', 'status', 
                   'remarks', 'recorded_by', 'recorded_by_name', 'date_recorded']
 
 class ParentTeacherMessageSerializer(serializers.ModelSerializer):
+    """Represents ParentTeacherMessageSerializer."""
     sender_name = serializers.SerializerMethodField()
     recipient_name = serializers.SerializerMethodField()
     student_name = serializers.SerializerMethodField()
     
     class Meta:
+        """Represents Meta."""
         model = ParentTeacherMessage
         fields = ['id', 'sender', 'sender_name', 'recipient', 'recipient_name', 
                   'subject', 'message', 'student', 'student_name', 'parent_message', 
@@ -529,23 +584,28 @@ class ParentTeacherMessageSerializer(serializers.ModelSerializer):
         read_only_fields = ['sender', 'date_sent']
     
     def get_sender_name(self, obj):
+        """Return sender name."""
         return f"{obj.sender.first_name} {obj.sender.last_name}"
     
     def get_recipient_name(self, obj):
+        """Return recipient name."""
         return f"{obj.recipient.first_name} {obj.recipient.last_name}"
     
     def get_student_name(self, obj):
+        """Return student name."""
         if obj.student:
             return f"{obj.student.user.first_name} {obj.student.user.last_name}"
         return None
 
 
 class HomeworkSerializer(serializers.ModelSerializer):
+    """Represents HomeworkSerializer."""
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     teacher_name = serializers.SerializerMethodField()
     class_name = serializers.CharField(source='assigned_class.name', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = Homework
         fields = [
             'id', 'title', 'subject', 'subject_name', 'teacher', 'teacher_name',
@@ -554,14 +614,17 @@ class HomeworkSerializer(serializers.ModelSerializer):
         ]
 
     def get_teacher_name(self, obj):
+        """Return teacher name."""
         return f"{obj.teacher.user.first_name} {obj.teacher.user.last_name}"
 
 
 class AssignmentSubmissionSerializer(serializers.ModelSerializer):
+    """Represents AssignmentSubmissionSerializer."""
     student_name = serializers.SerializerMethodField()
     assignment_title = serializers.CharField(source='assignment.title', read_only=True)
 
     class Meta:
+        """Represents Meta."""
         model = AssignmentSubmission
         fields = [
             'id', 'assignment', 'assignment_title', 'student', 'student_name',
@@ -571,4 +634,5 @@ class AssignmentSubmissionSerializer(serializers.ModelSerializer):
         read_only_fields = ['submitted_at']
 
     def get_student_name(self, obj):
+        """Return student name."""
         return f"{obj.student.user.first_name} {obj.student.user.last_name}"

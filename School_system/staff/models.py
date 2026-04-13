@@ -3,15 +3,18 @@ from django.conf import settings
 
 
 class Department(models.Model):
+    """Represents Department."""
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     head = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='headed_departments')
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return self.name
 
 
 class Staff(models.Model):
+    """Represents Staff."""
     POSITION_CHOICES = [
         ('teacher', 'Teacher'),
         ('admin', 'Administrator'),
@@ -32,10 +35,12 @@ class Staff(models.Model):
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.user.full_name} - {self.position}"
 
 
 class Attendance(models.Model):
+    """Represents Attendance."""
     staff = models.ForeignKey(Staff, on_delete=models.CASCADE, related_name='attendance')
     date = models.DateField()
     check_in_time = models.TimeField(null=True, blank=True)
@@ -44,13 +49,16 @@ class Attendance(models.Model):
     notes = models.TextField(blank=True)
     
     class Meta:
+        """Represents Meta."""
         unique_together = ['staff', 'date']
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.staff.user.full_name} - {self.date} ({self.status})"
 
 
 class Leave(models.Model):
+    """Represents Leave."""
     LEAVE_TYPE_CHOICES = [
         ('annual', 'Annual Leave'),
         ('sick', 'Sick Leave'),
@@ -78,10 +86,12 @@ class Leave(models.Model):
     date_reviewed = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.staff.user.full_name} - {self.leave_type} ({self.status})"
 
 
 class Payroll(models.Model):
+    """Represents Payroll."""
     staff = models.ForeignKey(Staff, on_delete=models.CASCADE, related_name='payrolls')
     month = models.CharField(max_length=20)
     year = models.IntegerField()
@@ -93,13 +103,16 @@ class Payroll(models.Model):
     is_paid = models.BooleanField(default=False)
     
     class Meta:
+        """Represents Meta."""
         unique_together = ['staff', 'month', 'year']
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.staff.user.full_name} - {self.month} {self.year}"
 
 
 class Meeting(models.Model):
+    """Represents Meeting."""
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     organizer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='organized_meetings')
@@ -109,4 +122,5 @@ class Meeting(models.Model):
     is_completed = models.BooleanField(default=False)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} - {self.meeting_date}"

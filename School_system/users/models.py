@@ -9,12 +9,15 @@ class SoftDeleteManager(models.Manager):
     """Manager that excludes soft-deleted records by default."""
 
     def get_queryset(self):
+        """Return queryset."""
         return super().get_queryset().filter(is_deleted=False)
 
     def all_with_deleted(self):
+        """Execute all with deleted."""
         return super().get_queryset()
 
     def deleted_only(self):
+        """Execute deleted only."""
         return super().get_queryset().filter(is_deleted=True)
 
 
@@ -26,6 +29,7 @@ class TenantAwareManager(models.Manager):
     """
 
     def for_school(self, school):
+        """Execute for school."""
         if school is None:
             return self.none()
         return self.filter(school=school)
@@ -35,14 +39,17 @@ class TenantSoftDeleteManager(models.Manager):
     """Combined tenant-aware + soft-delete manager."""
 
     def get_queryset(self):
+        """Return queryset."""
         return super().get_queryset().filter(is_deleted=False)
 
     def for_school(self, school):
+        """Execute for school."""
         if school is None:
             return self.none()
         return self.get_queryset().filter(school=school)
 
     def all_with_deleted(self):
+        """Execute all with deleted."""
         return super().get_queryset()
 
 
@@ -81,6 +88,7 @@ class School(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.name} ({self.code})"
 
     @staticmethod
@@ -94,6 +102,7 @@ class School(models.Model):
 
 
 class CustomUser(AbstractUser):
+    """Represents CustomUser."""
     ROLE_CHOICES = [
         ('student', 'Student'),
         ('parent', 'Parent'),
@@ -115,24 +124,29 @@ class CustomUser(AbstractUser):
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-id']
 
     def save(self, *args, **kwargs):
         # Normalize empty phone_number to None so unique constraint allows multiple blanks
+        """Execute save."""
         if not self.phone_number:
             self.phone_number = None
         super().save(*args, **kwargs)
 
     @property
     def full_name(self):
+        """Execute full name."""
         return f"{self.first_name} {self.last_name}".strip() or self.email
 
 
 class BlacklistedToken(models.Model):
+    """Represents BlacklistedToken."""
     token = models.TextField(unique=True)
     blacklisted_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"Blacklisted token at {self.blacklisted_at}"
 
 
@@ -166,6 +180,7 @@ class SchoolSettings(models.Model):
     paynow_integration_key = models.CharField(max_length=255, blank=True, help_text='PayNow Zimbabwe integration key for this school')
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"Settings for {self.school.name}"
 
 
@@ -211,6 +226,7 @@ class ReportCardConfig(models.Model):
     show_activities_section = models.BooleanField(default=False)
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"Report Card Config for {self.school.name}"
 
 
@@ -238,14 +254,17 @@ class AuditLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-timestamp']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         user_str = self.user.full_name if self.user else 'System'
         return f"{user_str} — {self.action} {self.model_name} at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
 
 
 class Notification(models.Model):
+    """Represents Notification."""
     NOTIFICATION_TYPES = [
         ('announcement', 'Announcement'),
         ('message', 'Message'),
@@ -264,7 +283,9 @@ class Notification(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-date_created']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.user.email} - {self.title} ({'Read' if self.is_read else 'Unread'})"

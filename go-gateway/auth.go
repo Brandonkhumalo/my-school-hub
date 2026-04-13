@@ -28,6 +28,7 @@ var publicPrefixes = []string{
 	"/media/",
 }
 
+// isPublicPath returns true for endpoints that should skip gateway JWT validation.
 func isPublicPath(path string) bool {
 	for _, prefix := range publicPrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -127,6 +128,7 @@ func AuthMiddleware(next http.Handler, secretKey string, bl *Blacklist, uc *User
 	})
 }
 
+// escapeJSON safely escapes error text interpolated into JSON error responses.
 func escapeJSON(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
@@ -141,6 +143,7 @@ type Blacklist struct {
 	pool    *pgxpool.Pool
 }
 
+// NewBlacklist creates an in-memory blacklist synced from PostgreSQL.
 func NewBlacklist(pool *pgxpool.Pool) *Blacklist {
 	return &Blacklist{
 		tokens: make(map[string]struct{}),
@@ -148,6 +151,7 @@ func NewBlacklist(pool *pgxpool.Pool) *Blacklist {
 	}
 }
 
+// IsBlacklisted performs a thread-safe membership check in the blacklist set.
 func (bl *Blacklist) IsBlacklisted(token string) bool {
 	bl.mu.RLock()
 	defer bl.mu.RUnlock()
@@ -155,6 +159,7 @@ func (bl *Blacklist) IsBlacklisted(token string) bool {
 	return exists
 }
 
+// SyncFromDB refreshes the in-memory blacklist from the users_blacklistedtoken table.
 func (bl *Blacklist) SyncFromDB() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -183,6 +188,7 @@ func (bl *Blacklist) SyncFromDB() {
 	log.Printf("Blacklist synced: %d tokens loaded", count)
 }
 
+// StartSync repeatedly refreshes blacklist entries on a fixed interval.
 func (bl *Blacklist) StartSync(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -207,6 +213,7 @@ type UserCache struct {
 	ttl   time.Duration
 }
 
+// NewUserCache builds a TTL cache and starts a background evictor for stale users.
 func NewUserCache(pool *pgxpool.Pool, ttl time.Duration) *UserCache {
 	uc := &UserCache{
 		users: make(map[int64]*CachedUser),
@@ -230,6 +237,7 @@ func NewUserCache(pool *pgxpool.Pool, ttl time.Duration) *UserCache {
 	return uc
 }
 
+// Get returns user metadata from cache or DB and writes back successful DB lookups.
 func (uc *UserCache) Get(userID int64) (*CachedUser, error) {
 	// Check cache
 	uc.mu.RLock()
