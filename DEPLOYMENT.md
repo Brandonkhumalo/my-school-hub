@@ -511,7 +511,7 @@ docker compose -f docker-compose.prod.yml exec web python manage.py populate_dem
 docker compose -f docker-compose.prod.yml exec web python manage.py generate_parents
 ```
 
-### Step 14: Set Up CI/CD (GitHub Actions)
+### Step 14: Set Up CI/CD (GitHub Actions: Build → Test → Deploy)
 
 The workflow file already exists at `.github/workflows/deploy.yml`. You just need to add secrets:
 
@@ -523,6 +523,7 @@ The workflow file already exists at `.github/workflows/deploy.yml`. You just nee
 | `AWS_ACCESS_KEY_ID` | Your IAM access key | Same key you used in `aws configure` (Step 7) |
 | `AWS_SECRET_ACCESS_KEY` | Your IAM secret key | Same key you used in `aws configure` (Step 7) |
 | `EC2_HOST` | Your Elastic IP | From Step 1 (also in your `.env` → `ALLOWED_HOSTS`) |
+| `EC2_USER` (optional) | SSH username on EC2 | Usually `ubuntu` on Ubuntu AMIs (defaults to `ubuntu` if not set) |
 | `EC2_SSH_KEY` | Full contents of your `.pem` file | The key pair you downloaded in Step 1 — open the `.pem` file, copy everything including `-----BEGIN` and `-----END` lines |
 
 > **Don't have these anymore?**
@@ -531,9 +532,9 @@ The workflow file already exists at `.github/workflows/deploy.yml`. You just nee
 > - **Elastic IP:** Go to **EC2 → Elastic IPs** — it's listed there. Also in your `.env` under `ALLOWED_HOSTS`.
 
 Now every push to `main` automatically:
-1. Runs all tests against a fresh PostgreSQL database
-2. Builds all 4 Docker images (Django + Go Gateway + Go Workers + Go Services) and pushes to ECR
-3. SSHs into EC2, pulls all new images, rebuilds the frontend, restarts all services, and reloads Nginx
+1. **Build stage:** builds the frontend bundle, compiles all 3 Go services, and smoke-builds all 4 Docker images
+2. **Test stage:** runs Django tests against a fresh PostgreSQL service and runs `go test` for all Go services
+3. **Deploy stage:** builds + pushes tagged Docker images to ECR, then SSHs into EC2 to pull/restart services and rebuild frontend assets
 
 ### Step 15: Set Up S3 for Media Files (optional)
 
@@ -878,7 +879,7 @@ aws rds create-db-instance-read-replica \
 | `docker-compose.yml` | Dev compose: builds all services locally with Redis |
 | `docker-compose.prod.yml` | Production compose: ECR images, external RDS/Redis |
 | `deploy-ec2.sh` | Deploy script: all 4 images + frontend + SSL, with rollback |
-| `.github/workflows/deploy.yml` | CI/CD: test → build all 4 images → push to ECR → SSH deploy |
+| `.github/workflows/deploy.yml` | CI/CD: build → test → push to ECR → SSH deploy |
 | `infrastructure/nginx/schoolhub.conf` | Nginx HTTP-only config (pre-SSL) |
 | `infrastructure/nginx/schoolhub-ssl.conf` | Nginx HTTPS config (post-SSL) |
 | `infrastructure/fix-ssl.sh` | SSL recovery: Nginx + Let's Encrypt + auto-renewal |
@@ -890,6 +891,7 @@ aws rds create-db-instance-read-replica \
 | `AWS_ACCESS_KEY_ID` | IAM access key | All |
 | `AWS_SECRET_ACCESS_KEY` | IAM secret key | All |
 | `EC2_HOST` | Elastic IP | Phase 1 only |
+| `EC2_USER` | SSH user (optional, defaults to `ubuntu`) | Phase 1 only |
 | `EC2_SSH_KEY` | Contents of `.pem` file | Phase 1 only |
 | `CF_DISTRIBUTION_ID` | CloudFront distribution ID | Phase 2+ |
 
