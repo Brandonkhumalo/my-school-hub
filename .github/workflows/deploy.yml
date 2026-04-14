@@ -247,5 +247,5 @@ jobs:
             bash infrastructure/fix-ssl.sh
 
             curl -fsS http://localhost:8080/health/ > /dev/null
-            curl -fsS http://localhost:8000/health/ > /dev/null
+            docker compose -f docker-compose.prod.yml exec -T web python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"
             docker compose -f docker-compose.prod.yml ps
