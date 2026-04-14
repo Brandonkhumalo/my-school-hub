@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 class JWTAuthentication(BaseAuthentication):
+    """Represents JWTAuthentication."""
 
     @staticmethod
     def generate_token(payload):
+        """Execute generate token."""
         expiration = datetime.utcnow() + timedelta(days=30)
         token_payload = copy.deepcopy(payload)
         token_payload['exp'] = int(expiration.timestamp())
@@ -28,6 +30,7 @@ class JWTAuthentication(BaseAuthentication):
     
     @staticmethod
     def generate_refresh_token(payload):
+        """Execute generate refresh token."""
         expiration = datetime.utcnow() + timedelta(days=60)
         token_payload = copy.deepcopy(payload)
         token_payload['exp'] = int(expiration.timestamp())
@@ -37,12 +40,14 @@ class JWTAuthentication(BaseAuthentication):
         return jwt.encode(token_payload, key=settings.SECRET_KEY, algorithm='HS256')
 
     def extract_token(self, request):
+        """Execute extract token."""
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             return auth_header.split(' ')[1]
         return None
 
     def verify_token(self, payload, token_type='access_token'):
+        """Execute verify token."""
         if 'exp' not in payload:
             raise InvalidTokenError("Token has no expiration")
 
@@ -56,6 +61,7 @@ class JWTAuthentication(BaseAuthentication):
             raise InvalidTokenError(f"Expected token type '{token_type}', got '{payload.get('type')}'")
 
     def authenticate(self, request):
+        """Execute authenticate."""
         token = self.extract_token(request)
         if not token:
             return None

@@ -28,11 +28,13 @@ from .serializers import (
 
 # Fee Type Views
 class FeeTypeListCreateView(generics.ListCreateAPIView):
+    """Represents FeeTypeListCreateView."""
     queryset = FeeType.objects.all()
     serializer_class = FeeTypeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             queryset = FeeType.objects.filter(school=user.school)
@@ -44,10 +46,12 @@ class FeeTypeListCreateView(generics.ListCreateAPIView):
         return queryset
     
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(school=self.request.user.school)
 
 
 class FeeTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents FeeTypeDetailView."""
     queryset = FeeType.objects.all()
     serializer_class = FeeTypeSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -55,11 +59,13 @@ class FeeTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Student Fee Views
 class StudentFeeListCreateView(generics.ListCreateAPIView):
+    """Represents StudentFeeListCreateView."""
     queryset = StudentFee.objects.all()
     serializer_class = StudentFeeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
 
         # Filter by school first
@@ -96,6 +102,7 @@ class StudentFeeListCreateView(generics.ListCreateAPIView):
 
 
 class StudentFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents StudentFeeDetailView."""
     queryset = StudentFee.objects.all()
     serializer_class = StudentFeeSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -103,15 +110,18 @@ class StudentFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Payment Views
 class PaymentListCreateView(generics.ListCreateAPIView):
+    """Represents PaymentListCreateView."""
     queryset = Payment.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreatePaymentSerializer
         return PaymentSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
 
         # Filter by school first
@@ -144,6 +154,7 @@ class PaymentListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-payment_date')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         payment = serializer.save(processed_by=self.request.user)
         # Notify parents of the student that a payment was recorded
         try:
@@ -167,6 +178,7 @@ class PaymentListCreateView(generics.ListCreateAPIView):
 
 
 class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents PaymentDetailView."""
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -174,11 +186,13 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Invoice Views
 class InvoiceListCreateView(generics.ListCreateAPIView):
+    """Represents InvoiceListCreateView."""
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         
         # Filter by school first
@@ -209,6 +223,7 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
 
 
 class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents InvoiceDetailView."""
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -216,11 +231,13 @@ class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Financial Report Views
 class FinancialReportListCreateView(generics.ListCreateAPIView):
+    """Represents FinancialReportListCreateView."""
     queryset = FinancialReport.objects.all()
     serializer_class = FinancialReportSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         
         # Only accountants and admins can view financial reports
@@ -244,6 +261,7 @@ class FinancialReportListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_generated')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         report = serializer.save(generated_by=self.request.user)
         # Enqueue heavy aggregation as a background task — do not block the request
         from .tasks import generate_financial_report_task
@@ -369,11 +387,13 @@ def process_whatsapp_payment(request):
 
 
 class SchoolFeesListCreateView(generics.ListCreateAPIView):
+    """Represents SchoolFeesListCreateView."""
     queryset = SchoolFees.objects.all()
     serializer_class = SchoolFeesSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         
         # Filter by school
@@ -396,6 +416,7 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('grade_level', 'academic_term')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can create school fees")
@@ -433,23 +454,27 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
 
 
 class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents SchoolFeesDetailView."""
     queryset = SchoolFees.objects.all()
     serializer_class = SchoolFeesSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return SchoolFees.objects.filter(school=user.school)
         return SchoolFees.objects.none()
     
     def perform_update(self, serializer):
+        """Execute perform update."""
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can update school fees")
         serializer.save()
     
     def perform_destroy(self, instance):
+        """Execute perform destroy."""
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can delete school fees")
@@ -554,14 +579,17 @@ def get_all_grades(request):
 
 
 class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
+    """Represents StudentPaymentRecordListCreateView."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
+        """Return serializer class."""
         if self.request.method == 'POST':
             return CreatePaymentRecordSerializer
         return StudentPaymentRecordSerializer
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         
         if user.role not in ['admin', 'accountant']:
@@ -592,6 +620,7 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_created')
 
     def perform_create(self, serializer):
+        """Execute perform create."""
         record = serializer.save()
         # Notify parents that a fee has been assigned to their child
         try:
@@ -615,10 +644,12 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
 
 
 class StudentPaymentRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents StudentPaymentRecordDetailView."""
     serializer_class = StudentPaymentRecordSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.school:
             return StudentPaymentRecord.objects.filter(school=user.school)
@@ -1106,11 +1137,13 @@ def student_invoices_by_class(request):
 
 # Additional Fees Views
 class AdditionalFeeListCreateView(generics.ListCreateAPIView):
+    """Represents AdditionalFeeListCreateView."""
     queryset = AdditionalFee.objects.all()
     serializer_class = AdditionalFeeSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.role not in ['admin', 'accountant']:
             if user.role == 'parent':
@@ -1139,12 +1172,14 @@ class AdditionalFeeListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-created_at')
     
     def perform_create(self, serializer):
+        """Execute perform create."""
         serializer.save(school=self.request.user.school, created_by=self.request.user)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def daily_transaction_report(request):
+    """Execute daily transaction report."""
     from datetime import datetime
     
     user = request.user
@@ -1209,11 +1244,13 @@ def daily_transaction_report(request):
 
 
 class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Represents AdditionalFeeDetailView."""
     queryset = AdditionalFee.objects.all()
     serializer_class = AdditionalFeeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         user = self.request.user
         if user.role not in ['admin', 'accountant']:
             return AdditionalFee.objects.none()

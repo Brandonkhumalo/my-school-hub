@@ -8,6 +8,7 @@ SKIP_PATHS = {'/admin/', '/api/v1/schema/', '/api/v1/docs/', '/media/', '/static
 
 
 def _get_client_ip(request):
+    """Execute get client ip."""
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded:
         return x_forwarded.split(',')[0].strip()
@@ -21,9 +22,11 @@ class AuditMiddleware:
     """
 
     def __init__(self, get_response):
+        """Initialize instance state."""
         self.get_response = get_response
 
     def __call__(self, request):
+        """Execute call."""
         response = self.get_response(request)
 
         if request.method not in AUDIT_METHODS:

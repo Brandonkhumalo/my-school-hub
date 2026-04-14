@@ -3,6 +3,7 @@ from django.conf import settings
 
 
 class WhatsAppUser(models.Model):
+    """Represents WhatsAppUser."""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
     phone_number = models.CharField(max_length=20, unique=True)
     whatsapp_id = models.CharField(max_length=100, unique=True)
@@ -12,10 +13,12 @@ class WhatsAppUser(models.Model):
     last_interaction = models.DateTimeField(auto_now=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
 
 
 class WhatsAppSession(models.Model):
+    """Represents WhatsAppSession."""
     whatsapp_user = models.ForeignKey(WhatsAppUser, on_delete=models.CASCADE, related_name='sessions')
     session_id = models.CharField(max_length=100, unique=True)
     current_menu = models.CharField(max_length=50, default='main')
@@ -25,10 +28,12 @@ class WhatsAppSession(models.Model):
     last_activity = models.DateTimeField(auto_now=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.whatsapp_user.phone_number} - {self.session_id}"
 
 
 class WhatsAppMessage(models.Model):
+    """Represents WhatsAppMessage."""
     MESSAGE_TYPE_CHOICES = [
         ('text', 'Text'),
         ('image', 'Image'),
@@ -51,10 +56,12 @@ class WhatsAppMessage(models.Model):
     is_read = models.BooleanField(default=False)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.whatsapp_user.phone_number} - {self.direction} ({self.timestamp})"
 
 
 class WhatsAppPayment(models.Model):
+    """Represents WhatsAppPayment."""
     PAYMENT_STATUS_CHOICES = [
         ('initiated', 'Initiated'),
         ('pending', 'Pending'),
@@ -73,10 +80,12 @@ class WhatsAppPayment(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.whatsapp_user.phone_number} - ${self.amount} ({self.status})"
 
 
 class WhatsAppMenu(models.Model):
+    """Represents WhatsAppMenu."""
     menu_key = models.CharField(max_length=50, unique=True)
     menu_title = models.CharField(max_length=100)
     menu_text = models.TextField()
@@ -85,4 +94,5 @@ class WhatsAppMenu(models.Model):
     required_role = models.CharField(max_length=20, blank=True)  # student, parent, etc.
     
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.menu_key} - {self.menu_title}"

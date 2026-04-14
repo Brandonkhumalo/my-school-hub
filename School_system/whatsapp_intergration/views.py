@@ -21,22 +21,26 @@ from finances.models import StudentFee
 
 
 class WhatsAppUserListView(generics.ListAPIView):
+    """Represents WhatsAppUserListView."""
     queryset = WhatsAppUser.objects.all()
     serializer_class = WhatsAppUserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         if self.request.user.role not in ['admin', 'hr']:
             return WhatsAppUser.objects.none()
         return WhatsAppUser.objects.all().order_by('-last_interaction')
 
 
 class WhatsAppSessionListView(generics.ListAPIView):
+    """Represents WhatsAppSessionListView."""
     queryset = WhatsAppSession.objects.all()
     serializer_class = WhatsAppSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         if self.request.user.role not in ['admin', 'hr']:
             return WhatsAppSession.objects.none()
         
@@ -53,11 +57,13 @@ class WhatsAppSessionListView(generics.ListAPIView):
 
 
 class WhatsAppMessageListView(generics.ListAPIView):
+    """Represents WhatsAppMessageListView."""
     queryset = WhatsAppMessage.objects.all()
     serializer_class = WhatsAppMessageSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         if self.request.user.role not in ['admin', 'hr']:
             return WhatsAppMessage.objects.none()
         
@@ -74,11 +80,13 @@ class WhatsAppMessageListView(generics.ListAPIView):
 
 
 class WhatsAppPaymentListView(generics.ListAPIView):
+    """Represents WhatsAppPaymentListView."""
     queryset = WhatsAppPayment.objects.all()
     serializer_class = WhatsAppPaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         if self.request.user.role not in ['admin', 'accountant']:
             return WhatsAppPayment.objects.none()
         
@@ -95,11 +103,13 @@ class WhatsAppPaymentListView(generics.ListAPIView):
 
 
 class WhatsAppMenuListCreateView(generics.ListCreateAPIView):
+    """Represents WhatsAppMenuListCreateView."""
     queryset = WhatsAppMenu.objects.all()
     serializer_class = WhatsAppMenuSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """Return queryset."""
         queryset = WhatsAppMenu.objects.all()
         required_role = self.request.query_params.get('role')
         is_active = self.request.query_params.get('is_active')

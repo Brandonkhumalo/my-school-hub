@@ -11,6 +11,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_root(request):
+    """Execute api root."""
     return Response({
         'message': 'My School Hub API',
         'version': '1.0',

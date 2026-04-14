@@ -1,8 +1,15 @@
 # ──────────────────────────────────────────────────────────────
-# MySchoolHub — Backend Dockerfile (EC2 deployment)
+# MySchoolHub — Django Backend Dockerfile (EC2 / Railway standalone)
 # Build context: repo root
-# Django backend only — frontend is built separately and
-# served by Nginx from /var/www/schoolhub/dist on the host.
+#
+# For the full Go + Django microservices stack, use:
+#   docker compose up --build           (dev — docker-compose.yml)
+#   docker compose -f docker-compose.prod.yml up -d  (prod)
+#
+# Individual Go service Dockerfiles:
+#   go-gateway/Dockerfile   — API Gateway (JWT auth, routing, audit)
+#   go-workers/Dockerfile   — Bulk CSV import workers
+#   go-services/Dockerfile  — PDF reports, PayNow, email, WhatsApp
 # ──────────────────────────────────────────────────────────────
 
 # Stage 1 — install Python dependencies

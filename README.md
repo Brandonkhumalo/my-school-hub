@@ -46,30 +46,50 @@
 - Global search across students, teachers, subjects, classes
 
 ### Developer / Platform
+- **Go + Django microservices** — Go Gateway, Workers, and Services for performance-critical paths
 - OpenAPI docs at `/api/v1/docs/` (drf-spectacular / Swagger UI)
 - Progressive Web App (PWA) — installable, offline-capable
-- Celery + Redis for async tasks (WhatsApp sends, report generation, bulk imports)
+- Celery + Redis for async tasks, with Go goroutine fallback for email/WhatsApp
 - Redis caching on heavy list endpoints
-- Docker-ready backend
+- Docker Compose for dev and prod (6 containers, ~200MB total RAM)
 
 ---
 
 ## Tech Stack
 
-| Layer      | Technology                                           |
-|------------|------------------------------------------------------|
-| Frontend   | React 19, Vite 7, React Router 7, Tailwind CSS      |
-| Backend    | Django 5.2, Django REST Framework 3.16               |
-| Auth       | Custom JWT (HS256, 30-day access / 60-day refresh)   |
-| Database   | SQLite (dev) / PostgreSQL (production)               |
-| Cache      | Redis (django-redis)                                 |
-| Task Queue | Celery + Redis                                       |
-| Payments   | PayNow Zimbabwe SDK                                  |
-| Messaging  | WhatsApp Business API (Meta Graph API)               |
-| AI         | scikit-learn (grade predictions)                     |
-| PDF        | ReportLab                                            |
+| Layer        | Technology                                           |
+|--------------|------------------------------------------------------|
+| Frontend     | React 19, Vite 7, React Router 7, Tailwind CSS      |
+| Backend      | Django 5.2, Django REST Framework 3.16               |
+| Go Services  | Go 1.22 — API Gateway, Bulk Workers, PDF/PayNow/Email/WhatsApp |
+| Auth         | Custom JWT (HS256, 30-day access / 60-day refresh)   |
+| Database     | SQLite (dev) / PostgreSQL (production)               |
+| Cache        | Redis (django-redis)                                 |
+| Task Queue   | Celery + Redis (with Go goroutine fallback)          |
+| Payments     | PayNow Zimbabwe (Go native implementation)           |
+| Email        | Resend API (Go goroutine-based sending)              |
+| Messaging    | WhatsApp Business API (Go goroutine-based sending)   |
+| AI           | scikit-learn (grade predictions)                     |
+| PDF          | go-fpdf (5-10x faster than ReportLab)                |
 
 ---
+
+## Architecture
+
+```
+Internet → Nginx (SSL) → Go Gateway (:8080)
+                          ├─→ Django API (:8000)        — core business logic
+                          ├─→ Go Workers (:8081)        — bulk CSV imports
+                          └─→ Go Services (:8082)       — PDF, PayNow, email, WhatsApp
+```
+
+**Why Go + Django?** Django handles the ORM, admin, and business logic. Go handles the performance-critical parts:
+- **PDF generation** — go-fpdf generates report cards 5-10x faster than ReportLab, using goroutines instead of blocking Gunicorn workers
+- **External API calls** — PayNow (5-15s), email (3-10s), and WhatsApp (15s) are handled by goroutines (~4KB stack each vs ~8MB per Python thread)
+- **Bulk imports** — CSV streaming with batch PostgreSQL inserts via pgx
+- **API Gateway** — JWT validation, rate limiting, and audit logging at ~15MB RAM
+
+Django delegates to Go automatically when `GO_SERVICES_URL` is set. If Go services are down, Django falls back to handling email/WhatsApp directly.
 
 ## Project Structure
 
@@ -89,13 +109,37 @@ my-school-hub/
 │   ├── services/apiService.jsx   # Centralised API client
 │   └── App.jsx                   # Route definitions
 │
-└── School_system/                # Django backend
-    ├── School_system/            # Project config (settings, urls, middleware)
-    ├── users/                    # Auth, CustomUser, School, SchoolSettings, AuditLog
-    ├── academics/                # Students, Teachers, Classes, Results, Timetables, ML
-    ├── finances/                 # Fees, Payments, Invoices, PayNow service
-    ├── staff/                    # HR, Departments, Staff, Leave, Payroll
-    └── whatsapp_intergration/    # WhatsApp session/message handling
+├── go-gateway/                   # Go API Gateway (~15MB RAM)
+│   ├── main.go                   # Routing, rate limiting, CORS
+│   ├── auth.go                   # JWT validation, token blacklist, user cache
+│   ├── audit.go                  # Buffered audit logging
+│   └── Dockerfile                # Multi-stage build → Alpine (~10MB image)
+│
+├── go-workers/                   # Go Bulk Workers (~10MB RAM)
+│   ├── main.go                   # HTTP server + auth middleware
+│   ├── import_students.go        # Student CSV streaming + batch insert
+│   ├── import_results.go         # Results CSV handler
+│   ├── import_fees.go            # Fees CSV handler
+│   └── Dockerfile
+│
+├── go-services/                  # Go Services (~12MB RAM)
+│   ├── main.go                   # HTTP server, routing, config
+│   ├── report_card.go            # PDF report card generation (go-fpdf)
+│   ├── paynow.go                 # PayNow Zimbabwe API client + handlers
+│   ├── email.go                  # Resend email service (goroutine-based)
+│   ├── whatsapp.go               # WhatsApp message sending (goroutine-based)
+│   └── Dockerfile
+│
+├── School_system/                # Django backend
+│   ├── School_system/            # Project config (settings, urls, middleware)
+│   ├── users/                    # Auth, CustomUser, School, SchoolSettings, AuditLog
+│   ├── academics/                # Students, Teachers, Classes, Results, Timetables, ML
+│   ├── finances/                 # Fees, Payments, Invoices, PayNow views
+│   ├── staff/                    # HR, Departments, Staff, Leave, Payroll
+│   └── whatsapp_intergration/    # WhatsApp session/message handling
+│
+├── docker-compose.yml            # Dev: builds all services with local Redis
+└── docker-compose.prod.yml       # Prod: ECR images, external RDS/Redis
 ```
 
 ---
@@ -114,6 +158,9 @@ All endpoints are prefixed with `/api/v1/`:
 | `/api/v1/finances/` | Fees, payments, invoices, PayNow |
 | `/api/v1/staff/` | HR, departments, leave, payroll |
 | `/api/v1/messages/` | Parent-teacher messaging |
+
+| `/api/v1/services/` | Internal: email sending, WhatsApp sending (Go) |
+| `/api/v1/bulk/` | Bulk CSV imports: students, results, fees (Go) |
 
 Interactive API documentation: `http://localhost:8000/api/v1/docs/`
 

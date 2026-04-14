@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ── Serializer helpers (inline to keep in one file) ──────────────────────────
 
 def serialize_activity(activity):
+    """Execute serialize activity."""
     return {
         'id': activity.id,
         'name': activity.name,
@@ -35,6 +36,7 @@ def serialize_activity(activity):
 
 
 def serialize_enrollment(enrollment):
+    """Execute serialize enrollment."""
     return {
         'id': enrollment.id,
         'student_id': enrollment.student.id,
@@ -49,6 +51,7 @@ def serialize_enrollment(enrollment):
 
 
 def serialize_event(event):
+    """Execute serialize event."""
     return {
         'id': event.id,
         'activity_id': event.activity_id,
@@ -65,6 +68,7 @@ def serialize_event(event):
 
 
 def serialize_accolade(accolade):
+    """Execute serialize accolade."""
     return {
         'id': accolade.id,
         'name': accolade.name,
@@ -77,6 +81,7 @@ def serialize_accolade(accolade):
 
 
 def serialize_student_accolade(sa):
+    """Execute serialize student accolade."""
     return {
         'id': sa.id,
         'accolade': serialize_accolade(sa.accolade),

@@ -1,8 +1,13 @@
 version: "3.9"
 
 # ──────────────────────────────────────────────────────────────
-# My School Hub — Backend Services
+# My School Hub — Go + Django Microservices
 # ──────────────────────────────────────────────────────────────
+# Architecture:
+#   Internet → Go Gateway (:8080) → Django (:8000)
+#                                 → Go Workers (:8081)   — bulk CSV imports
+#                                 → Go Services (:8082)  — PDF, PayNow, email, WhatsApp
+#
 # Start everything:   docker compose up --build
 # Run in background:  docker compose up -d --build
 # Stop:               docker compose down
@@ -24,26 +29,82 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Django API (Gunicorn) ───────────────────────────────────
+  # ── Go API Gateway (~15MB RAM) ─────────────────────────────
+  # Handles: JWT auth, token blacklist, audit logging, rate limiting
+  # Proxies all requests to Django, routes bulk imports to Go Workers
+  gateway:
+    build:
+      context: ./go-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./School_system/.env
+    environment:
+      GATEWAY_PORT: "8080"
+      DJANGO_UPSTREAM: "http://web:8000"
+      GO_WORKERS_UPSTREAM: "http://workers:8081"
+      GO_SERVICES_UPSTREAM: "http://services:8082"
+    depends_on:
+      web:
+        condition: service_started
+      workers:
+        condition: service_started
+      services:
+        condition: service_started
+
+  # ── Django API (Gunicorn) — now internal only ──────────────
+  # No longer exposed on host port — gateway handles all external traffic
   web:
     build:
       context: ./School_system
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - ./School_system/.env
     environment:
-      # Override broker URL to use the Redis container name
       CELERY_BROKER_URL: redis://redis:6379/0
+      USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
-      # Persist SQLite DB and uploaded media between restarts
       - ./School_system/db.sqlite3:/app/db.sqlite3
       - media_files:/app/media
     depends_on:
       redis:
         condition: service_healthy
+
+  # ── Go Bulk Workers (~10MB RAM) ────────────────────────────
+  # Handles: CSV bulk imports (students, results, fees)
+  # Streams CSV line-by-line, batch INSERTs via pgx
+  workers:
+    build:
+      context: ./go-workers
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8081"
+    env_file:
+      - ./School_system/.env
+    environment:
+      WORKERS_PORT: "8081"
+
+  # ── Go Services (~12MB RAM) ───────────────────────────────
+  # Handles: PDF report cards, PayNow payments, email (Resend), WhatsApp
+  # Uses goroutines for non-blocking external API calls
+  services:
+    build:
+      context: ./go-services
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8082"
+    env_file:
+      - ./School_system/.env
+    environment:
+      SERVICES_PORT: "8082"
 
   # ── Celery Worker ───────────────────────────────────────────
   celery:
@@ -60,6 +121,8 @@ services:
       - ./School_system/.env
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
+      USE_GO_GATEWAY: "true"
+      GO_SERVICES_URL: "http://services:8082"
     volumes:
       - ./School_system/db.sqlite3:/app/db.sqlite3
       - media_files:/app/media
@@ -83,6 +146,7 @@ services:
       - ./School_system/.env
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
+      USE_GO_GATEWAY: "true"
     volumes:
       - ./School_system/db.sqlite3:/app/db.sqlite3
     depends_on:

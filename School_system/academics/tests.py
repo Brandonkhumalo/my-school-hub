@@ -45,6 +45,7 @@ def get_list(response_data):
 
 
 def make_school(name="Academics Test School"):
+    """Execute make school."""
     return School.objects.create(
         name=name,
         code=School.generate_school_code(),
@@ -54,6 +55,7 @@ def make_school(name="Academics Test School"):
 
 
 def make_user(school, username, role="admin", password="testpass123", first_name="Test", last_name="User", email=None):
+    """Execute make user."""
     if email is None:
         email = f"{username}@school.test"
     return CustomUser.objects.create_user(
@@ -68,6 +70,7 @@ def make_user(school, username, role="admin", password="testpass123", first_name
 
 
 def make_subject(school, name="Mathematics", code="MATH01"):
+    """Execute make subject."""
     return Subject.objects.create(
         name=name,
         code=code,
@@ -78,6 +81,7 @@ def make_subject(school, name="Mathematics", code="MATH01"):
 
 
 def make_class(school, teacher_user=None, name="Form 1A", grade_level=1, year="2026"):
+    """Execute make class."""
     return Class.objects.create(
         name=name,
         grade_level=grade_level,
@@ -88,6 +92,7 @@ def make_class(school, teacher_user=None, name="Form 1A", grade_level=1, year="2
 
 
 def make_teacher(school, username="teacher1"):
+    """Execute make teacher."""
     user = make_user(school, username, role="teacher",
                      first_name="Jane", last_name="Smith")
     return Teacher.objects.create(
@@ -98,6 +103,7 @@ def make_teacher(school, username="teacher1"):
 
 
 def make_student(school, class_obj, username="student1", student_number="STU001"):
+    """Execute make student."""
     user = make_user(school, username, role="student",
                      first_name="John", last_name="Doe")
     user.student_number = student_number
@@ -115,21 +121,26 @@ def make_student(school, class_obj, username="student1", student_number="STU001"
 
 class SubjectModelTest(TestCase):
 
+    """Represents SubjectModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
 
     def test_subject_creation(self):
+        """Test that subject creation."""
         subj = make_subject(self.school)
         self.assertIsNotNone(subj.pk)
         self.assertEqual(subj.name, "Mathematics")
         self.assertFalse(subj.is_deleted)
 
     def test_subject_str(self):
+        """Test that subject str."""
         subj = make_subject(self.school)
         self.assertIn("MATH01", str(subj))
         self.assertIn("Mathematics", str(subj))
 
     def test_subject_soft_delete(self):
+        """Test that subject soft delete."""
         subj = make_subject(self.school)
         subj.delete()
         self.assertTrue(Subject.objects.all_with_deleted().get(pk=subj.pk).is_deleted)
@@ -137,6 +148,7 @@ class SubjectModelTest(TestCase):
         self.assertFalse(Subject.objects.filter(pk=subj.pk).exists())
 
     def test_subject_unique_code_per_school(self):
+        """Test that subject unique code per school."""
         make_subject(self.school, name="Math A", code="UNIQ01")
         with self.assertRaises(Exception):
             # Same code in same school must fail
@@ -145,36 +157,45 @@ class SubjectModelTest(TestCase):
 
 class ClassModelTest(TestCase):
 
+    """Represents ClassModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.teacher = make_teacher(self.school, username="cls_teacher")
 
     def test_class_creation(self):
+        """Test that class creation."""
         cls = make_class(self.school, teacher_user=self.teacher.user)
         self.assertIsNotNone(cls.pk)
         self.assertEqual(cls.name, "Form 1A")
         self.assertEqual(cls.academic_year, "2026")
 
     def test_class_str(self):
+        """Test that class str."""
         cls = make_class(self.school)
         self.assertIn("Form 1A", str(cls))
 
 
 class TeacherModelTest(TestCase):
 
+    """Represents TeacherModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
 
     def test_teacher_creation(self):
+        """Test that teacher creation."""
         teacher = make_teacher(self.school)
         self.assertIsNotNone(teacher.pk)
         self.assertEqual(teacher.user.role, "teacher")
 
     def test_teacher_str(self):
+        """Test that teacher str."""
         teacher = make_teacher(self.school, username="tstr")
         self.assertIn("Teacher", str(teacher))
 
     def test_teacher_can_have_subjects(self):
+        """Test that teacher can have subjects."""
         teacher = make_teacher(self.school)
         subj = make_subject(self.school)
         teacher.subjects_taught.add(subj)
@@ -183,23 +204,29 @@ class TeacherModelTest(TestCase):
 
 class StudentModelTest(TestCase):
 
+    """Represents StudentModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.cls = make_class(self.school)
 
     def test_student_creation(self):
+        """Test that student creation."""
         student = make_student(self.school, self.cls)
         self.assertIsNotNone(student.pk)
         self.assertEqual(student.student_class, self.cls)
 
     def test_student_str(self):
+        """Test that student str."""
         student = make_student(self.school, self.cls)
         self.assertIn("STU001", str(student))
 
 
 class ResultModelTest(TestCase):
 
+    """Represents ResultModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.cls = make_class(self.school)
         self.teacher = make_teacher(self.school, username="res_teacher")
@@ -207,6 +234,7 @@ class ResultModelTest(TestCase):
         self.student = make_student(self.school, self.cls, username="res_student")
 
     def test_result_creation(self):
+        """Test that result creation."""
         result = Result.objects.create(
             student=self.student,
             subject=self.subject,
@@ -221,6 +249,7 @@ class ResultModelTest(TestCase):
         self.assertEqual(result.score, 75.0)
 
     def test_result_percentage_property(self):
+        """Test that result percentage property."""
         result = Result.objects.create(
             student=self.student,
             subject=self.subject,
@@ -234,6 +263,7 @@ class ResultModelTest(TestCase):
         self.assertAlmostEqual(result.percentage, 80.0)
 
     def test_result_str(self):
+        """Test that result str."""
         result = Result.objects.create(
             student=self.student,
             subject=self.subject,
@@ -249,7 +279,9 @@ class ResultModelTest(TestCase):
 
 class AssignmentSubmissionModelTest(TestCase):
 
+    """Represents AssignmentSubmissionModelTest."""
     def setUp(self):
+        """Execute setUp."""
         self.school = make_school()
         self.cls = make_class(self.school)
         self.teacher = make_teacher(self.school, username="asub_teacher")
@@ -265,6 +297,7 @@ class AssignmentSubmissionModelTest(TestCase):
         )
 
     def test_assignment_submission_creation(self):
+        """Test that assignment submission creation."""
         sub = AssignmentSubmission.objects.create(
             assignment=self.assignment,
             student=self.student,
@@ -276,6 +309,7 @@ class AssignmentSubmissionModelTest(TestCase):
         self.assertIsNone(sub.grade)
 
     def test_submission_str(self):
+        """Test that submission str."""
         sub = AssignmentSubmission.objects.create(
             assignment=self.assignment,
             student=self.student,
@@ -285,6 +319,7 @@ class AssignmentSubmissionModelTest(TestCase):
         self.assertIn(self.assignment.title, str(sub))
 
     def test_submission_unique_per_student_assignment(self):
+        """Test that submission unique per student assignment."""
         AssignmentSubmission.objects.create(
             assignment=self.assignment,
             student=self.student,
@@ -304,19 +339,23 @@ class AssignmentSubmissionModelTest(TestCase):
 
 class SubjectAPITest(APITestCase):
 
+    """Represents SubjectAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "subj_admin", role="admin")
         self.url = "/api/v1/academics/subjects/"
 
     def test_list_subjects_returns_200(self):
+        """Test that list subjects returns 200."""
         make_subject(self.school)
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_list_subjects_scoped_to_school(self):
+        """Test that list subjects scoped to school."""
         make_subject(self.school, name="Math", code="M01")
         other_school = make_school(name="Other School")
         make_subject(other_school, name="Science", code="S01")
@@ -329,6 +368,7 @@ class SubjectAPITest(APITestCase):
         self.assertNotIn("Science", names)
 
     def test_create_subject_as_admin_returns_201(self):
+        """Test that create subject as admin returns 201."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "name": "Physics",
@@ -340,6 +380,7 @@ class SubjectAPITest(APITestCase):
         self.assertEqual(response.data["name"], "Physics")
 
     def test_create_subject_assigns_school_automatically(self):
+        """Test that create subject assigns school automatically."""
         self.client.force_authenticate(user=self.admin)
         self.client.post(self.url, {
             "name": "Chemistry",
@@ -348,6 +389,7 @@ class SubjectAPITest(APITestCase):
         self.assertTrue(Subject.objects.filter(code="CHEM01", school=self.school).exists())
 
     def test_list_subjects_requires_authentication(self):
+        """Test that list subjects requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -358,7 +400,9 @@ class SubjectAPITest(APITestCase):
 
 class StudentAPITest(APITestCase):
 
+    """Represents StudentAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "stu_admin", role="admin")
@@ -366,12 +410,14 @@ class StudentAPITest(APITestCase):
         self.url = "/api/v1/academics/students/"
 
     def test_list_students_returns_200(self):
+        """Test that list students returns 200."""
         make_student(self.school, self.cls)
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_list_students_scoped_to_school(self):
+        """Test that list students scoped to school."""
         make_student(self.school, self.cls, username="stu_mine", student_number="S001")
         other_school = make_school(name="Other")
         other_cls = make_class(other_school, name="OtherClass", grade_level=1)
@@ -385,6 +431,7 @@ class StudentAPITest(APITestCase):
         self.assertNotIn("S999", numbers)
 
     def test_create_student_as_admin_returns_201(self):
+        """Test that create student as admin returns 201."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "user": {
@@ -399,6 +446,7 @@ class StudentAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_filter_students_by_class(self):
+        """Test that filter students by class."""
         cls2 = make_class(self.school, name="Form 3A", grade_level=3)
         make_student(self.school, self.cls, username="stu_c1", student_number="C1001")
         make_student(self.school, cls2, username="stu_c2", student_number="C2001")
@@ -410,6 +458,7 @@ class StudentAPITest(APITestCase):
         self.assertNotIn("C2001", numbers)
 
     def test_list_students_requires_authentication(self):
+        """Test that list students requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -420,7 +469,9 @@ class StudentAPITest(APITestCase):
 
 class ResultAPITest(APITestCase):
 
+    """Represents ResultAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "res_admin", role="admin")
@@ -431,6 +482,7 @@ class ResultAPITest(APITestCase):
         self.url = "/api/v1/academics/results/"
 
     def test_list_results_returns_200(self):
+        """Test that list results returns 200."""
         Result.objects.create(
             student=self.student, subject=self.subject, teacher=self.teacher,
             exam_type="Midterm", score=70, max_score=100,
@@ -441,6 +493,7 @@ class ResultAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_create_result_as_admin_returns_201(self):
+        """Test that create result as admin returns 201."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "student": self.student.pk,
@@ -456,6 +509,7 @@ class ResultAPITest(APITestCase):
         self.assertEqual(response.data["score"], 85.0)
 
     def test_list_results_filtered_by_student(self):
+        """Test that list results filtered by student."""
         student2_user = make_user(self.school, "res_stu2", role="student")
         student2 = Student.objects.create(
             user=student2_user, student_class=self.cls,
@@ -478,6 +532,7 @@ class ResultAPITest(APITestCase):
         self.assertEqual(student_ids, {self.student.pk})
 
     def test_list_results_requires_authentication(self):
+        """Test that list results requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -488,7 +543,9 @@ class ResultAPITest(APITestCase):
 
 class TimetableAPITest(APITestCase):
 
+    """Represents TimetableAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "tt_admin", role="admin")
@@ -500,6 +557,7 @@ class TimetableAPITest(APITestCase):
 
     def _create_timetable_entry(self, day="Monday",
                                  start="08:00", end="08:45", room="101"):
+        """Execute create timetable entry."""
         return Timetable.objects.create(
             class_assigned=self.cls,
             subject=self.subject,
@@ -511,12 +569,14 @@ class TimetableAPITest(APITestCase):
         )
 
     def test_list_timetables_returns_200(self):
+        """Test that list timetables returns 200."""
         self._create_timetable_entry()
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_list_timetables_filtered_by_class(self):
+        """Test that list timetables filtered by class."""
         cls2 = make_class(self.school, name="Form 2B", grade_level=2)
         self._create_timetable_entry()
         Timetable.objects.create(
@@ -531,10 +591,12 @@ class TimetableAPITest(APITestCase):
             self.assertEqual(entry["class_assigned"], self.cls.pk)
 
     def test_list_timetables_requires_authentication(self):
+        """Test that list timetables requires authentication."""
         response = self.client.get(self.list_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_conflict_check_admin_only(self):
+        """Test that conflict check admin only."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self.conflicts_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -542,6 +604,7 @@ class TimetableAPITest(APITestCase):
 
     def test_conflict_check_detects_teacher_double_booking(self):
         # Two overlapping slots for the same teacher on same day
+        """Test that conflict check detects teacher double booking."""
         self._create_timetable_entry(day="Monday", start="08:00", end="08:45")
         Timetable.objects.create(
             class_assigned=self.cls,
@@ -559,6 +622,7 @@ class TimetableAPITest(APITestCase):
         self.assertIn("teacher", conflict_types)
 
     def test_conflict_check_forbidden_for_teacher_role(self):
+        """Test that conflict check forbidden for teacher role."""
         teacher_user = self.teacher.user
         teacher_user.role = "teacher"
         teacher_user.save()
@@ -573,7 +637,9 @@ class TimetableAPITest(APITestCase):
 
 class StudentAttendanceAPITest(APITestCase):
 
+    """Represents StudentAttendanceAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "att_admin", role="admin")
@@ -595,11 +661,13 @@ class StudentAttendanceAPITest(APITestCase):
         self.url = "/api/v1/students/attendance/"
 
     def test_student_can_view_own_attendance(self):
+        """Test that student can view own attendance."""
         self.client.force_authenticate(user=self.student_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_attendance_response_contains_records(self):
+        """Test that attendance response contains records."""
         self.client.force_authenticate(user=self.student_user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -607,6 +675,7 @@ class StudentAttendanceAPITest(APITestCase):
         self.assertIsNotNone(response.data)
 
     def test_attendance_requires_authentication(self):
+        """Test that attendance requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
@@ -617,7 +686,9 @@ class StudentAttendanceAPITest(APITestCase):
 
 class GradePredictionAPITest(APITestCase):
 
+    """Represents GradePredictionAPITest."""
     def setUp(self):
+        """Execute setUp."""
         self.client = APIClient()
         self.school = make_school()
         self.admin = make_user(self.school, "pred_admin", role="admin")
@@ -629,12 +700,14 @@ class GradePredictionAPITest(APITestCase):
         self.subject = make_subject(self.school)
 
     def _url(self, student_id):
+        """Execute url."""
         return f"/api/v1/academics/students/{student_id}/grade-prediction/"
 
     @patch("academics.ml_predictions.predict_student_grades", return_value=[
         {"subject": "Mathematics", "predicted_percentage": 82.5, "trend": "improving"}
     ])
     def test_grade_prediction_returns_200(self, mock_predict):
+        """Test that grade prediction returns 200."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self._url(self.student.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -643,12 +716,14 @@ class GradePredictionAPITest(APITestCase):
 
     @patch("academics.ml_predictions.predict_student_grades", return_value=[])
     def test_grade_prediction_404_for_unknown_student(self, mock_predict):
+        """Test that grade prediction 404 for unknown student."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(self._url(99999))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     @patch("academics.ml_predictions.predict_student_grades", return_value=[])
     def test_grade_prediction_forbidden_for_hr_role(self, mock_predict):
+        """Test that grade prediction forbidden for hr role."""
         hr_user = make_user(self.school, "pred_hr", role="hr")
         self.client.force_authenticate(user=hr_user)
         response = self.client.get(self._url(self.student.pk))
@@ -656,5 +731,6 @@ class GradePredictionAPITest(APITestCase):
 
     @patch("academics.ml_predictions.predict_student_grades", return_value=[])
     def test_grade_prediction_requires_authentication(self, mock_predict):
+        """Test that grade prediction requires authentication."""
         response = self.client.get(self._url(self.student.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

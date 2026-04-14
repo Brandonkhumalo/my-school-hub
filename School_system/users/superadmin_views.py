@@ -20,12 +20,14 @@ SUPERADMIN_SECRET_KEY = os.environ.get('SUPERADMIN_SECRET_KEY', 'TISHANYQ_DEV_20
 
 
 def check_superadmin(user):
+    """Execute check superadmin."""
     return user.is_authenticated and user.role == 'superadmin'
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def superadmin_register(request):
+    """Execute superadmin register."""
     email = request.data.get('email')
     password = request.data.get('password')
     full_name = request.data.get('full_name', '')
@@ -70,6 +72,7 @@ def superadmin_register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def superadmin_login(request):
+    """Execute superadmin login."""
     email = request.data.get('email')
     password = request.data.get('password')
     
@@ -107,6 +110,7 @@ def superadmin_login(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def superadmin_stats(request):
+    """Execute superadmin stats."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -122,6 +126,7 @@ def superadmin_stats(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_school_with_admin(request):
+    """Create school with admin."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -187,6 +192,7 @@ def create_school_with_admin(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_schools_with_admins(request):
+    """List schools with admins."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -217,6 +223,7 @@ def list_schools_with_admins(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def reset_admin_password(request, school_id):
+    """Execute reset admin password."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -250,6 +257,7 @@ def reset_admin_password(request, school_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def suspend_school(request, school_id):
+    """Execute suspend school."""
     if request.user.role != 'superadmin':
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     

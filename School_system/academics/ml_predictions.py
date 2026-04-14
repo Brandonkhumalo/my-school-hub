@@ -73,6 +73,7 @@ def _confidence(n, std_dev, max_score):
 
 
 def _trend(scores):
+    """Execute trend."""
     if len(scores) < 2:
         return 'stable'
     delta = scores[-1] - scores[0]

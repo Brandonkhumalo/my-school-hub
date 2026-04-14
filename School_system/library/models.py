@@ -3,6 +3,7 @@ from django.conf import settings
 
 
 class Book(models.Model):
+    """Represents Book."""
     CATEGORY_CHOICES = [
         ('textbook', 'Textbook'),
         ('fiction', 'Fiction'),
@@ -25,13 +26,16 @@ class Book(models.Model):
     date_added = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['title']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.title} by {self.author}"
 
 
 class BookLoan(models.Model):
+    """Represents BookLoan."""
     STATUS_CHOICES = [
         ('issued', 'Issued'),
         ('returned', 'Returned'),
@@ -49,7 +53,9 @@ class BookLoan(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
+        """Represents Meta."""
         ordering = ['-issued_date']
 
     def __str__(self):
+        """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.book.title} ({self.status})"

@@ -6,6 +6,38 @@ Three-phase deployment: start cheap on a single EC2, scale to ECS with auto-scal
 
 **Domain:** `myschoolhub.co.zw` — DNS points directly to Elastic IP (no Cloudflare).
 
+## Architecture
+
+```
+Internet → Nginx (SSL) → Go Gateway (:8080)
+                          ├─→ Django API (:8000)        — core business logic, ORM, auth
+                          ├─→ Go Workers (:8081)        — bulk CSV imports (students, results, fees)
+                          └─→ Go Services (:8082)       — PDF reports, PayNow, email, WhatsApp
+                               │
+                          Redis (:6379) ← Celery worker + beat
+                               │
+                          PostgreSQL (RDS)
+```
+
+### Go Microservices
+
+| Service | Port | RAM | Purpose |
+|---------|------|-----|---------|
+| **Go Gateway** | 8080 | ~15MB | JWT auth, token blacklist, audit logging, rate limiting, request routing |
+| **Go Workers** | 8081 | ~10MB | Streaming CSV bulk imports with batch PostgreSQL inserts |
+| **Go Services** | 8082 | ~12MB | PDF report cards (go-fpdf), PayNow API, Resend email, WhatsApp (goroutines) |
+| **Django** | 8000 | ~150MB | Core business logic, ORM, admin, DRF APIs |
+| **Celery** | — | ~100MB | Background task processing (WhatsApp webhooks, report generation fallback) |
+
+### Docker Images (ECR)
+
+| Image | Build Context | Dockerfile |
+|-------|---------------|------------|
+| `schoolhub-gateway` | `go-gateway/` | `go-gateway/Dockerfile` |
+| `schoolhub-workers` | `go-workers/` | `go-workers/Dockerfile` |
+| `schoolhub-services` | `go-services/` | `go-services/Dockerfile` |
+| `schoolhub-web` | `School_system/` | `School_system/Dockerfile` |
+
 ---
 
 ## Table of Contents
@@ -29,7 +61,7 @@ Three-phase deployment: start cheap on a single EC2, scale to ECS with auto-scal
 
 ## Phase 1 — Launch (0 to ~500 users)
 
-Single EC2 instance hosting **both** the React frontend and Django backend, with Nginx + Let's Encrypt SSL. Managed RDS + ElastiCache. ~$30-43/month.
+Single EC2 instance hosting the React frontend and Go + Django microservices, with Nginx + Let's Encrypt SSL. Managed RDS + ElastiCache. ~$30-43/month.
 
 ```
         Internet
@@ -45,12 +77,17 @@ Single EC2 instance hosting **both** the React frontend and Django backend, with
   │  Nginx (host)                                │
   │    ├── :443 → SSL (Let's Encrypt)           │
   │    ├── /          → React SPA (static)      │
-  │    ├── /api/      → Django :8000 (Docker)   │
-  │    ├── /admin/    → Django :8000 (Docker)   │
-  │    └── /health/   → Django :8000 (Docker)   │
+  │    └── /api/      → Go Gateway :8080        │
   │                                              │
   │  Docker (docker-compose.prod.yml)            │
+  │    ├── gateway     (Go API Gateway ~15MB)   │
+  │    │     ├── /api/v1/bulk/*    → workers    │
+  │    │     ├── /api/v1/services/* → services  │
+  │    │     ├── report-card, paynow → services │
+  │    │     └── everything else   → web        │
   │    ├── web         (Django + Gunicorn)       │
+  │    ├── workers     (Go Bulk Workers ~10MB)  │
+  │    ├── services    (Go Services ~12MB)      │
   │    ├── celery      (background tasks)        │
   │    └── celery-beat (periodic tasks)          │
   └──────┬──────────────┬────────────────────────┘
@@ -233,12 +270,15 @@ You must create the security group **before** creating the database.
 > CELERY_BROKER_URL=redis://schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com:6379/0
 > ```
 
-### Step 5: Create ECR Repository
+### Step 5: Create ECR Repositories
 
 Go to **AWS Console → CloudShell** (top right, terminal icon) and run:
 
 ```bash
 aws ecr create-repository --repository-name schoolhub-web --region af-south-1
+aws ecr create-repository --repository-name schoolhub-gateway --region af-south-1
+aws ecr create-repository --repository-name schoolhub-workers --region af-south-1
+aws ecr create-repository --repository-name schoolhub-services --region af-south-1
 ```
 
 The output will show a `repositoryUri` like:
@@ -246,7 +286,7 @@ The output will show a `repositoryUri` like:
 "repositoryUri": "215627216353.dkr.ecr.af-south-1.amazonaws.com/schoolhub-web"
 ```
 
-Your `ECR_REGISTRY` is **everything before** `/schoolhub-web`:
+Your `ECR_REGISTRY` is **everything before** the repo name:
 
 > **Save for `.env`:** Just the registry host — **not** the full image path:
 > ```
@@ -371,9 +411,16 @@ cd ~/my-school-hub
 source School_system/.env
 aws ecr get-login-password --region af-south-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-# Build and push Docker image
+# Build and push all Docker images
 docker build -t $ECR_REGISTRY/schoolhub-web:latest ./School_system/
+docker build -t $ECR_REGISTRY/schoolhub-gateway:latest ./go-gateway/
+docker build -t $ECR_REGISTRY/schoolhub-workers:latest ./go-workers/
+docker build -t $ECR_REGISTRY/schoolhub-services:latest ./go-services/
+
 docker push $ECR_REGISTRY/schoolhub-web:latest
+docker push $ECR_REGISTRY/schoolhub-gateway:latest
+docker push $ECR_REGISTRY/schoolhub-workers:latest
+docker push $ECR_REGISTRY/schoolhub-services:latest
 
 # Start all services
 docker compose -f docker-compose.prod.yml up -d
@@ -414,18 +461,25 @@ bash infrastructure/fix-ssl.sh
 ### Step 12: Verify
 
 ```bash
-# Health check (via Nginx/SSL)
+# Health check (via Nginx/SSL → Go Gateway → Django)
 curl -I https://myschoolhub.co.zw/health/
 
-# Health check (direct to Django)
-curl http://localhost:8000/health/
+# Health check (direct to Go Gateway)
+curl http://localhost:8080/health/
+
+# Health check (direct to individual services)
+curl http://localhost:8000/health/    # Django
+# Go Workers and Go Services only expose ports internally via Docker
 
 # Docker service status
 docker compose -f docker-compose.prod.yml ps
 
 # Check logs
 docker compose -f docker-compose.prod.yml logs -f
-docker compose -f docker-compose.prod.yml logs web
+docker compose -f docker-compose.prod.yml logs gateway    # Go Gateway
+docker compose -f docker-compose.prod.yml logs web        # Django
+docker compose -f docker-compose.prod.yml logs services   # Go Services
+docker compose -f docker-compose.prod.yml logs workers    # Go Workers
 
 # SSL certificate status
 sudo certbot certificates
@@ -438,7 +492,10 @@ Expected output from `docker compose ps`:
 
 ```
 NAME          STATUS
+gateway       Up
 web           Up (healthy)
+workers       Up
+services      Up
 celery        Up
 celery-beat   Up
 ```
@@ -475,8 +532,8 @@ The workflow file already exists at `.github/workflows/deploy.yml`. You just nee
 
 Now every push to `main` automatically:
 1. Runs all tests against a fresh PostgreSQL database
-2. Builds the Docker image and pushes to ECR
-3. SSHs into EC2, pulls the new image, rebuilds the frontend, and reloads Nginx
+2. Builds all 4 Docker images (Django + Go Gateway + Go Workers + Go Services) and pushes to ECR
+3. SSHs into EC2, pulls all new images, rebuilds the frontend, restarts all services, and reloads Nginx
 
 ### Step 15: Set Up S3 for Media Files (optional)
 
@@ -645,13 +702,16 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
 
 ### Step 3: Create ECS Cluster + Task Definitions
 
-Same Docker image, different task definitions:
-
 | Service | Image | Memory | CPU | Port | Load balanced |
 |---------|-------|--------|-----|------|---------------|
-| web | `schoolhub-web:latest` | 512 MB | 512 | 8000 | Yes (ALB) |
+| gateway | `schoolhub-gateway:latest` | 64 MB | 128 | 8080 | Yes (ALB) |
+| web | `schoolhub-web:latest` | 512 MB | 512 | 8000 | No (internal) |
+| workers | `schoolhub-workers:latest` | 64 MB | 128 | 8081 | No (internal) |
+| services | `schoolhub-services:latest` | 64 MB | 128 | 8082 | No (internal) |
 | celery | `schoolhub-web:latest` | 512 MB | 256 | — | No |
 | celery-beat | `schoolhub-web:latest` | 256 MB | 128 | — | No |
+
+> **Note:** The Go microservices (gateway, workers, services) use ~10-15MB RAM each. The 64MB allocation gives generous headroom. The ALB now points to the gateway, not Django directly.
 
 ### Step 4: Upgrade RDS and ElastiCache
 
@@ -667,7 +727,10 @@ In `.github/workflows/deploy.yml`, replace the SSH deploy step with:
 ```yaml
       - name: Deploy to ECS
         run: |
+          aws ecs update-service --cluster schoolhub --service schoolhub-gateway --force-new-deployment --region af-south-1
           aws ecs update-service --cluster schoolhub --service schoolhub-web --force-new-deployment --region af-south-1
+          aws ecs update-service --cluster schoolhub --service schoolhub-workers --force-new-deployment --region af-south-1
+          aws ecs update-service --cluster schoolhub --service schoolhub-services --force-new-deployment --region af-south-1
           aws ecs update-service --cluster schoolhub --service schoolhub-celery --force-new-deployment --region af-south-1
           aws ecs update-service --cluster schoolhub --service schoolhub-beat --force-new-deployment --region af-south-1
 
@@ -803,12 +866,19 @@ aws rds create-db-instance-read-replica \
 
 | File | Purpose |
 |------|---------|
-| `School_system/Dockerfile` | Multi-stage Docker build (builder → runtime) |
+| `School_system/Dockerfile` | Django multi-stage Docker build (builder → runtime) |
 | `School_system/entrypoint.sh` | Container startup: collectstatic → migrate → gunicorn |
 | `School_system/.env.example` | Template for all environment variables |
-| `docker-compose.prod.yml` | Production compose (ECR images, external RDS/Redis) |
-| `deploy-ec2.sh` | Deploy script: backend + frontend + SSL, with rollback |
-| `.github/workflows/deploy.yml` | CI/CD: test → build → push → SSH deploy |
+| `go-gateway/Dockerfile` | Go Gateway multi-stage build (~10MB image) |
+| `go-gateway/main.go` | Gateway: JWT auth, routing, rate limiting, CORS |
+| `go-workers/Dockerfile` | Go Workers multi-stage build (~10MB image) |
+| `go-workers/main.go` | Bulk CSV imports: students, results, fees |
+| `go-services/Dockerfile` | Go Services multi-stage build (~12MB image) |
+| `go-services/main.go` | PDF reports, PayNow, email, WhatsApp handlers |
+| `docker-compose.yml` | Dev compose: builds all services locally with Redis |
+| `docker-compose.prod.yml` | Production compose: ECR images, external RDS/Redis |
+| `deploy-ec2.sh` | Deploy script: all 4 images + frontend + SSL, with rollback |
+| `.github/workflows/deploy.yml` | CI/CD: test → build all 4 images → push to ECR → SSH deploy |
 | `infrastructure/nginx/schoolhub.conf` | Nginx HTTP-only config (pre-SSL) |
 | `infrastructure/nginx/schoolhub-ssl.conf` | Nginx HTTPS config (post-SSL) |
 | `infrastructure/fix-ssl.sh` | SSL recovery: Nginx + Let's Encrypt + auto-renewal |
