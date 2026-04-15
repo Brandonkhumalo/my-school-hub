@@ -500,15 +500,14 @@ celery        Up
 celery-beat   Up
 ```
 
-### Step 13: Create Admin User + Seed Data
+### Step 13: Create Admin User
 
 ```bash
 # Create superadmin
 docker compose -f docker-compose.prod.yml exec web python manage.py createsuperuser
 
-# Seed demo data (optional)
-docker compose -f docker-compose.prod.yml exec web python manage.py populate_demo_data
-docker compose -f docker-compose.prod.yml exec web python manage.py generate_parents
+# Optional: run migrations manually (entrypoint already runs this on startup)
+docker compose -f docker-compose.prod.yml exec web python manage.py migrate
 ```
 
 ### Step 14: Set Up CI/CD (GitHub Actions: Build → Test → Deploy)
@@ -691,7 +690,7 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
 | Availability Zones | Select at least 2 |
 
 3. Add SSL certificate from **AWS Certificate Manager** (free) for `myschoolhub.co.zw`
-4. Create **target group** for web service (port 8000, health check: `/health/`)
+4. Create **target group** for gateway service (port 8080, health check: `/health/`)
 
 ### Step 2: Move Frontend to S3 + CloudFront
 

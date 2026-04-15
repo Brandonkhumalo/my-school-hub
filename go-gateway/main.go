@@ -25,6 +25,30 @@ func isReportCardPath(path string) bool {
 	return reportCardRe.MatchString(path)
 }
 
+type routeTarget string
+
+const (
+	targetDjango   routeTarget = "django"
+	targetWorkers  routeTarget = "workers"
+	targetServices routeTarget = "services"
+)
+
+// selectRouteTarget decides which upstream receives a request path.
+func selectRouteTarget(path string) routeTarget {
+	switch {
+	case strings.HasPrefix(path, "/api/v1/bulk/"):
+		return targetWorkers
+	case strings.HasPrefix(path, "/api/v1/finances/payments/paynow/"):
+		return targetServices
+	case strings.HasPrefix(path, "/api/v1/services/"):
+		return targetServices
+	case isReportCardPath(path):
+		return targetServices
+	default:
+		return targetDjango
+	}
+}
+
 // main boots the gateway, wires middleware + upstream routing, and serves HTTP traffic.
 func main() {
 	// Load .env (ignore error — env vars may come from Docker/EC2)
@@ -77,21 +101,11 @@ func main() {
 	//   /api/v1/services/*                            → Go Services (email, WhatsApp)
 	//   everything else                               → Django
 	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-
-		switch {
-		case strings.HasPrefix(path, "/api/v1/bulk/"):
+		switch selectRouteTarget(r.URL.Path) {
+		case targetWorkers:
 			workersProxy.ServeHTTP(w, r)
-
-		case strings.HasPrefix(path, "/api/v1/finances/payments/paynow/"):
+		case targetServices:
 			servicesProxy.ServeHTTP(w, r)
-
-		case strings.HasPrefix(path, "/api/v1/services/"):
-			servicesProxy.ServeHTTP(w, r)
-
-		case isReportCardPath(path):
-			servicesProxy.ServeHTTP(w, r)
-
 		default:
 			djangoProxy.ServeHTTP(w, r)
 		}
@@ -143,13 +157,13 @@ func main() {
 // ─── Config ─────────────────────────────────────────────────
 
 type Config struct {
-	Port              string
-	SecretKey         string
-	DatabaseURL       string
-	DjangoUpstream    string
-	WorkersUpstream   string
-	ServicesUpstream  string
-	CORSOrigins       []string
+	Port             string
+	SecretKey        string
+	DatabaseURL      string
+	DjangoUpstream   string
+	WorkersUpstream  string
+	ServicesUpstream string
+	CORSOrigins      []string
 }
 
 // LoadConfig reads required/optional environment variables and returns normalized config.
@@ -194,8 +208,8 @@ func getEnv(key, fallback string) string {
 // ─── Rate Limiter (simple token bucket per IP) ──────────────
 
 type visitor struct {
-	tokens    int
-	lastSeen  time.Time
+	tokens   int
+	lastSeen time.Time
 }
 
 var (

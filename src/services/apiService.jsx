@@ -1,5 +1,4 @@
-// Production: Django backend hosted on Railway
-const API_BASE_URL = "https://myschoolhub.co.zw/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 function getToken() {
   return localStorage.getItem('token');

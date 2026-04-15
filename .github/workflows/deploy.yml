@@ -136,6 +136,28 @@ jobs:
             (cd "$svc" && go test ./...)
           done
 
+      - name: Go coverage (auth/routing critical paths)
+        run: |
+          set -euo pipefail
+
+          (cd go-gateway && go test -coverprofile=coverage.out ./...)
+          (cd go-services && go test -coverprofile=coverage.out ./...)
+
+          echo "Go Gateway coverage summary:"
+          go tool cover -func=go-gateway/coverage.out | tail -n 8
+          echo "Go Services coverage summary:"
+          go tool cover -func=go-services/coverage.out | tail -n 8
+
+          gateway_auth_cov=$(go tool cover -func=go-gateway/coverage.out | awk '/AuthMiddleware/ {gsub("%","",$3); print $3; exit}')
+          gateway_route_cov=$(go tool cover -func=go-gateway/coverage.out | awk '/selectRouteTarget/ {gsub("%","",$3); print $3; exit}')
+          services_auth_cov=$(go tool cover -func=go-services/coverage.out | awk '/AuthCheckMiddleware/ {gsub("%","",$3); print $3; exit}')
+
+          echo "Auth/Routing coverage -> gateway auth: ${gateway_auth_cov}%, gateway route: ${gateway_route_cov}%, services auth: ${services_auth_cov}%"
+
+          awk -v c="$gateway_auth_cov" 'BEGIN { exit(c+0 >= 60 ? 0 : 1) }' || (echo "Gateway AuthMiddleware coverage below 60%" && exit 1)
+          awk -v c="$gateway_route_cov" 'BEGIN { exit(c+0 >= 60 ? 0 : 1) }' || (echo "Gateway selectRouteTarget coverage below 60%" && exit 1)
+          awk -v c="$services_auth_cov" 'BEGIN { exit(c+0 >= 60 ? 0 : 1) }' || (echo "Go Services AuthCheckMiddleware coverage below 60%" && exit 1)
+
   deploy:
     name: Deploy
     runs-on: ubuntu-latest

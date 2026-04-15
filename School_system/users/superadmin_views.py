@@ -172,10 +172,7 @@ def create_school_with_admin(request):
                 school=school,
                 created_by=request.user
             )
-            
-            school.admin_password = admin_password
-            school.save()
-            
+
             return Response({
                 'message': 'School and admin created successfully',
                 'school_name': school.name,
@@ -213,7 +210,6 @@ def list_schools_with_admins(request):
             'admin_username': admin.username if admin else 'N/A',
             'admin_email': admin.email if admin else 'N/A',
             'admin_phone': admin.phone_number if admin else 'N/A',
-            'admin_password': school.admin_password or 'Not stored',
             'created_at': school.created_at.isoformat() if school.created_at else None
         })
     
@@ -244,10 +240,7 @@ def reset_admin_password(request, school_id):
     
     admin.set_password(new_password)
     admin.save()
-    
-    school.admin_password = new_password
-    school.save()
-    
+
     return Response({
         'message': 'Password reset successfully',
         'new_password': new_password

@@ -322,7 +322,7 @@ func PayNowCallbackHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			// Update payment record status
 			_, err := pool.Exec(ctx, `
 				UPDATE finances_studentpaymentrecord
-				SET payment_status = 'fully paid'
+				SET payment_status = 'paid'
 				WHERE notes ILIKE '%' || $1 || '%'
 			`, paynowRef)
 			if err != nil {

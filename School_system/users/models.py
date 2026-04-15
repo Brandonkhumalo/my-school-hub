@@ -72,7 +72,6 @@ class School(models.Model):
     email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     logo = models.URLField(blank=True)
-    admin_password = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_suspended = models.BooleanField(default=False)
     suspension_reason = models.TextField(blank=True, null=True)

@@ -90,5 +90,5 @@ urlpatterns = [
 ]
 
 # Serve uploaded media files in all environments
-# (Railway uses ephemeral storage — for persistent files use Railway Volumes or S3)
+# (Container/EC2 local disk is ephemeral — for persistent files use EBS volumes or S3)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

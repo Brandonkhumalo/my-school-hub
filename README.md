@@ -91,6 +91,39 @@ Internet → Nginx (SSL) → Go Gateway (:8080)
 
 Django delegates to Go automatically when `GO_SERVICES_URL` is set. If Go services are down, Django falls back to handling email/WhatsApp directly.
 
+## Quick Start (Local Dev)
+
+1. Create backend env file:
+```bash
+cp School_system/.env.example School_system/.env
+```
+2. Configure frontend API base URL for your environment:
+```bash
+# Development
+cat .env.development
+# VITE_API_BASE_URL=http://localhost:8000/api/v1
+```
+3. Start services:
+```bash
+docker compose up --build
+```
+4. Verify health:
+```bash
+curl http://localhost:8080/health/
+curl http://localhost:8080/api/v1/
+```
+5. Open Swagger docs:
+- `http://localhost:8080/api/v1/docs/`
+
+Useful commands:
+```bash
+docker compose ps
+docker compose logs -f gateway
+docker compose logs -f web
+docker compose logs -f workers
+docker compose logs -f services
+```
+
 ## Project Structure
 
 ```
@@ -158,11 +191,24 @@ All endpoints are prefixed with `/api/v1/`:
 | `/api/v1/finances/` | Fees, payments, invoices, PayNow |
 | `/api/v1/staff/` | HR, departments, leave, payroll |
 | `/api/v1/messages/` | Parent-teacher messaging |
-
 | `/api/v1/services/` | Internal: email sending, WhatsApp sending (Go) |
 | `/api/v1/bulk/` | Bulk CSV imports: students, results, fees (Go) |
 
-Interactive API documentation: `http://localhost:8000/api/v1/docs/`
+Interactive API documentation: `http://localhost:8080/api/v1/docs/`
+
+## Developer Docs
+
+- Backend architecture onboarding: `BACKEND_API_DOCUMENTATION.md`
+- Deployment guide: `DEPLOYMENT.md`
+
+## Frontend API Base URL
+
+- `src/services/apiService.jsx` uses:
+  - `import.meta.env.VITE_API_BASE_URL`, fallback `/api/v1`
+- Environment files:
+  - `.env.development` -> `http://localhost:8000/api/v1`
+  - `.env.production` -> `https://myschoolhub.co.zw/api/v1`
+- With Vite dev proxy, using relative `/api/v1` also works.
 
 ---
 

@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────
-# MySchoolHub — Django Backend Dockerfile (EC2 / Railway standalone)
+# MySchoolHub — Django Backend Dockerfile (AWS EC2 / ECS standalone)
 # Build context: repo root
 #
 # For the full Go + Django microservices stack, use:
@@ -37,7 +37,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=School_system.settings \
-    # Default port — Railway overrides this with $PORT at runtime
+    # Default port — AWS (ECS task definition / EC2 env) overrides via $PORT at runtime
     PORT=8000
 
 WORKDIR /app
@@ -56,7 +56,7 @@ COPY School_system/ .
 # Make entrypoint executable
 RUN chmod +x /app/entrypoint.sh
 
-# Railway exposes the PORT env var — the entrypoint binds Gunicorn to it
+# AWS (ECS / EC2) sets the PORT env var — the entrypoint binds Gunicorn to it
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]

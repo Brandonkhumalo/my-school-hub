@@ -1353,7 +1353,7 @@ def paynow_result_callback(request):
                 notes__icontains=paynow_reference
             ).first()
             if record:
-                record.payment_status = 'fully paid'
+                record.payment_status = 'paid'
                 record.save()
                 # Notify parents of successful PayNow payment
                 try:

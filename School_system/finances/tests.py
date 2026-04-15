@@ -15,6 +15,7 @@ import csv
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
@@ -267,6 +268,21 @@ class StudentPaymentRecordModelTest(TestCase):
             recorded_by=self.admin,
         )
         self.assertTrue(record.is_fully_paid)
+
+    def test_invalid_payment_status_fails_full_clean(self):
+        """Guard against invalid DB status writes like 'fully paid'."""
+        record = StudentPaymentRecord(
+            student=self.student,
+            school=self.school,
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("300.00"),
+            amount_paid=Decimal("300.00"),
+            payment_status="fully paid",
+            recorded_by=self.admin,
+        )
+        with self.assertRaises(ValidationError):
+            record.full_clean()
 
 
 # ---------------------------------------------------------------------------

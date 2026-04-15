@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-# ALLOWED_HOSTS — Railway auto-assigns a domain; '*' is safe because
+# ALLOWED_HOSTS — AWS (ALB / Route53) assigns the public domain; '*' is safe because
 # CORS and authentication guard the actual API.
 # Override with a comma-separated list in .env for stricter production configs.
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
@@ -196,7 +196,7 @@ CSRF_TRUSTED_ORIGINS = list(config(
 
 # ---------------------------------------------------------------
 # Security Headers
-# ALB / Nginx / Railway terminate SSL at the edge and forward plain
+# AWS ALB / Nginx terminate SSL at the edge and forward plain
 # HTTP to the container — do NOT use SECURE_SSL_REDIRECT or every
 # request will loop.  Trust the X-Forwarded-Proto header instead.
 # ---------------------------------------------------------------
@@ -214,7 +214,7 @@ if not DEBUG:
 
 # ---------------------------------------------------------------
 # Redis Cache — optional
-# If REDIS_URL is set (Railway Redis plugin or external), use Redis.
+# If REDIS_URL is set (AWS ElastiCache or external), use Redis.
 # Otherwise fall back to in-memory cache so the app starts without Redis.
 # ---------------------------------------------------------------
 _redis_url = config('REDIS_URL', default='')

@@ -1,5 +1,6 @@
 import logging
 
+from django.contrib.auth.hashers import make_password
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -39,8 +40,6 @@ class UserRegistrationView(generics.CreateAPIView):
         extra_fields = {}
         if user.student_number:
             extra_fields['student_number'] = user.student_number
-        if user.whatsapp_pin:
-            extra_fields['whatsapp_pin'] = user.whatsapp_pin
 
         access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
 
@@ -84,8 +83,6 @@ def login_view(request):
         user_data = UserSerializer(user).data
         if user.student_number:
             user_data['student_number'] = user.student_number
-        if user.whatsapp_pin:
-            user_data['whatsapp_pin'] = user.whatsapp_pin
 
         access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
 
@@ -198,8 +195,8 @@ def change_password_view(request):
 def set_whatsapp_pin_view(request):
     serializer = SetWhatsAppPinSerializer(data=request.data)
     if serializer.is_valid():
-        request.user.whatsapp_pin = serializer.validated_data['whatsapp_pin']
-        request.user.save()
+        request.user.whatsapp_pin = make_password(serializer.validated_data['pin'])
+        request.user.save(update_fields=['whatsapp_pin'])
         return Response({'message': 'WhatsApp PIN set successfully'})
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

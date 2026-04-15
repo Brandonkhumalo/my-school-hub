@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from .models import CustomUser, School, SchoolSettings, ReportCardConfig
@@ -210,11 +211,17 @@ class WhatsAppPinVerificationSerializer(serializers.Serializer):
 
         try:
             user = CustomUser.objects.get(phone_number=phone_number, role__in=['student', 'parent'])
-            if user.whatsapp_pin == pin:
+            stored_pin = user.whatsapp_pin or ""
+            if check_password(pin, stored_pin):
                 attrs['user'] = user
                 return attrs
-            else:
-                raise serializers.ValidationError('Invalid PIN.')
+            # Backward compatibility for legacy plaintext pins: verify once, then upgrade.
+            if stored_pin == pin:
+                user.whatsapp_pin = make_password(pin)
+                user.save(update_fields=['whatsapp_pin'])
+                attrs['user'] = user
+                return attrs
+            raise serializers.ValidationError('Invalid PIN.')
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError('Invalid phone number.')
 

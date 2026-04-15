@@ -13,6 +13,7 @@ Covers:
 
 from unittest.mock import patch
 
+from django.contrib.auth.hashers import check_password
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
@@ -360,6 +361,28 @@ class ProfileViewTest(APITestCase):
         """Test that profile requires authentication."""
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class WhatsAppPinSetViewTest(APITestCase):
+
+    """Regression tests for WhatsApp PIN set + hash verification."""
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.user = make_user(self.school, "wa_pin_user", role="parent")
+        self.url = "/api/v1/auth/profile/set-whatsapp-pin/"
+
+    def test_set_whatsapp_pin_hashes_value_and_returns_200(self):
+        self.client.force_authenticate(user=self.user)
+        payload = {"pin": "1234", "confirm_pin": "1234"}
+
+        response = self.client.post(self.url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.whatsapp_pin)
+        self.assertNotEqual(self.user.whatsapp_pin, "1234")
+        self.assertTrue(check_password("1234", self.user.whatsapp_pin))
 
 
 # ---------------------------------------------------------------------------

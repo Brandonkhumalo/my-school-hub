@@ -631,7 +631,7 @@ def assignment_submissions(request, assignment_id):
 
     try:
         assignment = Assignment.objects.select_related('subject', 'assigned_class').get(
-            id=assignment_id, created_by=request.user
+            id=assignment_id, teacher=teacher
         )
     except Assignment.DoesNotExist:
         return Response({'error': 'Assignment not found or not yours'}, status=status.HTTP_404_NOT_FOUND)
@@ -676,13 +676,17 @@ def grade_submission(request, submission_id):
     if request.user.role != 'teacher':
         return Response({'error': 'Only teachers can access this endpoint'},
                         status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
     from .models import AssignmentSubmission
 
     try:
         submission = AssignmentSubmission.objects.select_related(
-            'assignment__created_by'
-        ).get(id=submission_id, assignment__created_by=request.user)
+            'assignment__teacher'
+        ).get(id=submission_id, assignment__teacher=teacher)
     except AssignmentSubmission.DoesNotExist:
         return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
 

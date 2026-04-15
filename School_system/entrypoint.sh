@@ -1,7 +1,7 @@
 #!/bin/sh
 # ──────────────────────────────────────────────────────────────
 # MySchoolHub — Container entrypoint
-# Runs on every container start (EC2, ECS, Railway, etc.)
+# Runs on every container start (AWS EC2, ECS, Fargate, etc.)
 # ──────────────────────────────────────────────────────────────
 set -e
 

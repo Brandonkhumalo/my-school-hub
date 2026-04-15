@@ -6,7 +6,6 @@ export default function SchoolsList() {
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(null);
   const [suspending, setSuspending] = useState(null);
-  const [showPassword, setShowPassword] = useState({});
 
   useEffect(() => {
     fetchSchools();
@@ -57,23 +56,12 @@ export default function SchoolsList() {
       if (!response.ok) throw new Error("Failed to reset password");
 
       const data = await response.json();
-      
-      setSchools(schools.map(s => 
-        s.id === schoolId 
-          ? { ...s, admin_password: data.new_password }
-          : s
-      ));
-      
-      alert("Password reset successfully!");
+      alert(`Password reset successfully! New password: ${data.new_password}`);
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
       setResetting(null);
     }
-  };
-
-  const togglePassword = (schoolId) => {
-    setShowPassword(prev => ({ ...prev, [schoolId]: !prev[schoolId] }));
   };
 
   const handleToggleSuspend = async (schoolId, currentStatus) => {
@@ -167,7 +155,6 @@ export default function SchoolsList() {
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Password</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -200,19 +187,6 @@ export default function SchoolsList() {
                         <p className="font-medium text-gray-800">{school.admin_username}</p>
                         <p className="text-sm text-gray-500">{school.admin_email}</p>
                         <p className="text-xs text-gray-400">{school.admin_phone}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-mono text-sm ${showPassword[school.id] ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}>
-                          {showPassword[school.id] ? school.admin_password : '••••••••'}
-                        </span>
-                        <button
-                          onClick={() => togglePassword(school.id)}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          <i className={`fas fa-eye${showPassword[school.id] ? '-slash' : ''}`}></i>
-                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4">

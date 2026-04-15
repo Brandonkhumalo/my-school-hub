@@ -1,7 +1,7 @@
 # Environment variables — never commit secrets
 .env
 *.env
-# Allow the production env file (only contains the public Railway URL, no secrets)
+# Allow the production env file (only contains the public AWS URL, no secrets)
 !.env.production
 
 # Logs — keep the directory, ignore log files
