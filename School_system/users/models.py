@@ -109,7 +109,7 @@ class CustomUser(AbstractUser):
     phone_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, db_index=True)
     student_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
-    whatsapp_pin = models.CharField(max_length=6, null=True, blank=True)
+    whatsapp_pin = models.CharField(max_length=128, null=True, blank=True)
     school = models.ForeignKey(School, on_delete=models.CASCADE, null=True, blank=True, related_name='users', db_index=True)
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
 
