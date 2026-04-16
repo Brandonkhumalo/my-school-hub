@@ -1,79 +1,96 @@
 # Docker Compose Log Commands
 
-## All Services
+Service names from `DEPLOYMENT.md`:
+- `gateway`
+- `web`
+- `workers`
+- `services`
+- `celery`
+- `celery-beat`
+
+Dev-only service:
+- `redis` (exists in `docker-compose.yml`, not in `docker-compose.prod.yml`)
+
+## Production (`docker-compose.prod.yml`)
+
+### All containers
 
 ```bash
-# Last 10 minutes
-docker compose logs --since 10m
+# Last 1 hour
+docker compose -f docker-compose.prod.yml logs --since 1h
 
-# Last 30 minutes
-docker compose logs --since 30m
+# Last 1 hour + timestamps
+docker compose -f docker-compose.prod.yml logs --since 1h -t
 
+# Last 1 hour + follow live
+docker compose -f docker-compose.prod.yml logs --since 1h -f
+
+# Last 200 lines per container
+docker compose -f docker-compose.prod.yml logs --tail 200
+```
+
+### Specific container/service
+
+```bash
+# gateway
+docker compose -f docker-compose.prod.yml logs --since 1h gateway
+
+# web (Django)
+docker compose -f docker-compose.prod.yml logs --since 1h web
+
+# workers
+docker compose -f docker-compose.prod.yml logs --since 1h workers
+
+# services
+docker compose -f docker-compose.prod.yml logs --since 1h services
+
+# celery
+docker compose -f docker-compose.prod.yml logs --since 1h celery
+
+# celery-beat
+docker compose -f docker-compose.prod.yml logs --since 1h celery-beat
+```
+
+### Multiple specific services
+
+```bash
+docker compose -f docker-compose.prod.yml logs --since 1h web celery
+docker compose -f docker-compose.prod.yml logs --since 1h gateway services
+```
+
+## Development (`docker-compose.yml`)
+
+### All containers
+
+```bash
 # Last 1 hour
 docker compose logs --since 1h
 
-# Last 6 hours
-docker compose logs --since 6h
-
-# Last 24 hours (1 day)
-docker compose logs --since 24h
-
-# Follow (live) — last 10 minutes then keep streaming
-docker compose logs --since 10m -f
+# Last 1 hour + follow live
+docker compose logs --since 1h -f
 ```
 
-## Specific Service
-
-Replace `<service>` with: `web`, `redis`, `celery`, `celery-beat`
+### Specific container/service
 
 ```bash
-# Last 10 minutes
-docker compose logs --since 10m <service>
-
-# Last 30 minutes
-docker compose logs --since 30m <service>
-
-# Last 1 hour
-docker compose logs --since 1h <service>
-
-# Last 24 hours
-docker compose logs --since 24h <service>
-
-# Follow (live)
-docker compose logs --since 10m -f <service>
-```
-
-### Examples
-
-```bash
-# Web server logs for the last hour
+docker compose logs --since 1h gateway
 docker compose logs --since 1h web
-
-# Celery worker logs for the last 30 minutes (live)
-docker compose logs --since 30m -f celery
-
-# Redis logs for the last day
-docker compose logs --since 24h redis
-
-# Celery beat logs for the last 10 minutes
-docker compose logs --since 10m celery-beat
+docker compose logs --since 1h workers
+docker compose logs --since 1h services
+docker compose logs --since 1h celery
+docker compose logs --since 1h celery-beat
+docker compose logs --since 1h redis
 ```
 
-## Useful Flags
-
-| Flag | Description |
-|------|-------------|
-| `-f` | Follow / stream new logs live |
-| `--since 10m` | Logs from the last 10 minutes |
-| `--since 1h` | Logs from the last 1 hour |
-| `--since 24h` | Logs from the last 24 hours |
-| `--tail 100` | Show only the last 100 lines |
-| `--no-color` | Plain text (useful for piping to a file) |
-| `-t` | Show timestamps |
-
-## Save Logs to a File
+## Helpful options
 
 ```bash
-docker compose logs --since 1h web --no-color > web-logs.txt
-docker compose logs --since 24h --no-color > all-logs.txt
+# Show only service names
+docker compose -f docker-compose.prod.yml ps --services
+
+# Remove ANSI colors when saving to file
+docker compose -f docker-compose.prod.yml logs --since 1h --no-color > prod-logs-1h.txt
+
+# Save one service logs
+docker compose -f docker-compose.prod.yml logs --since 1h --no-color web > web-logs-1h.txt
 ```
