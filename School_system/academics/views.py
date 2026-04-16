@@ -4,6 +4,7 @@ from django.db.models import Avg, Count, Q, Prefetch
 from django.utils import timezone
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
@@ -512,9 +513,8 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_posted')
 
     def perform_create(self, serializer):
-        if self.request.user.role not in ('admin', 'hr', 'teacher', 'superadmin'):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only admin, HR, and teachers can create announcements.')
+        if self.request.user.role not in ('admin', 'hr'):
+            raise PermissionDenied('Only admin and HR can create announcements.')
         announcement = serializer.save(author=self.request.user)
         # Notify parents if target_audience is 'all' or 'parent'
         if announcement.target_audience not in ('all', 'parent'):
@@ -674,11 +674,39 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_created')
 
     def perform_create(self, serializer):
-        if self.request.user.role == 'teacher':
-            serializer.save(teacher=self.request.user.teacher)
-        else:
-            return Response({'error': 'Only teachers can create suspensions'}, 
-                          status=status.HTTP_403_FORBIDDEN)
+        user = self.request.user
+        if user.role not in ('admin', 'hr'):
+            raise PermissionDenied('Only admin and HR can issue suspensions.')
+
+        student = serializer.validated_data.get('student')
+        if not student:
+            raise ValidationError({'student': 'student is required'})
+        if user.school and student.user.school_id != user.school_id:
+            raise PermissionDenied('Selected student is outside your school.')
+
+        selected_teacher = serializer.validated_data.get('teacher')
+        if selected_teacher:
+            if user.school and selected_teacher.user.school_id != user.school_id:
+                raise PermissionDenied('Selected teacher is outside your school.')
+            serializer.save(teacher=selected_teacher)
+            return
+
+        # If no teacher provided, try class teacher as sensible default.
+        class_teacher_user = getattr(student.student_class, 'class_teacher', None)
+        if class_teacher_user:
+            class_teacher_profile = Teacher.objects.filter(
+                user=class_teacher_user,
+                user__school=user.school
+            ).first()
+            if class_teacher_profile:
+                serializer.save(teacher=class_teacher_profile)
+                return
+
+        raise ValidationError({
+            'teacher': (
+                'A teacher must be selected to record this suspension, or the student class must have a class teacher profile.'
+            )
+        })
 
 
 # Admin Parent-Child Link Management Views

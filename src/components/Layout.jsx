@@ -143,6 +143,7 @@ const ALL_MENU_ITEMS = {
       { path: "/hr/cleaning",      icon: "fa-broom",             title: "Cleaning" },
       { path: "/hr/discipline",    icon: "fa-gavel",             title: "Discipline" },
       { path: "/hr/promotions",    icon: "fa-graduation-cap",    title: "Promotions" },
+      { path: "/hr/suspensions",   icon: "fa-ban",               title: "Suspensions" },
       { path: "/hr/complaints",    icon: "fa-exclamation-circle",title: "Complaints" },
       { path: "/hr/announcements", icon: "fa-bullhorn",          title: "Announcements" },
       { path: "/hr/timetable",     icon: "fa-calendar-alt",      title: "Timetable" },

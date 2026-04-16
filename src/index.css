@@ -39,6 +39,12 @@ body {
   --shadow-lg:       0 10px 30px rgba(0, 0, 0, 0.12);
   --radius:          0.75rem;
   --radius-lg:       1rem;
+  --input-bg:        #ffffff;
+  --input-text:      #0f172a;
+  --input-border:    #cbd5e1;
+  --input-placeholder:#64748b;
+  --input-focus-ring: rgba(37, 99, 235, 0.18);
+  --input-disabled-bg:#e2e8f0;
 }
 
 /* === DARK MODE ============================================= */
@@ -58,7 +64,16 @@ body {
   --shadow:          0 1px 3px rgba(0, 0, 0, 0.35);
   --shadow-md:       0 4px 12px rgba(0, 0, 0, 0.45);
   --shadow-lg:       0 10px 30px rgba(0, 0, 0, 0.55);
+  --input-bg:        #273549;
+  --input-text:      #f1f5f9;
+  --input-border:    #475569;
+  --input-placeholder:#94a3b8;
+  --input-focus-ring: rgba(59, 130, 246, 0.30);
+  --input-disabled-bg:#334155;
 }
+
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
 
 /* Smooth theme transitions on key elements */
 *,
@@ -236,6 +251,54 @@ body {
 }
 .portal-input::placeholder { color: var(--text-muted); }
 
+/* Global form control theming:
+   keep all inputs/search/dropdowns readable across dark/light modes,
+   even when pages use mixed Tailwind utility colors. */
+[data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+[data-theme] select,
+[data-theme] textarea {
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  border-color: var(--input-border);
+  caret-color: var(--input-text);
+}
+
+[data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"])::placeholder,
+[data-theme] textarea::placeholder {
+  color: var(--input-placeholder);
+}
+
+[data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):focus,
+[data-theme] select:focus,
+[data-theme] textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
+[data-theme] input:disabled,
+[data-theme] select:disabled,
+[data-theme] textarea:disabled {
+  background-color: var(--input-disabled-bg);
+  color: var(--text-muted);
+}
+
+[data-theme] select option,
+[data-theme] select optgroup {
+  background-color: var(--input-bg);
+  color: var(--input-text);
+}
+
+[data-theme] input:-webkit-autofill,
+[data-theme] input:-webkit-autofill:hover,
+[data-theme] input:-webkit-autofill:focus,
+[data-theme] textarea:-webkit-autofill,
+[data-theme] select:-webkit-autofill {
+  -webkit-text-fill-color: var(--input-text);
+  box-shadow: 0 0 0px 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* ============================================================
    DARK MODE OVERRIDES FOR TAILWIND UTILITY CLASSES
    Pages across the app use hardcoded Tailwind colors (bg-white,
@@ -250,10 +313,14 @@ body {
 [data-theme="dark"] .bg-gray-50 { background-color: #273549; }
 [data-theme="dark"] .bg-gray-100 { background-color: #334155; }
 [data-theme="dark"] .bg-gray-200 { background-color: #3f4b62; }
+[data-theme="dark"] .bg-gray-300 { background-color: #4b5a74; }
+[data-theme="dark"] .bg-gray-400 { background-color: #5b6b86; }
 
 [data-theme="dark"] .hover\:bg-gray-50:hover { background-color: #273549; }
 [data-theme="dark"] .hover\:bg-gray-100:hover { background-color: #334155; }
 [data-theme="dark"] .hover\:bg-gray-200:hover { background-color: #3f4b62; }
+[data-theme="dark"] .hover\:bg-gray-300:hover { background-color: #4b5a74; }
+[data-theme="dark"] .hover\:bg-gray-400:hover { background-color: #5b6b86; }
 [data-theme="dark"] .hover\:bg-white:hover { background-color: #1e293b; }
 
 [data-theme="dark"] .text-gray-400 { color: #94a3b8; }
@@ -270,7 +337,9 @@ body {
 
 [data-theme="dark"] .border-gray-100,
 [data-theme="dark"] .border-gray-200,
-[data-theme="dark"] .border-gray-300 { border-color: #334155; }
+[data-theme="dark"] .border-gray-300,
+[data-theme="dark"] .border-gray-400,
+[data-theme="dark"] .border { border-color: #334155; }
 
 [data-theme="dark"] .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
 [data-theme="dark"] .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
@@ -284,17 +353,25 @@ body {
 [data-theme="dark"] textarea.border-gray-300,
 [data-theme="dark"] input.border-gray-200,
 [data-theme="dark"] select.border-gray-200,
-[data-theme="dark"] textarea.border-gray-200 {
+[data-theme="dark"] textarea.border-gray-200,
+[data-theme="dark"] input.border,
+[data-theme="dark"] select.border,
+[data-theme="dark"] textarea.border {
   background-color: #273549;
   color: #f1f5f9;
   border-color: #334155;
 }
 [data-theme="dark"] input.border-gray-300::placeholder,
 [data-theme="dark"] select.border-gray-300::placeholder,
-[data-theme="dark"] textarea.border-gray-300::placeholder {
+[data-theme="dark"] textarea.border-gray-300::placeholder,
+[data-theme="dark"] input.border::placeholder,
+[data-theme="dark"] select.border::placeholder,
+[data-theme="dark"] textarea.border::placeholder {
   color: #94a3b8;
 }
 [data-theme="dark"] .disabled\:bg-gray-100:disabled { background-color: #1e293b; }
+[data-theme="dark"] .disabled\:bg-gray-200:disabled { background-color: #334155; }
+[data-theme="dark"] .disabled\:bg-gray-300:disabled { background-color: #4b5a74; }
 
 /* Tint the pastel "badge" backgrounds so they still read on dark surfaces.
    We darken the fill and lift the text so the chips remain legible. */
@@ -302,8 +379,11 @@ body {
 [data-theme="dark"] .bg-blue-100 { background-color: #1e40af; color: #dbeafe; }
 [data-theme="dark"] .bg-green-50 { background-color: #14532d; }
 [data-theme="dark"] .bg-green-100 { background-color: #166534; color: #dcfce7; }
+[data-theme="dark"] .bg-emerald-100 { background-color: #065f46; color: #d1fae5; }
 [data-theme="dark"] .bg-red-50 { background-color: #450a0a; }
 [data-theme="dark"] .bg-red-100 { background-color: #7f1d1d; color: #fee2e2; }
+[data-theme="dark"] .bg-violet-100 { background-color: #5b21b6; color: #ede9fe; }
+[data-theme="dark"] .bg-teal-100 { background-color: #0f766e; color: #ccfbf1; }
 [data-theme="dark"] .bg-yellow-50 { background-color: #422006; }
 [data-theme="dark"] .bg-yellow-100 { background-color: #713f12; color: #fef3c7; }
 [data-theme="dark"] .bg-amber-50 { background-color: #422006; }
@@ -319,11 +399,18 @@ body {
 
 /* Brighten the paired text colors so pastel-chip labels stay readable */
 [data-theme="dark"] .text-blue-800 { color: #bfdbfe; }
+[data-theme="dark"] .text-blue-700 { color: #bfdbfe; }
 [data-theme="dark"] .text-green-700,
 [data-theme="dark"] .text-green-800 { color: #bbf7d0; }
+[data-theme="dark"] .text-emerald-700 { color: #a7f3d0; }
+[data-theme="dark"] .text-red-700 { color: #fecaca; }
 [data-theme="dark"] .text-red-800 { color: #fecaca; }
 [data-theme="dark"] .text-yellow-800,
 [data-theme="dark"] .text-amber-800 { color: #fde68a; }
+[data-theme="dark"] .text-orange-700 { color: #fdba74; }
+[data-theme="dark"] .text-violet-700 { color: #ddd6fe; }
+[data-theme="dark"] .text-teal-700 { color: #99f6e4; }
+[data-theme="dark"] .text-purple-700 { color: #e9d5ff; }
 [data-theme="dark"] .text-purple-800 { color: #e9d5ff; }
 [data-theme="dark"] .text-orange-800 { color: #fed7aa; }
 [data-theme="dark"] .text-indigo-800 { color: #c7d2fe; }

@@ -21,11 +21,13 @@ from rest_framework.test import APITestCase, APIClient
 
 from users.models import CustomUser, School
 from academics.models import (
+    Announcement,
     Assignment,
     AssignmentSubmission,
     ClassAttendance,
     Class,
     Result,
+    Suspension,
     Student,
     Subject,
     Teacher,
@@ -629,6 +631,69 @@ class TimetableAPITest(APITestCase):
         self.client.force_authenticate(user=teacher_user)
         response = self.client.get(self.conflicts_url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ---------------------------------------------------------------------------
+# API tests — Permissions for announcements & suspensions
+# ---------------------------------------------------------------------------
+
+class AnnouncementSuspensionPermissionAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Permission School")
+        self.admin = make_user(self.school, "perm_admin", role="admin")
+        self.hr = make_user(self.school, "perm_hr", role="hr")
+        self.teacher = make_teacher(self.school, username="perm_teacher")
+        self.cls = make_class(self.school, teacher_user=self.teacher.user, name="Form 3A", grade_level=10)
+        self.student = make_student(self.school, self.cls, username="perm_student", student_number="PERM001")
+
+        self.announcements_url = "/api/v1/academics/announcements/"
+        self.suspensions_url = "/api/v1/academics/suspensions/"
+
+    def test_teacher_cannot_create_announcement(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.announcements_url, {
+            "title": "Staff Notice",
+            "content": "Teachers meeting after class.",
+            "target_audience": "all",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Announcement.objects.count(), 0)
+
+    def test_hr_can_create_announcement(self):
+        self.client.force_authenticate(user=self.hr)
+        response = self.client.post(self.announcements_url, {
+            "title": "HR Notice",
+            "content": "Updated school policy.",
+            "target_audience": "all",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Announcement.objects.count(), 1)
+
+    def test_teacher_cannot_issue_suspension(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.suspensions_url, {
+            "student": self.student.id,
+            "teacher": self.teacher.id,
+            "reason": "Misconduct",
+            "start_date": "2026-02-01",
+            "end_date": "2026-02-05",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Suspension.objects.count(), 0)
+
+    def test_admin_can_issue_suspension_using_class_teacher_fallback(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.suspensions_url, {
+            "student": self.student.id,
+            "reason": "Bullying",
+            "start_date": "2026-03-01",
+            "end_date": "2026-03-03",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        suspension = Suspension.objects.get(id=response.data["id"])
+        self.assertEqual(suspension.teacher_id, self.teacher.id)
 
 
 # ---------------------------------------------------------------------------

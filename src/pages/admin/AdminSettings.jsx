@@ -9,6 +9,20 @@ const GRADING_SYSTEMS = [
 ];
 const CURRENCIES = ["USD", "ZWL", "ZAR", "GBP"];
 const TIMEZONES = ["Africa/Harare", "Africa/Johannesburg", "UTC", "Africa/Nairobi"];
+const TERM_STYLES = {
+  1: {
+    card: "border-blue-400 bg-blue-50",
+    badge: "bg-blue-100 text-blue-700",
+  },
+  2: {
+    card: "border-green-400 bg-green-50",
+    badge: "bg-green-100 text-green-700",
+  },
+  3: {
+    card: "border-purple-400 bg-purple-50",
+    badge: "bg-purple-100 text-purple-700",
+  },
+};
 
 export default function AdminSettings() {
   const { refreshSettings } = useSchoolSettings();
@@ -52,7 +66,7 @@ export default function AdminSettings() {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Academic Year & Current Term */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Academic Settings</h2>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
@@ -90,7 +104,7 @@ export default function AdminSettings() {
         </section>
 
         {/* Term Dates — all 3 terms */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-1">Academic Calendar</h2>
           <p className="text-xs text-gray-500 mb-4">
             Set the opening and closing dates for each term in the {settings?.current_academic_year || ''} academic year.
@@ -101,17 +115,18 @@ export default function AdminSettings() {
               { num: 1, label: "Term 1", color: "blue" },
               { num: 2, label: "Term 2", color: "green" },
               { num: 3, label: "Term 3", color: "purple" },
-            ].map(({ num, label, color }) => {
+            ].map(({ num, label }) => {
               const startKey = `term_${num}_start`;
               const endKey = `term_${num}_end`;
               const isCurrent = settings?.current_term === label;
+              const termStyle = TERM_STYLES[num];
               return (
                 <div key={num}
-                  className={`border rounded-lg p-4 ${isCurrent ? `border-${color}-400 bg-${color}-50` : 'border-gray-200'}`}>
+                  className={`border rounded-lg p-4 ${isCurrent ? termStyle.card : "border-gray-200"}`}>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-gray-800">{label}</h3>
                     {isCurrent && (
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-${color}-100 text-${color}-700`}>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${termStyle.badge}`}>
                         Current Term
                       </span>
                     )}
@@ -142,7 +157,7 @@ export default function AdminSettings() {
         </section>
 
         {/* School Identity */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">School Identity</h2>
           <div className="space-y-3">
             <div>
@@ -155,7 +170,7 @@ export default function AdminSettings() {
         </section>
 
         {/* Finance Settings */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Finance Settings</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -176,7 +191,7 @@ export default function AdminSettings() {
         </section>
 
         {/* System Settings */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">System Settings</h2>
           <div>
             <label className="text-xs text-gray-600 mb-1 block">Timezone</label>
@@ -189,7 +204,7 @@ export default function AdminSettings() {
         </section>
 
         {/* PayNow Zimbabwe */}
-        <section className="bg-white rounded-lg shadow p-5">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-1">PayNow Zimbabwe</h2>
           <p className="text-xs text-gray-500 mb-4">
             Enter your school&rsquo;s PayNow integration credentials. Get them from{" "}

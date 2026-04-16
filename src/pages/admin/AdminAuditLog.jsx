@@ -1,14 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 import apiService from "../../services/apiService";
 import { formatDate } from "../../utils/dateFormat";
 
 const ACTIONS = ["", "CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT", "SUSPEND", "APPROVE"];
+const PAGE_SIZE = 100;
 
 export default function AdminAuditLog() {
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({
     user_id: "",
@@ -34,9 +37,11 @@ export default function AdminAuditLog() {
       const data = await apiService.getAuditLogs(params);
       const rows = Array.isArray(data) ? data : (data?.results || []);
       setLogs(rows);
+      setCurrentPage(1);
     } catch (error) {
       console.error("Failed to load audit logs", error);
       setLogs([]);
+      setCurrentPage(1);
     } finally {
       setLoading(false);
     }
@@ -56,6 +61,16 @@ export default function AdminAuditLog() {
     SUSPEND: "bg-orange-100 text-orange-700",
     APPROVE: "bg-teal-100 text-teal-700",
   };
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(logs.length / PAGE_SIZE)),
+    [logs.length]
+  );
+
+  const paginatedLogs = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return logs.slice(start, start + PAGE_SIZE);
+  }, [logs, currentPage]);
 
   return (
     <div>
@@ -96,7 +111,7 @@ export default function AdminAuditLog() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {logs.map((log) => (
+                  {paginatedLogs.map((log) => (
                     <tr key={log.id}>
                       <td className="px-3 py-2">{formatDate(log.timestamp)}</td>
                       <td className="px-3 py-2">{log.user || "System"}</td>
@@ -115,6 +130,14 @@ export default function AdminAuditLog() {
               {logs.length === 0 && <p className="text-center py-6 text-gray-500">No audit logs found for selected filters.</p>}
             </div>
           )}
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={logs.length}
+            pageSize={PAGE_SIZE}
+            onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+          />
         </div>
       </div>
     </div>

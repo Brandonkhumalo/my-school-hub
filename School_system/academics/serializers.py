@@ -224,6 +224,9 @@ class SuspensionSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.user.full_name', read_only=True)
     student_number = serializers.CharField(source='student.user.student_number', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.full_name', read_only=True)
+    teacher = serializers.PrimaryKeyRelatedField(
+        queryset=Teacher.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = Suspension

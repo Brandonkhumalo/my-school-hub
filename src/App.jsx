@@ -323,6 +323,7 @@ function App() {
         <Route path="/hr/boarding" element={<RequireAuth allowedRoles={['hr']}><RequireBoardingAccess><HRBoarding /></RequireBoardingAccess></RequireAuth>} />
         <Route path="/hr/discipline" element={<RequireAuth allowedRoles={['hr']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/hr/promotions" element={<RequireAuth allowedRoles={['hr']}><AdminPromotions /></RequireAuth>} />
+        <Route path="/hr/suspensions" element={<RequireAuth allowedRoles={['hr']}><AdminSuspensions /></RequireAuth>} />
         <Route path="/hr/complaints" element={<RequireAuth allowedRoles={['hr']}><AdminComplaints /></RequireAuth>} />
         <Route path="/hr/announcements" element={<RequireAuth allowedRoles={['hr']}><AdminAnnouncements /></RequireAuth>} />
         <Route path="/hr/timetable" element={<RequireAuth allowedRoles={['hr']}><AdminTimetable /></RequireAuth>} />
