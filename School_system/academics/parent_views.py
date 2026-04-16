@@ -41,6 +41,7 @@ def parent_children_list(request):
                 'surname': link.student.user.last_name,
                 'class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
                 'student_number': link.student.user.student_number or '',
+                'residence_type': link.student.residence_type,
                 'is_confirmed': link.is_confirmed
             })
         
@@ -74,7 +75,8 @@ def available_children_to_confirm(request):
                 'name': link.student.user.first_name,
                 'surname': link.student.user.last_name,
                 'class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
-                'student_number': link.student.user.student_number or ''
+                'student_number': link.student.user.student_number or '',
+                'residence_type': link.student.residence_type,
             })
         
         return Response(data)
@@ -157,6 +159,7 @@ def search_students(request):
                 'surname': student.user.last_name,
                 'class': student.student_class.name if student.student_class else 'Not Assigned',
                 'student_number': student.user.student_number or '',
+                'residence_type': student.residence_type,
                 'school_name': student.user.school.name if student.user.school else None,
                 'school_code': student.user.school.code if student.user.school else None,
                 'is_linked': is_linked
@@ -223,6 +226,7 @@ def request_child_link(request):
             'surname': student.user.last_name,
             'class': student.student_class.name if student.student_class else 'Not Assigned',
             'student_number': student.user.student_number or '',
+            'residence_type': student.residence_type,
             'is_confirmed': False,
             'message': 'Link request submitted successfully. Waiting for administrator approval.'
         }, status=status.HTTP_201_CREATED)
@@ -267,6 +271,7 @@ def confirm_child(request, child_id):
             'surname': link.student.user.last_name,
             'class': link.student.student_class.name if link.student.student_class else 'Not Assigned',
             'student_number': link.student.user.student_number or '',
+            'residence_type': link.student.residence_type,
             'parent_name': f"{link.parent.user.first_name} {link.parent.user.last_name}",
             'is_confirmed': True,
             'message': 'Parent-child link approved successfully'

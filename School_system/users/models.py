@@ -60,10 +60,21 @@ class School(models.Model):
         ('cambridge', 'Cambridge International'),
         ('both', 'ZIMSEC & Cambridge'),
     ]
+    ACCOMMODATION_TYPE_CHOICES = [
+        ('day', 'Day School'),
+        ('boarding', 'Boarding School'),
+        ('both', 'Day & Boarding School'),
+    ]
 
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=20, unique=True)
     school_type = models.CharField(max_length=20, choices=SCHOOL_TYPE_CHOICES, default='secondary')
+    accommodation_type = models.CharField(
+        max_length=20,
+        choices=ACCOMMODATION_TYPE_CHOICES,
+        default='day',
+        db_index=True,
+    )
     curriculum = models.CharField(max_length=20, choices=CURRICULUM_CHOICES, default='zimsec')
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
@@ -81,6 +92,14 @@ class School(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+    @property
+    def supports_boarding(self):
+        return self.accommodation_type in ('boarding', 'both')
+
+    @property
+    def supports_day(self):
+        return self.accommodation_type in ('day', 'both')
 
     @staticmethod
     def generate_school_code():

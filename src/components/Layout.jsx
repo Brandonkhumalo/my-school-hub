@@ -2,6 +2,7 @@ import React from "react";
 import { Outlet, NavLink, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "./NotificationBell";
+import { canStudentUseBoarding, isSchoolBoardingEnabled } from "../utils/boardingAccess";
 
 function Layout() {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ function Layout() {
   const menuItems = {
     admin: [
       { path: '/admin', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/admin/boarding', icon: 'fa-bed', title: 'Boarding', boardingOnly: true },
       { path: '/admin/students', icon: 'fa-user-graduate', title: 'Students' },
       { path: '/admin/teachers', icon: 'fa-chalkboard-teacher', title: 'Teachers' },
       { path: '/admin/parents', icon: 'fa-users', title: 'Parents' },
@@ -51,6 +53,7 @@ function Layout() {
     ],
     student: [
       { path: '/student', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/student/boarding', icon: 'fa-bed', title: 'Boarding Life', boardingOnly: true, boardingStudentOnly: true },
       { path: '/student/profile', icon: 'fa-user', title: 'Profile' },
       { path: '/student/submissions', icon: 'fa-tasks', title: 'Submissions' },
       { path: '/student/marks', icon: 'fa-chart-line', title: 'Marks' },
@@ -64,6 +67,7 @@ function Layout() {
     ],
     parent: [
       { path: '/parent', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/parent/boarding', icon: 'fa-bed', title: 'Boarding', boardingOnly: true },
       { path: '/parent/children', icon: 'fa-child', title: 'My Children' },
       { path: '/parent/performance', icon: 'fa-chart-line', title: 'Performance' },
       { path: '/parent/homework', icon: 'fa-book-open', title: 'Homework' },
@@ -97,6 +101,7 @@ function Layout() {
     ],
     hr: [
       { path: '/hr', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/hr/boarding', icon: 'fa-bed', title: 'Boarding', boardingOnly: true },
       { path: '/hr/staff', icon: 'fa-users', title: 'Staff' },
       { path: '/hr/leaves', icon: 'fa-calendar-minus', title: 'Leave Requests' },
       { path: '/hr/payroll', icon: 'fa-money-bill-wave', title: 'Payroll' },
@@ -115,7 +120,13 @@ function Layout() {
   };
 
   // Use the user's role menu items, never default to admin for security
-  const items = menuItems[role] || menuItems.student;
+  const boardingEnabled = isSchoolBoardingEnabled(user);
+  const studentCanUseBoarding = canStudentUseBoarding(user);
+  const items = (menuItems[role] || menuItems.student).filter((item) => {
+    if (item.boardingOnly && !boardingEnabled) return false;
+    if (item.boardingStudentOnly && !studentCanUseBoarding) return false;
+    return true;
+  });
 
   return (
     <div className="flex min-h-screen bg-gray-100">

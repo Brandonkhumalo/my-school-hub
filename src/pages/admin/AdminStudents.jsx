@@ -4,8 +4,11 @@ import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import PaginationControls from "../../components/PaginationControls";
 import { formatDate } from "../../utils/dateFormat";
+import { useAuth } from "../../context/AuthContext";
+import { isSchoolBoardingOnly, isSchoolDayOnly, studentResidenceLabel } from "../../utils/boardingAccess";
 
 export default function AdminStudents() {
+  const { user } = useAuth();
   const PAGE_SIZE = 20;
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -20,6 +23,7 @@ export default function AdminStudents() {
     first_name: "",
     last_name: "",
     student_class: "",
+    residence_type: "day",
     admission_date: new Date().toISOString().split("T")[0],
     student_email: "",
     student_contact: "",
@@ -35,6 +39,7 @@ export default function AdminStudents() {
       first_name: "",
       last_name: "",
       student_class: "",
+      residence_type: "day",
       admission_date: new Date().toISOString().split("T")[0],
       student_email: "",
       student_contact: "",
@@ -108,6 +113,16 @@ export default function AdminStudents() {
     });
   };
 
+  useEffect(() => {
+    if (isSchoolDayOnly(user)) {
+      setFormData((prev) => ({ ...prev, residence_type: "day" }));
+      return;
+    }
+    if (isSchoolBoardingOnly(user)) {
+      setFormData((prev) => ({ ...prev, residence_type: "boarding" }));
+    }
+  }, [user?.school_accommodation_type]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -119,6 +134,7 @@ export default function AdminStudents() {
           email: formData.student_email,
           phone_number: formData.student_contact,
           student_class: formData.student_class,
+          residence_type: formData.residence_type,
           admission_date: formData.admission_date,
           parent_contact: formData.student_contact,
           address: formData.student_address,
@@ -137,6 +153,7 @@ export default function AdminStudents() {
             password: formData.password,
           },
           student_class: formData.student_class,
+          residence_type: formData.residence_type,
           admission_date: formData.admission_date,
           student_email: formData.student_email,
           student_contact: formData.student_contact,
@@ -166,6 +183,7 @@ export default function AdminStudents() {
       first_name: student.user?.first_name || "",
       last_name: student.user?.last_name || "",
       student_class: student.student_class || "",
+      residence_type: student.residence_type || "day",
       admission_date: student.admission_date || new Date().toISOString().split("T")[0],
       student_email: student.user?.email || "",
       student_contact: student.user?.phone_number || student.parent_contact || "",
@@ -283,6 +301,20 @@ export default function AdminStudents() {
                 <input type="date" name="admission_date" value={formData.admission_date} onChange={handleInputChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Residence Type *</label>
+                <select
+                  name="residence_type"
+                  value={formData.residence_type}
+                  onChange={handleInputChange}
+                  required
+                  disabled={isSchoolDayOnly(user) || isSchoolBoardingOnly(user)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                >
+                  <option value="day">Day Scholar</option>
+                  <option value="boarding">Boarding Scholar</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Student Email</label>
                 <input type="email" name="student_email" value={formData.student_email} onChange={handleInputChange} placeholder="student@example.com" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -398,6 +430,10 @@ export default function AdminStudents() {
                       {selectedStudent.is_active !== false ? 'Active' : 'Inactive'}
                     </span>
                   </div>
+                  <div className="flex">
+                    <span className="w-40 text-gray-600 font-medium">Residence:</span>
+                    <span className="text-gray-800">{studentResidenceLabel(selectedStudent.residence_type)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -451,6 +487,7 @@ export default function AdminStudents() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student #</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Residence</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Admission Date</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -466,6 +503,7 @@ export default function AdminStudents() {
                         <td className="px-6 py-4 text-sm">
                           <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">{student.class_name || "-"}</span>
                         </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{studentResidenceLabel(student.residence_type)}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{student.admission_date}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{student.student_contact || student.parent_contact || "-"}</td>
                         <td className="px-6 py-4 text-sm">

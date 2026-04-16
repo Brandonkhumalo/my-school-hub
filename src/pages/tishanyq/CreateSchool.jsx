@@ -7,6 +7,7 @@ export default function CreateSchool() {
     school_name: "",
     school_location: "",
     school_type: "secondary",
+    accommodation_type: "day",
     curriculum: "zimsec",
     admin_email: "",
     admin_phone: "",
@@ -45,6 +46,7 @@ export default function CreateSchool() {
         school_name: "",
         school_location: "",
         school_type: "secondary",
+        accommodation_type: "day",
         curriculum: "zimsec",
         admin_email: "",
         admin_phone: "",
@@ -140,6 +142,19 @@ export default function CreateSchool() {
                 <option value="primary">Primary School</option>
                 <option value="secondary">Secondary School</option>
                 <option value="combined">Combined (Primary + Secondary)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Accommodation</label>
+              <select
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                value={formData.accommodation_type}
+                onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value })}
+              >
+                <option value="day">Day School</option>
+                <option value="boarding">Boarding School</option>
+                <option value="both">Day & Boarding School</option>
               </select>
             </div>
 

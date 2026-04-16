@@ -41,6 +41,7 @@ def student_profile(request):
             'name': request.user.first_name,
             'surname': request.user.last_name,
             'class': student.student_class.name if student.student_class else 'Not Assigned',
+            'residence_type': student.residence_type,
             'phone_number': request.user.phone_number or '',
             'parent_id': parent_id,
             'student_number': request.user.student_number or ''

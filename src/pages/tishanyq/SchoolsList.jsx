@@ -6,6 +6,7 @@ export default function SchoolsList() {
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(null);
   const [suspending, setSuspending] = useState(null);
+  const [updatingSchool, setUpdatingSchool] = useState(null);
 
   useEffect(() => {
     fetchSchools();
@@ -101,6 +102,42 @@ export default function SchoolsList() {
     }
   };
 
+  const handleUpdateSchoolProfile = async (schoolId, patchData) => {
+    setUpdatingSchool(schoolId);
+    try {
+      const token = localStorage.getItem("tishanyq_token");
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/${schoolId}/update/`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(patchData),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to update school");
+
+      setSchools((prev) =>
+        prev.map((s) =>
+          s.id === schoolId
+            ? {
+                ...s,
+                school_type: data.school.school_type_display || data.school.school_type,
+                accommodation_type: data.school.accommodation_type,
+                accommodation_type_display: data.school.accommodation_type_display,
+                curriculum: data.school.curriculum,
+              }
+            : s
+        )
+      );
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setUpdatingSchool(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -165,7 +202,7 @@ export default function SchoolsList() {
                       <div>
                         <p className="font-semibold text-gray-800">{school.name}</p>
                         <p className="text-sm text-gray-500">{school.city} | {school.school_type}</p>
-                        <p className="text-xs text-gray-400">{school.curriculum}</p>
+                        <p className="text-xs text-gray-400">{school.accommodation_type_display || school.accommodation_type || 'day'} | {school.curriculum}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -191,6 +228,17 @@ export default function SchoolsList() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
+                        <select
+                          value={school.accommodation_type || "day"}
+                          disabled={updatingSchool === school.id}
+                          onChange={(e) => handleUpdateSchoolProfile(school.id, { accommodation_type: e.target.value })}
+                          className="px-2 py-2 border border-gray-200 rounded text-xs"
+                          title="School accommodation type"
+                        >
+                          <option value="day">Day</option>
+                          <option value="boarding">Boarding</option>
+                          <option value="both">Both</option>
+                        </select>
                         <button
                           onClick={() => handleResetPassword(school.id)}
                           disabled={resetting === school.id}

@@ -709,6 +709,97 @@ const apiService = {
   getStudentDisciplinaryRecords: (studentId) => request(`/academics/discipline/student/${studentId}/`, "GET"),
   resolveDisciplinaryRecord: (id) => request(`/academics/discipline/${id}/resolve/`, "POST"),
 
+  // Boarding endpoints
+  getBoardingSummary: () => request("/boarding/summary/", "GET"),
+  getBoardingMealMenus: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/meals/menus/${q ? '?' + q : ''}`, "GET");
+  },
+  createBoardingMealMenu: (data) => request("/boarding/meals/menus/", "POST", data),
+  getBoardingMealAttendance: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/meals/attendance/${q ? '?' + q : ''}`, "GET");
+  },
+  saveBoardingMealAttendance: (data) => request("/boarding/meals/attendance/", "POST", data),
+  getDietaryFlag: (studentId) => request(`/boarding/students/${studentId}/dietary/`, "GET"),
+  updateDietaryFlag: (studentId, data) => request(`/boarding/students/${studentId}/dietary/`, "PUT", data),
+
+  getDormitories: () => request("/boarding/dormitories/", "GET"),
+  createDormitory: (data) => request("/boarding/dormitories/", "POST", data),
+  getDormAssignments: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/dorm-assignments/${q ? '?' + q : ''}`, "GET");
+  },
+  createDormAssignment: (data) => request("/boarding/dorm-assignments/", "POST", data),
+  getDormRollCalls: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/dorm-attendance/${q ? '?' + q : ''}`, "GET");
+  },
+  createDormRollCall: (data) => request("/boarding/dorm-attendance/", "POST", data),
+  getLightsOutRecords: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/lights-out/${q ? '?' + q : ''}`, "GET");
+  },
+  createLightsOutRecord: (data) => request("/boarding/lights-out/", "POST", data),
+
+  getExeatRequests: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/exeat/requests/${q ? '?' + q : ''}`, "GET");
+  },
+  createExeatRequest: (data) => request("/boarding/exeat/requests/", "POST", data),
+  decideExeatRequest: (id, data) => request(`/boarding/exeat/requests/${id}/decision/`, "POST", data),
+  getExeatLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/exeat/logs/${q ? '?' + q : ''}`, "GET");
+  },
+  createExeatLog: (data) => request("/boarding/exeat/logs/", "POST", data),
+
+  getSickbayVisits: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/sickbay/visits/${q ? '?' + q : ''}`, "GET");
+  },
+  createSickbayVisit: (data) => request("/boarding/sickbay/visits/", "POST", data),
+  getMedicationSchedules: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/medications/${q ? '?' + q : ''}`, "GET");
+  },
+  createMedicationSchedule: (data) => request("/boarding/medications/", "POST", data),
+
+  getTuckWallets: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/tuck/wallets/${q ? '?' + q : ''}`, "GET");
+  },
+  getTuckTransactions: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/tuck/transactions/${q ? '?' + q : ''}`, "GET");
+  },
+  createTuckTransaction: (data) => request("/boarding/tuck/transactions/", "POST", data),
+  getTuckLowBalance: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/tuck/low-balance/${q ? '?' + q : ''}`, "GET");
+  },
+
+  getLaundrySchedules: () => request("/boarding/laundry/schedules/", "GET"),
+  createLaundrySchedule: (data) => request("/boarding/laundry/schedules/", "POST", data),
+  getLostItems: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/laundry/lost-items/${q ? '?' + q : ''}`, "GET");
+  },
+  createLostItem: (data) => request("/boarding/laundry/lost-items/", "POST", data),
+
+  getPrepAttendance: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/prep-attendance/${q ? '?' + q : ''}`, "GET");
+  },
+  createPrepAttendance: (data) => request("/boarding/prep-attendance/", "POST", data),
+  getDormInspections: () => request("/boarding/dorm-inspections/", "GET"),
+  createDormInspection: (data) => request("/boarding/dorm-inspections/", "POST", data),
+  getWellnessCheckins: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/boarding/wellness-checkins/${q ? '?' + q : ''}`, "GET");
+  },
+  createWellnessCheckin: (data) => request("/boarding/wellness-checkins/", "POST", data),
+
   // Admin Analytics
   getAdminAnalytics: () => request("/auth/analytics/", "GET"),
 };

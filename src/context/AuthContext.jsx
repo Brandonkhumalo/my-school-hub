@@ -11,8 +11,24 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem("user");
     const savedToken = localStorage.getItem("token");
     if (savedUser && savedToken) {
-      setUser(JSON.parse(savedUser));
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
       setToken(savedToken);
+
+      // Refresh profile once on app load to hydrate newly added user fields
+      fetch("/api/v1/auth/profile/", {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${savedToken}`,
+        },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((profile) => {
+          if (!profile) return;
+          setUser(profile);
+          localStorage.setItem("user", JSON.stringify(profile));
+        })
+        .catch(() => {});
     }
   }, []);
 

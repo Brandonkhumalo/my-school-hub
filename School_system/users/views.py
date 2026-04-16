@@ -246,6 +246,7 @@ def dashboard_stats_view(request):
                 school=school
             ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
             'school_type': school.school_type,
+            'school_accommodation_type': school.accommodation_type,
             'school_name': school.name,
         }
     else:

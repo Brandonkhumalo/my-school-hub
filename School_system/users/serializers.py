@@ -15,7 +15,7 @@ class SchoolSerializer(serializers.ModelSerializer):
         """Represents Meta."""
         model = School
         fields = [
-            'id', 'name', 'code', 'school_type', 'curriculum',
+            'id', 'name', 'code', 'school_type', 'accommodation_type', 'curriculum',
             'address', 'city', 'country', 'phone', 'email',
             'website', 'logo', 'is_active', 'created_at'
         ]
@@ -26,6 +26,7 @@ class SchoolRegistrationSerializer(serializers.Serializer):
     """Register a new school with auto-generated admin credentials"""
     school_name = serializers.CharField(max_length=255)
     school_type = serializers.ChoiceField(choices=School.SCHOOL_TYPE_CHOICES, default='secondary')
+    accommodation_type = serializers.ChoiceField(choices=School.ACCOMMODATION_TYPE_CHOICES, default='day')
     curriculum = serializers.ChoiceField(choices=School.CURRICULUM_CHOICES, default='zimsec')
     address = serializers.CharField(required=False, allow_blank=True)
     city = serializers.CharField(max_length=100, required=False, allow_blank=True)
@@ -50,6 +51,7 @@ class SchoolRegistrationSerializer(serializers.Serializer):
             name=validated_data['school_name'],
             code=school_code,
             school_type=validated_data.get('school_type', 'secondary'),
+            accommodation_type=validated_data.get('accommodation_type', 'day'),
             curriculum=validated_data.get('curriculum', 'zimsec'),
             address=validated_data.get('address', ''),
             city=validated_data.get('city', ''),
@@ -83,6 +85,8 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     school_name = serializers.SerializerMethodField()
     school_code = serializers.SerializerMethodField()
+    school_accommodation_type = serializers.SerializerMethodField()
+    student_residence_type = serializers.SerializerMethodField()
     
     class Meta:
         """Represents Meta."""
@@ -90,7 +94,8 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'phone_number', 'role', 'student_number', 'is_active',
-            'date_joined', 'password', 'school_name', 'school_code'
+            'date_joined', 'password', 'school_name', 'school_code',
+            'school_accommodation_type', 'student_residence_type'
         ]
         read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'full_name', 'school_name', 'school_code']
         extra_kwargs = {
@@ -106,6 +111,17 @@ class UserSerializer(serializers.ModelSerializer):
     def get_school_code(self, obj):
         """Return school code."""
         return obj.school.code if obj.school else None
+
+    def get_school_accommodation_type(self, obj):
+        return obj.school.accommodation_type if obj.school else None
+
+    def get_student_residence_type(self, obj):
+        if obj.role != 'student':
+            return None
+        try:
+            return obj.student.residence_type
+        except Exception:
+            return None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Represents UserRegistrationSerializer."""

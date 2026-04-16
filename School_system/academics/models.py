@@ -63,8 +63,14 @@ class Class(models.Model):
 
 
 class Student(models.Model):
+    RESIDENCE_TYPE_CHOICES = [
+        ('day', 'Day Scholar'),
+        ('boarding', 'Boarding Scholar'),
+    ]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     student_class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='students')
+    residence_type = models.CharField(max_length=20, choices=RESIDENCE_TYPE_CHOICES, default='day', db_index=True)
     admission_date = models.DateField()
     parent_contact = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
@@ -77,6 +83,346 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.user.student_number} - {self.user.full_name}"
+
+
+class DietaryFlag(models.Model):
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='dietary_flag')
+    allergies = models.TextField(blank=True)
+    special_diet = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Dietary Flag - {self.student.user.full_name}"
+
+
+class Dormitory(models.Model):
+    GENDER_CHOICES = [
+        ('mixed', 'Mixed'),
+        ('male', 'Male'),
+        ('female', 'Female'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='dormitories')
+    name = models.CharField(max_length=100)
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixed')
+    capacity = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'name')
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.school.name})"
+
+
+class DormAssignment(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='dorm_assignments')
+    dormitory = models.ForeignKey(Dormitory, on_delete=models.CASCADE, related_name='assignments')
+    room_name = models.CharField(max_length=50)
+    bed_name = models.CharField(max_length=50)
+    start_date = models.DateField(default=timezone.now)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-assigned_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.dormitory.name} ({self.room_name}/{self.bed_name})"
+
+
+class MealMenu(models.Model):
+    MEAL_TYPE_CHOICES = [
+        ('breakfast', 'Breakfast'),
+        ('lunch', 'Lunch'),
+        ('supper', 'Supper'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='meal_menus')
+    date = models.DateField(db_index=True)
+    meal_type = models.CharField(max_length=20, choices=MEAL_TYPE_CHOICES, db_index=True)
+    menu_text = models.TextField()
+    posted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'date', 'meal_type')
+        ordering = ['-date', 'meal_type']
+
+    def __str__(self):
+        return f"{self.school.name} - {self.date} {self.meal_type}"
+
+
+class MealAttendance(models.Model):
+    STATUS_CHOICES = [
+        ('ate', 'Ate'),
+        ('absent', 'Absent'),
+        ('excused', 'Excused'),
+    ]
+
+    meal_menu = models.ForeignKey(MealMenu, on_delete=models.CASCADE, related_name='attendance_records')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='meal_attendance')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ate')
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    marked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('meal_menu', 'student')
+        ordering = ['-marked_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.meal_menu.date} {self.meal_menu.meal_type} ({self.status})"
+
+
+class DormRollCall(models.Model):
+    CALL_TYPE_CHOICES = [
+        ('morning', 'Morning'),
+        ('evening', 'Evening'),
+    ]
+    STATUS_CHOICES = [
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('excused', 'Excused'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='dorm_roll_calls')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='dorm_roll_calls')
+    call_date = models.DateField(db_index=True)
+    call_type = models.CharField(max_length=20, choices=CALL_TYPE_CHOICES, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='present')
+    remarks = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('student', 'call_date', 'call_type')
+        ordering = ['-call_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.call_date} {self.call_type}"
+
+
+class LightsOutRecord(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='lights_out_records')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='lights_out_records')
+    date = models.DateField(db_index=True)
+    in_bed_time = models.TimeField()
+    remarks = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('student', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.date} {self.in_bed_time}"
+
+
+class ExeatRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('denied', 'Denied'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='exeat_requests')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exeat_requests')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    date_from = models.DateField()
+    date_to = models.DateField()
+    reason = models.TextField()
+    collecting_person = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    decision_notes = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reviewed_exeat_requests'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Exeat - {self.student.user.full_name} ({self.status})"
+
+
+class ExeatMovementLog(models.Model):
+    ACTION_CHOICES = [
+        ('sign_out', 'Sign Out'),
+        ('sign_in', 'Sign In'),
+    ]
+
+    exeat_request = models.ForeignKey(ExeatRequest, on_delete=models.CASCADE, related_name='movement_logs')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exeat_movement_logs')
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    action_time = models.DateTimeField(default=timezone.now)
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-action_time']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.action} @ {self.action_time}"
+
+
+class MedicationSchedule(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='medication_schedules')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='medication_schedules')
+    medication_name = models.CharField(max_length=255)
+    dosage = models.CharField(max_length=100)
+    administration_time = models.TimeField()
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    instructions = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.medication_name}"
+
+
+class TuckWallet(models.Model):
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='tuck_wallet')
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Tuck Wallet - {self.student.user.full_name}"
+
+
+class TuckTransaction(models.Model):
+    TRANSACTION_TYPE_CHOICES = [
+        ('topup', 'Top Up'),
+        ('purchase', 'Purchase'),
+    ]
+
+    wallet = models.ForeignKey(TuckWallet, on_delete=models.CASCADE, related_name='transactions')
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.wallet.student.user.full_name} - {self.transaction_type} {self.amount}"
+
+
+class LaundrySchedule(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='laundry_schedules')
+    dormitory = models.ForeignKey(Dormitory, on_delete=models.SET_NULL, null=True, blank=True, related_name='laundry_schedules')
+    day_of_week = models.CharField(max_length=20)
+    time_slot = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['day_of_week', 'time_slot']
+
+    def __str__(self):
+        dorm = self.dormitory.name if self.dormitory else "All Dorms"
+        return f"{self.school.name} - {dorm} ({self.day_of_week})"
+
+
+class LostItemReport(models.Model):
+    STATUS_CHOICES = [
+        ('reported', 'Reported'),
+        ('found', 'Found'),
+        ('resolved', 'Resolved'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='lost_item_reports')
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, null=True, blank=True, related_name='lost_item_reports')
+    item_description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='reported')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='resolved_lost_items'
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Lost Item - {self.status}"
+
+
+class PrepAttendance(models.Model):
+    STATUS_CHOICES = [
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('excused', 'Excused'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='prep_attendance')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='prep_attendance')
+    date = models.DateField(db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='present')
+    remarks = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('student', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"Prep - {self.student.user.full_name} ({self.date})"
+
+
+class DormInspectionScore(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='dorm_inspections')
+    dormitory = models.ForeignKey(Dormitory, on_delete=models.CASCADE, related_name='inspections')
+    inspection_date = models.DateField(db_index=True)
+    score = models.IntegerField()
+    max_score = models.IntegerField(default=10)
+    notes = models.TextField(blank=True)
+    inspected_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-inspection_date']
+
+    def __str__(self):
+        return f"{self.dormitory.name} - {self.inspection_date} ({self.score}/{self.max_score})"
+
+
+class StudentWellnessCheckIn(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='wellness_checkins')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='wellness_checkins')
+    check_date = models.DateField(db_index=True)
+    mood_score = models.IntegerField(help_text='1-5 wellbeing score')
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-check_date']
+
+    def __str__(self):
+        return f"Wellness - {self.student.user.full_name} ({self.check_date})"
 
 
 class Teacher(models.Model):

@@ -133,6 +133,7 @@ def create_school_with_admin(request):
     school_name = request.data.get('school_name')
     school_location = request.data.get('school_location')
     school_type = request.data.get('school_type', 'secondary')
+    accommodation_type = request.data.get('accommodation_type', 'day')
     curriculum = request.data.get('curriculum', 'ZIMSEC')
     admin_email = request.data.get('admin_email')
     admin_phone = request.data.get('admin_phone')
@@ -146,6 +147,10 @@ def create_school_with_admin(request):
     
     if CustomUser.objects.filter(email=admin_email).exists():
         return Response({'error': 'Admin email already registered'}, status=status.HTTP_400_BAD_REQUEST)
+
+    valid_accommodation = {choice[0] for choice in School.ACCOMMODATION_TYPE_CHOICES}
+    if accommodation_type not in valid_accommodation:
+        return Response({'error': 'Invalid accommodation type'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         with transaction.atomic():
@@ -154,6 +159,7 @@ def create_school_with_admin(request):
                 code=School.generate_school_code(),
                 city=school_location,
                 school_type=school_type,
+                accommodation_type=accommodation_type,
                 curriculum=curriculum
             )
             
@@ -205,6 +211,8 @@ def list_schools_with_admins(request):
             'code': school.code,
             'city': school.city,
             'school_type': school.get_school_type_display() if hasattr(school, 'get_school_type_display') else school.school_type,
+            'accommodation_type': school.accommodation_type,
+            'accommodation_type_display': school.get_accommodation_type_display(),
             'curriculum': school.curriculum,
             'is_suspended': school.is_suspended,
             'admin_username': admin.username if admin else 'N/A',
@@ -279,4 +287,53 @@ def suspend_school(request, school_id):
     return Response({
         'message': f'School {action} successfully',
         'is_suspended': school.is_suspended
+    })
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_school_profile(request, school_id):
+    """Update superadmin-managed school profile fields."""
+    if request.user.role != 'superadmin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({'error': 'School not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    allowed_fields = {'school_type', 'accommodation_type', 'curriculum', 'city', 'name'}
+    incoming = {k: v for k, v in request.data.items() if k in allowed_fields}
+
+    if 'accommodation_type' in incoming:
+        valid_accommodation = {choice[0] for choice in School.ACCOMMODATION_TYPE_CHOICES}
+        if incoming['accommodation_type'] not in valid_accommodation:
+            return Response({'error': 'Invalid accommodation type'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if 'school_type' in incoming:
+        valid_school_types = {choice[0] for choice in School.SCHOOL_TYPE_CHOICES}
+        if incoming['school_type'] not in valid_school_types:
+            return Response({'error': 'Invalid school type'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if 'curriculum' in incoming:
+        valid_curricula = {choice[0] for choice in School.CURRICULUM_CHOICES}
+        if incoming['curriculum'] not in valid_curricula:
+            return Response({'error': 'Invalid curriculum'}, status=status.HTTP_400_BAD_REQUEST)
+
+    for field, value in incoming.items():
+        setattr(school, field, value)
+    school.save(update_fields=list(incoming.keys()) + ['updated_at'] if incoming else ['updated_at'])
+
+    return Response({
+        'message': 'School updated successfully',
+        'school': {
+            'id': school.id,
+            'name': school.name,
+            'school_type': school.school_type,
+            'school_type_display': school.get_school_type_display(),
+            'accommodation_type': school.accommodation_type,
+            'accommodation_type_display': school.get_accommodation_type_display(),
+            'curriculum': school.curriculum,
+            'city': school.city,
+        }
     })

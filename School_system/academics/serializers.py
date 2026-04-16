@@ -3,7 +3,9 @@ from .models import (
     Subject, Class, Student, Teacher, Parent, Result,
     Timetable, Announcement, Complaint, Suspension,
     ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, ClassAttendance, SubjectAttendance, ParentTeacherMessage,
-    Homework, AssignmentSubmission
+    Homework, AssignmentSubmission, DietaryFlag, Dormitory, DormAssignment, MealMenu, MealAttendance,
+    DormRollCall, LightsOutRecord, ExeatRequest, ExeatMovementLog, MedicationSchedule, TuckWallet,
+    TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
@@ -61,7 +63,7 @@ class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = [
-            'id', 'user', 'student_class', 'class_name', 'admission_date', 
+            'id', 'user', 'student_class', 'class_name', 'residence_type', 'admission_date', 
             'parent_contact', 'address', 'parent_names', 'date_of_birth', 
             'gender', 'emergency_contact', 'parent_phone', 'parent_email'
         ]
@@ -109,7 +111,8 @@ class ParentSerializer(serializers.ModelSerializer):
             'id': child.id,
             'name': child.user.full_name,
             'student_number': child.user.student_number,
-            'class': child.student_class.name
+            'class': child.student_class.name,
+            'residence_type': child.residence_type
         } for child in obj.children.all()]
 
 
@@ -251,6 +254,7 @@ class CreateResultSerializer(serializers.ModelSerializer):
 class CreateStudentSerializer(serializers.Serializer):
     user = UserSerializer()
     student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all())
+    residence_type = serializers.ChoiceField(choices=Student.RESIDENCE_TYPE_CHOICES, default='day')
     admission_date = serializers.DateField()
     student_email = serializers.EmailField(required=False, allow_blank=True)
     student_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -260,6 +264,17 @@ class CreateStudentSerializer(serializers.Serializer):
     emergency_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
     def validate(self, data):
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+
+        if school:
+            residence_type = data.get('residence_type', 'day')
+            school_mode = getattr(school, 'accommodation_type', 'day')
+            if school_mode == 'day' and residence_type != 'day':
+                raise serializers.ValidationError({"residence_type": "This school is configured as day-only."})
+            if school_mode == 'boarding' and residence_type != 'boarding':
+                raise serializers.ValidationError({"residence_type": "This school is configured as boarding-only."})
+
         phone = data.get('student_contact', '').strip()
         if phone and CustomUser.objects.filter(phone_number=phone).exists():
             raise serializers.ValidationError({"student_contact": "This phone number is already registered to another user."})
@@ -285,6 +300,7 @@ class CreateStudentSerializer(serializers.Serializer):
         gender = validated_data.get('gender', '')
         emergency_contact = validated_data.get('emergency_contact', '')
         student_class = validated_data['student_class']
+        residence_type = validated_data.get('residence_type', 'day')
         
         request = self.context.get('request')
         school = request.user.school if request and hasattr(request.user, 'school') else None
@@ -311,6 +327,7 @@ class CreateStudentSerializer(serializers.Serializer):
         student = Student.objects.create(
             user=user,
             student_class=student_class,
+            residence_type=residence_type,
             admission_date=admission_date,
             parent_contact=student_contact,
             address=student_address,
@@ -556,6 +573,7 @@ class UpdateStudentSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=6, required=False, allow_blank=True)
 
     student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all(), required=False)
+    residence_type = serializers.ChoiceField(choices=Student.RESIDENCE_TYPE_CHOICES, required=False)
     admission_date = serializers.DateField(required=False)
     parent_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)
@@ -579,6 +597,14 @@ class UpdateStudentSerializer(serializers.Serializer):
         if student_class and school and student_class.school_id != school.id:
             raise serializers.ValidationError({"student_class": "Invalid class for your school"})
 
+        if school and 'residence_type' in data:
+            school_mode = getattr(school, 'accommodation_type', 'day')
+            residence_type = data.get('residence_type')
+            if school_mode == 'day' and residence_type != 'day':
+                raise serializers.ValidationError({"residence_type": "This school is configured as day-only."})
+            if school_mode == 'boarding' and residence_type != 'boarding':
+                raise serializers.ValidationError({"residence_type": "This school is configured as boarding-only."})
+
         return data
 
     def update(self, instance, validated_data):
@@ -593,7 +619,7 @@ class UpdateStudentSerializer(serializers.Serializer):
             user.set_password(password)
         user.save()
 
-        for field in ['student_class', 'admission_date', 'parent_contact', 'address', 'date_of_birth', 'gender', 'emergency_contact']:
+        for field in ['student_class', 'residence_type', 'admission_date', 'parent_contact', 'address', 'date_of_birth', 'gender', 'emergency_contact']:
             if field in validated_data:
                 setattr(instance, field, validated_data[field])
         instance.save()
@@ -898,3 +924,187 @@ class AssignmentSubmissionSerializer(serializers.ModelSerializer):
 
     def get_student_name(self, obj):
         return f"{obj.student.user.first_name} {obj.student.user.last_name}"
+
+
+class BoardingStudentSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(source='user.full_name', read_only=True)
+    student_number = serializers.CharField(source='user.student_number', read_only=True)
+    class_name = serializers.CharField(source='student_class.name', read_only=True)
+
+    class Meta:
+        model = Student
+        fields = ['id', 'full_name', 'student_number', 'class_name', 'residence_type']
+
+
+class DietaryFlagSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = DietaryFlag
+        fields = ['id', 'student', 'student_name', 'allergies', 'special_diet', 'notes', 'updated_at']
+
+
+class DormitorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dormitory
+        fields = ['id', 'name', 'gender', 'capacity', 'is_active', 'created_at']
+
+
+class DormAssignmentSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    dormitory_name = serializers.CharField(source='dormitory.name', read_only=True)
+
+    class Meta:
+        model = DormAssignment
+        fields = [
+            'id', 'student', 'student_name', 'student_number', 'dormitory', 'dormitory_name',
+            'room_name', 'bed_name', 'start_date', 'end_date', 'is_active', 'assigned_at'
+        ]
+
+
+class MealMenuSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealMenu
+        fields = ['id', 'date', 'meal_type', 'menu_text', 'created_at']
+
+
+class MealAttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    meal_type = serializers.CharField(source='meal_menu.meal_type', read_only=True)
+    meal_date = serializers.DateField(source='meal_menu.date', read_only=True)
+
+    class Meta:
+        model = MealAttendance
+        fields = [
+            'id', 'meal_menu', 'meal_type', 'meal_date', 'student', 'student_name',
+            'student_number', 'status', 'marked_at'
+        ]
+
+
+class MealAttendanceBulkItemSerializer(serializers.Serializer):
+    student_id = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=MealAttendance.STATUS_CHOICES)
+
+
+class MealAttendanceBulkSerializer(serializers.Serializer):
+    meal_menu_id = serializers.IntegerField()
+    attendance = MealAttendanceBulkItemSerializer(many=True)
+
+
+class DormRollCallSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = DormRollCall
+        fields = ['id', 'student', 'student_name', 'call_date', 'call_type', 'status', 'remarks', 'created_at']
+
+
+class LightsOutRecordSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = LightsOutRecord
+        fields = ['id', 'student', 'student_name', 'date', 'in_bed_time', 'remarks', 'created_at']
+
+
+class ExeatRequestSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.full_name', read_only=True)
+
+    class Meta:
+        model = ExeatRequest
+        fields = [
+            'id', 'student', 'student_name', 'student_number', 'requested_by', 'requested_by_name',
+            'date_from', 'date_to', 'reason', 'collecting_person', 'status', 'decision_notes',
+            'reviewed_by_name', 'reviewed_at', 'created_at'
+        ]
+        read_only_fields = ['status', 'decision_notes', 'reviewed_by_name', 'reviewed_at', 'created_at']
+
+
+class ExeatDecisionSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[('approved', 'Approved'), ('denied', 'Denied')])
+    decision_notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class ExeatMovementLogSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = ExeatMovementLog
+        fields = ['id', 'exeat_request', 'student', 'student_name', 'action', 'action_time', 'notes']
+
+
+class MedicationScheduleSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = MedicationSchedule
+        fields = [
+            'id', 'student', 'student_name', 'medication_name', 'dosage', 'administration_time',
+            'start_date', 'end_date', 'instructions', 'is_active', 'created_at'
+        ]
+
+
+class TuckWalletSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+
+    class Meta:
+        model = TuckWallet
+        fields = ['id', 'student', 'student_name', 'student_number', 'balance', 'updated_at']
+
+
+class TuckTransactionSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='wallet.student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='wallet.student.user.student_number', read_only=True)
+
+    class Meta:
+        model = TuckTransaction
+        fields = [
+            'id', 'wallet', 'student_name', 'student_number', 'transaction_type',
+            'amount', 'description', 'created_at'
+        ]
+
+
+class LaundryScheduleSerializer(serializers.ModelSerializer):
+    dormitory_name = serializers.CharField(source='dormitory.name', read_only=True)
+
+    class Meta:
+        model = LaundrySchedule
+        fields = ['id', 'dormitory', 'dormitory_name', 'day_of_week', 'time_slot', 'notes', 'created_at']
+
+
+class LostItemReportSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = LostItemReport
+        fields = ['id', 'student', 'student_name', 'item_description', 'status', 'created_at']
+
+
+class PrepAttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = PrepAttendance
+        fields = ['id', 'student', 'student_name', 'date', 'status', 'remarks', 'created_at']
+
+
+class DormInspectionScoreSerializer(serializers.ModelSerializer):
+    dormitory_name = serializers.CharField(source='dormitory.name', read_only=True)
+
+    class Meta:
+        model = DormInspectionScore
+        fields = ['id', 'dormitory', 'dormitory_name', 'inspection_date', 'score', 'max_score', 'notes', 'created_at']
+
+
+class StudentWellnessCheckInSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = StudentWellnessCheckIn
+        fields = ['id', 'student', 'student_name', 'check_date', 'mood_score', 'notes', 'created_at']

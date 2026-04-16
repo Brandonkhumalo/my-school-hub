@@ -20,6 +20,7 @@ def api_root(request):
         'endpoints': {
             'authentication': '/api/v1/auth/',
             'academics': '/api/v1/academics/',
+            'boarding': '/api/v1/boarding/',
             'finances': '/api/v1/finances/',
             'staff': '/api/v1/staff/',
             'admin': '/django-admin/'
@@ -86,6 +87,9 @@ urlpatterns = [
 
     # Messaging System (Parent-Teacher Communication)
     path('api/v1/', include('academics.messaging_urls')),
+
+    # Boarding Module
+    path('api/v1/boarding/', include('academics.boarding_urls')),
 
 ]
 

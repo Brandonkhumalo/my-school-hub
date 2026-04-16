@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import RequireAuth from "./components/RequireAuth";
+import RequireBoardingAccess from "./components/RequireBoardingAccess";
 
 // Layout (loaded eagerly — always needed for the authenticated shell)
 import Layout from "./components/Layout";
@@ -57,6 +58,7 @@ const AdminPromotions = lazy(() => import("./pages/admin/AdminPromotions"));
 const AdminActivities = lazy(() => import("./pages/admin/AdminActivities"));
 const AdminLibrary = lazy(() => import("./pages/admin/AdminLibrary"));
 const AdminHealth = lazy(() => import("./pages/admin/AdminHealth"));
+const AdminBoarding = lazy(() => import("./pages/admin/AdminBoarding"));
 
 const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
@@ -89,6 +91,7 @@ const StudentAttendance = lazy(() => import("./pages/student/StudentAttendance")
 const StudentResults = lazy(() => import("./pages/student/StudentResults"));
 const StudentFeeSummary = lazy(() => import("./pages/student/StudentFeeSummary"));
 const StudentActivities = lazy(() => import("./pages/student/StudentActivities"));
+const StudentBoarding = lazy(() => import("./pages/student/StudentBoarding"));
 
 // Parent Pages
 const ParentDashboard = lazy(() => import("./pages/parent/ParentDashboard"));
@@ -101,6 +104,7 @@ const ParentHomework = lazy(() => import("./pages/parent/ParentHomework"));
 const ParentResults = lazy(() => import("./pages/parent/ParentResults"));
 const ParentFeeSummary = lazy(() => import("./pages/parent/ParentFeeSummary"));
 const ParentConferences = lazy(() => import("./pages/parent/ParentConferences"));
+const ParentBoarding = lazy(() => import("./pages/parent/ParentBoarding"));
 
 // HR / Staff Pages
 const HRDashboard = lazy(() => import("./pages/hr/HRDashboard"));
@@ -112,6 +116,7 @@ const HRMeetings = lazy(() => import("./pages/hr/HRMeetings"));
 const HRVisitorLogs = lazy(() => import("./pages/hr/HRVisitorLogs"));
 const HRIncidents = lazy(() => import("./pages/hr/HRIncidents"));
 const HRCleaningSchedules = lazy(() => import("./pages/hr/HRCleaningSchedules"));
+const HRBoarding = lazy(() => import("./pages/hr/HRBoarding"));
 
 // Accountant pages
 const AccountantDashboard = lazy(() => import("./pages/accountant/AccountantDashboard"));
@@ -145,6 +150,7 @@ const PaymentFailed = lazy(() => import("./pages/payment/PaymentFailed"));
 
 // 404
 const NotFound = lazy(() => import("./pages/notfound/NotFound"));
+const Unauthorized = lazy(() => import("./pages/notfound/Unauthorized"));
 
 function App() {
   return (
@@ -202,6 +208,7 @@ function App() {
         <Route path="/admin/activities" element={<RequireAuth allowedRoles={['admin']}><AdminActivities /></RequireAuth>} />
         <Route path="/admin/library" element={<RequireAuth allowedRoles={['admin']}><AdminLibrary /></RequireAuth>} />
         <Route path="/admin/health" element={<RequireAuth allowedRoles={['admin']}><AdminHealth /></RequireAuth>} />
+        <Route path="/admin/boarding" element={<RequireAuth allowedRoles={['admin']}><RequireBoardingAccess><AdminBoarding /></RequireBoardingAccess></RequireAuth>} />
         <Route path="/admin/discipline" element={<RequireAuth allowedRoles={['admin']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/admin/analytics" element={<RequireAuth allowedRoles={['admin']}><AdminAnalytics /></RequireAuth>} />
         <Route path="/admin/audit-logs" element={<RequireAuth allowedRoles={['admin']}><AdminAuditLog /></RequireAuth>} />
@@ -235,6 +242,7 @@ function App() {
         <Route path="/student/results" element={<RequireAuth allowedRoles={['student']}><StudentResults /></RequireAuth>} />
         <Route path="/student/fees" element={<RequireAuth allowedRoles={['student']}><StudentFeeSummary /></RequireAuth>} />
         <Route path="/student/activities" element={<RequireAuth allowedRoles={['student']}><StudentActivities /></RequireAuth>} />
+        <Route path="/student/boarding" element={<RequireAuth allowedRoles={['student']}><RequireBoardingAccess><StudentBoarding /></RequireBoardingAccess></RequireAuth>} />
 
         {/* Parent Routes */}
         <Route path="/parent" element={<RequireAuth allowedRoles={['parent']}><ParentDashboard /></RequireAuth>} />
@@ -247,6 +255,7 @@ function App() {
         <Route path="/parent/results" element={<RequireAuth allowedRoles={['parent']}><ParentResults /></RequireAuth>} />
         <Route path="/parent/fees-summary" element={<RequireAuth allowedRoles={['parent']}><ParentFeeSummary /></RequireAuth>} />
         <Route path="/parent/conferences" element={<RequireAuth allowedRoles={['parent']}><ParentConferences /></RequireAuth>} />
+        <Route path="/parent/boarding" element={<RequireAuth allowedRoles={['parent']}><RequireBoardingAccess><ParentBoarding /></RequireBoardingAccess></RequireAuth>} />
         <Route path="/parent/profile" element={<RequireAuth allowedRoles={['parent']}><ProfilePage /></RequireAuth>} />
 
         {/* HR / Staff Routes */}
@@ -259,6 +268,7 @@ function App() {
         <Route path="/hr/visitor-logs" element={<RequireAuth allowedRoles={['hr']}><HRVisitorLogs /></RequireAuth>} />
         <Route path="/hr/incidents" element={<RequireAuth allowedRoles={['hr']}><HRIncidents /></RequireAuth>} />
         <Route path="/hr/cleaning" element={<RequireAuth allowedRoles={['hr']}><HRCleaningSchedules /></RequireAuth>} />
+        <Route path="/hr/boarding" element={<RequireAuth allowedRoles={['hr']}><RequireBoardingAccess><HRBoarding /></RequireBoardingAccess></RequireAuth>} />
         <Route path="/hr/discipline" element={<RequireAuth allowedRoles={['hr']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/hr/promotions" element={<RequireAuth allowedRoles={['hr']}><AdminPromotions /></RequireAuth>} />
         <Route path="/hr/complaints" element={<RequireAuth allowedRoles={['hr']}><AdminComplaints /></RequireAuth>} />
@@ -298,6 +308,7 @@ function App() {
         <Route path="/profile" element={<ProfilePage />} />
 
         {/* Catch all */}
+        <Route path="/unauthorized" element={<Unauthorized />} />
         <Route path="*" element={<NotFound />} />
       </Route>
       </Routes>
