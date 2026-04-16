@@ -1,52 +1,81 @@
 import React from "react";
 
-function DataTable({ columns, data, isLoading }) {
+function DataTable({ columns, data, isLoading, actions }) {
+  if (isLoading) {
+    return (
+      <div
+        className="flex justify-center items-center py-16 rounded-2xl"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="spinner" />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      {isLoading ? (
-        <div className="flex justify-center items-center p-8">
-          <div className="spinner"></div>
+    <div
+      className="overflow-hidden rounded-2xl"
+      style={{
+        border: "1px solid var(--border)",
+        background: "var(--bg-surface)",
+        boxShadow: "var(--shadow)",
+      }}
+    >
+      {data.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <i className="fas fa-inbox text-4xl" style={{ color: "var(--border)" }} />
+          <p className="font-semibold text-base" style={{ color: "var(--text-muted)" }}>No data available</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>There's nothing to show here yet.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table>
+          <table className="portal-table w-full">
             <thead>
               <tr>
-                {columns.map((column, index) => (
-                  <th key={index}>{column.header}</th>
+                {columns.map((col, i) => (
+                  <th key={i}>{col.header}</th>
                 ))}
-                <th>Actions</th>
+                {(actions !== false) && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {data.length > 0 ? (
-                data.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="hover:bg-gray-50">
-                    {columns.map((column, colIndex) => (
-                      <td key={colIndex}>{row[column.accessor]}</td>
-                    ))}
+              {data.map((row, ri) => (
+                <tr key={ri}>
+                  {columns.map((col, ci) => (
+                    <td key={ci}>{row[col.accessor]}</td>
+                  ))}
+                  {(actions !== false) && (
                     <td>
-                      <div className="flex space-x-2">
-                        <button className="text-blue-600 hover:text-blue-800">
-                          <i className="fas fa-eye"></i>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:scale-110"
+                          style={{ color: "var(--accent)", background: "transparent" }}
+                          title="View"
+                        >
+                          <i className="fas fa-eye text-sm" />
                         </button>
-                        <button className="text-yellow-600 hover:text-yellow-800">
-                          <i className="fas fa-edit"></i>
+                        <button
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:scale-110"
+                          style={{ color: "#f59e0b", background: "transparent" }}
+                          title="Edit"
+                        >
+                          <i className="fas fa-edit text-sm" />
                         </button>
-                        <button className="text-red-600 hover:text-red-800">
-                          <i className="fas fa-trash"></i>
+                        <button
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:scale-110"
+                          style={{ color: "#ef4444", background: "transparent" }}
+                          title="Delete"
+                        >
+                          <i className="fas fa-trash text-sm" />
                         </button>
                       </div>
                     </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={columns.length + 1} className="text-center py-4">
-                    No data available
-                  </td>
+                  )}
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
         </div>

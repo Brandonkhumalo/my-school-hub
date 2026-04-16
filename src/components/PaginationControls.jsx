@@ -11,32 +11,51 @@ export default function PaginationControls({
   if (!totalItems) return null;
 
   const start = (currentPage - 1) * pageSize + 1;
-  const end = Math.min(currentPage * pageSize, totalItems);
+  const end   = Math.min(currentPage * pageSize, totalItems);
+  const max   = Math.max(totalPages, 1);
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50">
-      <p className="text-sm text-gray-600">
-        Showing {start}-{end} of {totalItems}
+    <div
+      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-3 rounded-b-2xl"
+      style={{
+        borderTop: "1px solid var(--border)",
+        background: "var(--bg-surface)",
+      }}
+    >
+      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+        Showing <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{start}–{end}</span> of{" "}
+        <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{totalItems}</span> records
       </p>
+
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onPrevious}
           disabled={currentPage <= 1}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Previous
+          <i className="fas fa-chevron-left text-xs" /> Prev
         </button>
-        <span className="text-sm text-gray-600">
-          Page {currentPage} of {Math.max(totalPages, 1)}
+
+        <span
+          className="px-4 py-1.5 rounded-full text-sm font-semibold"
+          style={{
+            background: "var(--accent)",
+            color: "#fff",
+            minWidth: 80,
+            textAlign: "center",
+          }}
+        >
+          {currentPage} / {max}
         </span>
+
         <button
           type="button"
           onClick={onNext}
           disabled={currentPage >= totalPages}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Next
+          Next <i className="fas fa-chevron-right text-xs" />
         </button>
       </div>
     </div>

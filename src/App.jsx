@@ -8,10 +8,62 @@ import Layout from "./components/Layout";
 
 // Loading fallback shown while lazy chunks download
 const PageLoader = () => (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-    <div>Loading...</div>
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "100vh",
+      background: "#0f172a",
+      gap: "1.25rem",
+    }}
+  >
+    {/* Animated logo ring */}
+    <div style={{ position: "relative", width: 64, height: 64 }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "50%",
+          border: "3px solid rgba(255,255,255,0.1)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "50%",
+          border: "3px solid transparent",
+          borderTopColor: "#3b82f6",
+          animation: "spin 0.9s linear infinite",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 10,
+          borderRadius: "50%",
+          background: "#1d4ed8",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <span style={{ fontSize: 20 }}>🎓</span>
+      </div>
+    </div>
+    <div style={{ textAlign: "center" }}>
+      <p style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "1.125rem", fontFamily: "Inter, sans-serif" }}>
+        MySchoolHub
+      </p>
+      <p style={{ color: "#64748b", fontSize: "0.75rem", marginTop: 2, fontFamily: "Inter, sans-serif" }}>
+        Loading your portal…
+      </p>
+    </div>
   </div>
 );
+
 
 // Landing Pages
 const Index = lazy(() => import("./pages/Index"));

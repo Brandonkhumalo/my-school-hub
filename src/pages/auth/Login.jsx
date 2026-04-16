@@ -1,15 +1,16 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/apiService";
 
 function Login() {
-  const navigate = useNavigate();
-  const { login } = useAuth();
+  const navigate   = useNavigate();
+  const { login }  = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [showPw,   setShowPw]   = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
   const [suspendedModal, setSuspendedModal] = useState(null);
 
   const handleSubmit = async (e) => {
@@ -18,180 +19,282 @@ function Login() {
       setError("Please enter both username and password");
       return;
     }
-
     try {
       setLoading(true);
       setError("");
       const response = await apiService.login({ username, password });
       login(response.user, response.token);
-
-      // Redirect based on role
       switch (response.user.role) {
-        case "admin":
-          navigate("/admin");
-          break;
-        case "hr":
-          navigate("/hr");
-          break;
-        case "accountant":
-          navigate("/accountant");
-          break;
-        case "security":
-          navigate("/security");
-          break;
-        case "cleaner":
-          navigate("/cleaner");
-          break;
-        case "librarian":
-          navigate("/librarian");
-          break;
-        case "teacher":
-          navigate("/teacher");
-          break;
-        case "parent":
-          navigate("/parent");
-          break;
-        case "student":
-          navigate("/student");
-          break;
-        default:
-          navigate("/");
+        case "admin":      navigate("/admin");      break;
+        case "hr":         navigate("/hr");         break;
+        case "accountant": navigate("/accountant"); break;
+        case "security":   navigate("/security");   break;
+        case "cleaner":    navigate("/cleaner");    break;
+        case "librarian":  navigate("/librarian");  break;
+        case "teacher":    navigate("/teacher");    break;
+        case "parent":     navigate("/parent");     break;
+        case "student":    navigate("/student");    break;
+        default:           navigate("/");
       }
     } catch (err) {
-      if (err.response?.data?.error === 'school_suspended_admin') {
-        setSuspendedModal({
-          type: 'admin',
-          message: err.response.data.message,
-          contact: err.response.data.contact
-        });
-      } else if (err.response?.data?.error === 'school_suspended') {
-        setSuspendedModal({
-          type: 'user',
-          message: err.response.data.message
-        });
+      if (err.response?.data?.error === "school_suspended_admin") {
+        setSuspendedModal({ type: "admin", message: err.response.data.message, contact: err.response.data.contact });
+      } else if (err.response?.data?.error === "school_suspended") {
+        setSuspendedModal({ type: "user", message: err.response.data.message });
       } else {
         setError("Failed to login. Please check your credentials.");
       }
-      console.error("Login error:", err);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen flex" style={{ fontFamily: "'Inter', sans-serif" }}>
+
+      {/* ── Suspended Modal ─────────────────────────────────────── */}
       {suspendedModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div
+            className="rounded-2xl shadow-2xl max-w-md w-full p-7"
+            style={{ background: "#fff" }}
+          >
+            <div className="text-center mb-5">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-exclamation-triangle text-red-500 text-2xl" />
               </div>
               <h3 className="text-xl font-bold text-gray-800 mb-2">School Suspended</h3>
-              <p className="text-gray-600">{suspendedModal.message}</p>
+              <p className="text-gray-500 text-sm">{suspendedModal.message}</p>
             </div>
-            
-            {suspendedModal.type === 'admin' && suspendedModal.contact && (
-              <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                <p className="text-sm font-semibold text-blue-800 mb-2">Contact Tishanyq Digital:</p>
-                <div className="space-y-1 text-sm text-blue-700">
-                  {suspendedModal.contact.phone?.map((phone, idx) => (
-                    <p key={idx}><i className="fas fa-phone mr-2"></i>{phone}</p>
+            {suspendedModal.type === "admin" && suspendedModal.contact && (
+              <div className="bg-blue-50 rounded-xl p-4 mb-5 text-sm">
+                <p className="font-semibold text-blue-800 mb-2">Contact Tishanyq Digital:</p>
+                <div className="space-y-1 text-blue-700">
+                  {suspendedModal.contact.phone?.map((ph, i) => (
+                    <p key={i}><i className="fas fa-phone mr-2" />{ph}</p>
                   ))}
-                  <p><i className="fas fa-envelope mr-2"></i>{suspendedModal.contact.email}</p>
+                  <p><i className="fas fa-envelope mr-2" />{suspendedModal.contact.email}</p>
                 </div>
               </div>
             )}
-            
             <button
               onClick={() => setSuspendedModal(null)}
-              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-lg font-semibold transition"
+              className="w-full py-3 rounded-xl font-semibold text-white transition"
+              style={{ background: "#1e293b" }}
             >
               Close
             </button>
           </div>
         </div>
       )}
-      
-      <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
-        <div className="mb-6">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center text-gray-600 hover:text-gray-800 transition"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Home
-          </button>
+
+      {/* ── LEFT PANEL — Branding ─────────────────────────────────── */}
+      <div
+        className="hidden lg:flex flex-col justify-between p-10"
+        style={{
+          width: "45%",
+          background: "linear-gradient(145deg, #0f172a 0%, #1e3a6e 60%, #0f172a 100%)",
+          flexShrink: 0,
+        }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+            <i className="fas fa-graduation-cap text-white text-lg" />
+          </div>
+          <div>
+            <p className="text-white font-bold text-lg leading-tight">MySchoolHub</p>
+            <p className="text-blue-400 text-xs">by Tishanyq Digital</p>
+          </div>
         </div>
 
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">School Management System</h1>
-          <p className="text-gray-600 mt-2">Sign in to access your dashboard</p>
+        {/* Hero text */}
+        <div className="space-y-6">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/30 px-3 py-1.5 rounded-full mb-5">
+              <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+              <span className="text-amber-300 text-xs font-semibold tracking-wide">BUILT FOR ZIMBABWEAN SCHOOLS</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-white leading-tight">
+              Your School.<br />
+              <span className="text-blue-400">One Dashboard.</span>
+            </h1>
+            <p className="text-slate-400 text-sm leading-relaxed mt-3 max-w-xs">
+              Manage students, fees, results, attendance and parent communication — all in one place.
+            </p>
+          </div>
+
+          {/* Feature bullets */}
+          <ul className="space-y-3">
+            {[
+              { icon: "fa-chart-bar",      text: "Real-time academic analytics" },
+              { icon: "fa-credit-card",    text: "Fee & invoice management" },
+              { icon: "fa-comment-dots",   text: "WhatsApp parent alerts" },
+              { icon: "fa-robot",          text: "AI performance predictions" },
+            ].map((f) => (
+              <li key={f.text} className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-blue-600/30 flex items-center justify-center flex-shrink-0">
+                  <i className={`fas ${f.icon} text-blue-300 text-xs`} />
+                </span>
+                <span className="text-slate-300 text-sm">{f.text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+        {/* Footer note */}
+        <p className="text-slate-600 text-xs">
+          © {new Date().getFullYear()} Tishanyq Digital · Harare, Zimbabwe
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-6">
-            <label htmlFor="username" className="block mb-2 text-sm font-medium text-gray-700">
-              Student Number/Email
-            </label>
-            <input
-              type="text"
-              id="username"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your student number or email"
-            />
-          </div>
+      {/* ── RIGHT PANEL — Form ───────────────────────────────────── */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12"
+        style={{ background: "#f8fafc" }}
+      >
+        <div className="w-full max-w-md">
 
-          <div className="mb-6">
-            <label htmlFor="password" className="block mb-2 text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-            />
-            <p className="text-xs text-gray-500 mt-1">Use any password for demo</p>
-          </div>
-
+          {/* Back link */}
           <button
-            type="submit"
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md transition duration-200 flex items-center justify-center"
-            disabled={loading}
+            onClick={() => navigate("/")}
+            className="flex items-center gap-2 text-sm mb-8 transition hover:opacity-70"
+            style={{ color: "#64748b" }}
           >
-            {loading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Signing In...
-              </>
-            ) : (
-              "Sign In"
-            )}
+            <i className="fas fa-arrow-left text-xs" /> Back to Home
           </button>
-        </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Are you a parent? <a href="/register/parent" className="text-blue-600 hover:text-blue-700 font-semibold">Register here</a>
-          </p>
-          <p className="text-xs text-gray-500 mt-2">
-            Staff and students: Contact your administrator
-          </p>
+          {/* Form header */}
+          <div className="mb-8">
+            {/* Mobile logo */}
+            <div className="flex items-center gap-2 mb-5 lg:hidden">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                <i className="fas fa-graduation-cap text-white text-sm" />
+              </div>
+              <span className="font-bold text-slate-800">MySchoolHub</span>
+            </div>
+            <h2 className="text-2xl font-extrabold text-slate-800">Welcome back 👋</h2>
+            <p className="text-slate-500 text-sm mt-1">Sign in to access your portal</p>
+          </div>
+
+          {/* Error alert */}
+          {error && (
+            <div
+              className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm"
+              style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626" }}
+            >
+              <i className="fas fa-circle-exclamation flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
+                Student Number / Email
+              </label>
+              <div className="relative">
+                <i
+                  className="fas fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
+                  style={{ color: "#94a3b8" }}
+                />
+                <input
+                  type="text"
+                  id="login-username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your student number or email"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition"
+                  style={{
+                    background: "#fff",
+                    border: "1.5px solid #e2e8f0",
+                    color: "#0f172a",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+                  onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
+                Password
+              </label>
+              <div className="relative">
+                <i
+                  className="fas fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
+                  style={{ color: "#94a3b8" }}
+                />
+                <input
+                  type={showPw ? "text" : "password"}
+                  id="login-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full pl-10 pr-11 py-3 rounded-xl text-sm outline-none transition"
+                  style={{
+                    background: "#fff",
+                    border: "1.5px solid #e2e8f0",
+                    color: "#0f172a",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+                  onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                  style={{ color: "#94a3b8", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  <i className={`fas ${showPw ? "fa-eye-slash" : "fa-eye"} text-sm`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition"
+              style={{
+                background: loading
+                  ? "#93c5fd"
+                  : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                boxShadow: "0 4px 14px rgba(37,99,235,0.35)",
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? (
+                <>
+                  <div
+                    className="w-5 h-5 rounded-full animate-spin"
+                    style={{ border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }}
+                  />
+                  Signing In…
+                </>
+              ) : (
+                <>
+                  Sign In <i className="fas fa-arrow-right text-sm" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Footer links */}
+          <div className="mt-6 text-center space-y-2">
+            <p className="text-sm" style={{ color: "#64748b" }}>
+              Are you a parent?{" "}
+              <a href="/register/parent" className="font-semibold text-blue-600 hover:text-blue-700 transition">
+                Register here
+              </a>
+            </p>
+            <p className="text-xs" style={{ color: "#94a3b8" }}>
+              Staff and students: Contact your administrator
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1,11 +1,23 @@
 import React from "react";
 
-export default function Header({ title, user }) {
+export default function Header({ title, subtitle }) {
   return (
-    <div className="flex justify-between items-center mb-6">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <div className="text-gray-700">
-        Welcome, {user?.full_name || "User"} ({user?.role || "Role"})
+    <div
+      className="mb-6 pb-4 flex items-start justify-between"
+      style={{ borderBottom: "1px solid var(--border)" }}
+    >
+      <div>
+        <h2
+          className="text-2xl font-bold leading-tight"
+          style={{ color: "var(--text-primary)" }}
+        >
+          {title}
+        </h2>
+        {subtitle && (
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {subtitle}
+          </p>
+        )}
       </div>
     </div>
   );
