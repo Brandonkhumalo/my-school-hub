@@ -13,6 +13,14 @@ export default function ParentDashboard() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [children, setChildren] = useState([]);
   const [recentMessages, setRecentMessages] = useState([]);
+  const [complaints, setComplaints] = useState([]);
+  const [complaintForm, setComplaintForm] = useState({
+    student: "",
+    complaint_type: "parent",
+    title: "",
+    description: "",
+  });
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -21,13 +29,15 @@ export default function ParentDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [childrenData, messagesData] = await Promise.all([
+      const [childrenData, messagesData, complaintsData] = await Promise.all([
         apiService.getParentChildren(),
-        apiService.getParentWeeklyMessages()
+        apiService.getParentWeeklyMessages(),
+        apiService.fetchComplaints()
       ]);
       
       setChildren(childrenData);
       setRecentMessages(messagesData.slice(0, 3));
+      setComplaints(Array.isArray(complaintsData) ? complaintsData.slice(0, 5) : []);
       
       if (childrenData.length > 0) {
         const defaultChild = childrenData.find(c => c.is_confirmed) || childrenData[0];
@@ -61,6 +71,26 @@ export default function ParentDashboard() {
 
   const formatDate = formatDateShort;
 
+  const submitComplaint = async (e) => {
+    e.preventDefault();
+    setComplaintSubmitting(true);
+    try {
+      await apiService.createComplaint({
+        student: complaintForm.student ? Number(complaintForm.student) : null,
+        complaint_type: complaintForm.complaint_type,
+        title: complaintForm.title,
+        description: complaintForm.description,
+      });
+      const refreshed = await apiService.fetchComplaints();
+      setComplaints(Array.isArray(refreshed) ? refreshed.slice(0, 5) : []);
+      setComplaintForm({ student: "", complaint_type: "parent", title: "", description: "" });
+    } catch (error) {
+      alert(error.message || "Failed to submit complaint");
+    } finally {
+      setComplaintSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div>
@@ -81,23 +111,52 @@ export default function ParentDashboard() {
         </div>
 
         {children.length === 0 ? (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg">
-            <div className="flex items-start">
-              <i className="fas fa-exclamation-triangle text-yellow-600 text-2xl mr-4"></i>
-              <div>
-                <h3 className="font-semibold text-yellow-800 mb-2">No Children Linked</h3>
-                <p className="text-yellow-700 mb-3">
-                  You haven't linked any children to your account yet.
-                </p>
-                <Link
-                  to="/parent/children"
-                  className="inline-block bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded transition"
-                >
-                  Link a Child
-                </Link>
+          <>
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-lg mb-6">
+              <div className="flex items-start">
+                <i className="fas fa-exclamation-triangle text-yellow-600 text-2xl mr-4"></i>
+                <div>
+                  <h3 className="font-semibold text-yellow-800 mb-2">No Children Linked</h3>
+                  <p className="text-yellow-700 mb-3">
+                    You haven't linked any children to your account yet.
+                  </p>
+                  <Link
+                    to="/parent/children"
+                    className="inline-block bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded transition"
+                  >
+                    Link a Child
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">File a Complaint</h3>
+              <form onSubmit={submitComplaint} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  required
+                  placeholder="Complaint title"
+                  value={complaintForm.title}
+                  onChange={(e) => setComplaintForm({ ...complaintForm, title: e.target.value })}
+                  className="md:col-span-2 border rounded px-3 py-2"
+                />
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Describe the issue"
+                  value={complaintForm.description}
+                  onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })}
+                  className="md:col-span-2 border rounded px-3 py-2"
+                />
+                <button
+                  type="submit"
+                  disabled={complaintSubmitting}
+                  className="md:col-span-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-60"
+                >
+                  {complaintSubmitting ? "Submitting..." : "Submit Complaint"}
+                </button>
+              </form>
+            </div>
+          </>
         ) : (
           <>
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
@@ -290,6 +349,63 @@ export default function ParentDashboard() {
                   </div>
                   <i className="fas fa-chevron-right text-gray-400"></i>
                 </Link>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">File a Complaint</h3>
+              <form onSubmit={submitComplaint} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <select
+                  value={complaintForm.student}
+                  onChange={(e) => setComplaintForm({ ...complaintForm, student: e.target.value })}
+                  className="border rounded px-3 py-2"
+                >
+                  <option value="">General Complaint (No child selected)</option>
+                  {children.map((child) => (
+                    <option key={child.id} value={child.id}>
+                      {child.name} {child.surname}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  required
+                  placeholder="Complaint title"
+                  value={complaintForm.title}
+                  onChange={(e) => setComplaintForm({ ...complaintForm, title: e.target.value })}
+                  className="border rounded px-3 py-2"
+                />
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Describe the issue"
+                  value={complaintForm.description}
+                  onChange={(e) => setComplaintForm({ ...complaintForm, description: e.target.value })}
+                  className="md:col-span-2 border rounded px-3 py-2"
+                />
+                <button
+                  type="submit"
+                  disabled={complaintSubmitting}
+                  className="md:col-span-2 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-60"
+                >
+                  {complaintSubmitting ? "Submitting..." : "Submit Complaint"}
+                </button>
+              </form>
+
+              <div className="mt-4">
+                <h4 className="font-medium text-gray-800 mb-2">Recent Complaints</h4>
+                <div className="space-y-2">
+                  {complaints.map((complaint) => (
+                    <div key={complaint.id} className="p-3 bg-gray-50 rounded">
+                      <div className="flex justify-between">
+                        <p className="font-medium text-gray-800">{complaint.title}</p>
+                        <span className="text-xs text-gray-500">{formatDate(complaint.date_submitted)}</span>
+                      </div>
+                      <p className="text-sm text-gray-600">{complaint.student_name || "General"}</p>
+                      <p className="text-xs text-gray-500 capitalize">Status: {complaint.status}</p>
+                    </div>
+                  ))}
+                  {complaints.length === 0 && <p className="text-sm text-gray-500">No complaints submitted yet.</p>}
+                </div>
               </div>
             </div>
           </>

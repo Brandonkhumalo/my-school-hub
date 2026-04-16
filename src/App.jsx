@@ -60,6 +60,7 @@ const AdminHealth = lazy(() => import("./pages/admin/AdminHealth"));
 
 const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
+const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 
 // Teacher Pages
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
@@ -72,6 +73,7 @@ const TeacherResults = lazy(() => import("./pages/teacher/TeacherResults"));
 const TeacherStudents = lazy(() => import("./pages/teacher/TeacherStudents"));
 const TeacherClasses = lazy(() => import("./pages/teacher/TeacherClasses"));
 const TeacherConferences = lazy(() => import("./pages/teacher/TeacherConferences"));
+const TeacherComplaints = lazy(() => import("./pages/teacher/TeacherComplaints"));
 
 // Student Pages
 const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard"));
@@ -107,6 +109,32 @@ const HRLeaves = lazy(() => import("./pages/hr/HRLeaves"));
 const HRPayroll = lazy(() => import("./pages/hr/HRPayroll"));
 const HRAttendance = lazy(() => import("./pages/hr/HRAttendance"));
 const HRMeetings = lazy(() => import("./pages/hr/HRMeetings"));
+const HRVisitorLogs = lazy(() => import("./pages/hr/HRVisitorLogs"));
+const HRIncidents = lazy(() => import("./pages/hr/HRIncidents"));
+const HRCleaningSchedules = lazy(() => import("./pages/hr/HRCleaningSchedules"));
+
+// Accountant pages
+const AccountantDashboard = lazy(() => import("./pages/accountant/AccountantDashboard"));
+const AccountantFees = lazy(() => import("./pages/accountant/AccountantFees"));
+const AccountantPayments = lazy(() => import("./pages/accountant/AccountantPayments"));
+const AccountantInvoices = lazy(() => import("./pages/accountant/AccountantInvoices"));
+const AccountantReports = lazy(() => import("./pages/accountant/AccountantReports"));
+
+// Librarian pages
+const LibrarianDashboard = lazy(() => import("./pages/librarian/LibrarianDashboard"));
+const LibrarianBooks = lazy(() => import("./pages/librarian/LibrarianBooks"));
+const LibrarianLoans = lazy(() => import("./pages/librarian/LibrarianLoans"));
+
+// Security pages
+const SecurityDashboard = lazy(() => import("./pages/security/SecurityDashboard"));
+const SecurityVisitorLog = lazy(() => import("./pages/security/SecurityVisitorLog"));
+const SecurityIncidents = lazy(() => import("./pages/security/SecurityIncidents"));
+const SecurityAttendance = lazy(() => import("./pages/security/SecurityAttendance"));
+
+// Cleaner pages
+const CleanerDashboard = lazy(() => import("./pages/cleaner/CleanerDashboard"));
+const CleanerTasks = lazy(() => import("./pages/cleaner/CleanerTasks"));
+const CleanerAttendance = lazy(() => import("./pages/cleaner/CleanerAttendance"));
 
 // Shared Profile Page
 const ProfilePage = lazy(() => import("./pages/profile/ProfilePage"));
@@ -176,6 +204,7 @@ function App() {
         <Route path="/admin/health" element={<RequireAuth allowedRoles={['admin']}><AdminHealth /></RequireAuth>} />
         <Route path="/admin/discipline" element={<RequireAuth allowedRoles={['admin']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/admin/analytics" element={<RequireAuth allowedRoles={['admin']}><AdminAnalytics /></RequireAuth>} />
+        <Route path="/admin/audit-logs" element={<RequireAuth allowedRoles={['admin']}><AdminAuditLog /></RequireAuth>} />
         <Route path="/admin/profile" element={<RequireAuth allowedRoles={['admin']}><ProfilePage /></RequireAuth>} />
 
         {/* Teacher Routes */}
@@ -189,6 +218,7 @@ function App() {
         <Route path="/teacher/students" element={<RequireAuth allowedRoles={['teacher']}><TeacherStudents /></RequireAuth>} />
         <Route path="/teacher/classes" element={<RequireAuth allowedRoles={['teacher']}><TeacherClasses /></RequireAuth>} />
         <Route path="/teacher/conferences" element={<RequireAuth allowedRoles={['teacher']}><TeacherConferences /></RequireAuth>} />
+        <Route path="/teacher/complaints" element={<RequireAuth allowedRoles={['teacher']}><TeacherComplaints /></RequireAuth>} />
         <Route path="/teacher/profile" element={<RequireAuth allowedRoles={['teacher']}><ProfilePage /></RequireAuth>} />
 
         {/* Student Routes */}
@@ -226,7 +256,43 @@ function App() {
         <Route path="/hr/payroll" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
         <Route path="/hr/attendance" element={<RequireAuth allowedRoles={['hr']}><HRAttendance /></RequireAuth>} />
         <Route path="/hr/meetings" element={<RequireAuth allowedRoles={['hr']}><HRMeetings /></RequireAuth>} />
+        <Route path="/hr/visitor-logs" element={<RequireAuth allowedRoles={['hr']}><HRVisitorLogs /></RequireAuth>} />
+        <Route path="/hr/incidents" element={<RequireAuth allowedRoles={['hr']}><HRIncidents /></RequireAuth>} />
+        <Route path="/hr/cleaning" element={<RequireAuth allowedRoles={['hr']}><HRCleaningSchedules /></RequireAuth>} />
+        <Route path="/hr/discipline" element={<RequireAuth allowedRoles={['hr']}><AdminDiscipline /></RequireAuth>} />
+        <Route path="/hr/promotions" element={<RequireAuth allowedRoles={['hr']}><AdminPromotions /></RequireAuth>} />
+        <Route path="/hr/complaints" element={<RequireAuth allowedRoles={['hr']}><AdminComplaints /></RequireAuth>} />
+        <Route path="/hr/announcements" element={<RequireAuth allowedRoles={['hr']}><AdminAnnouncements /></RequireAuth>} />
+        <Route path="/hr/timetable" element={<RequireAuth allowedRoles={['hr']}><AdminTimetable /></RequireAuth>} />
+        <Route path="/hr/report-config" element={<RequireAuth allowedRoles={['hr']}><AdminReportConfig /></RequireAuth>} />
         <Route path="/hr/profile" element={<RequireAuth allowedRoles={['hr']}><ProfilePage /></RequireAuth>} />
+
+        {/* Accountant Routes */}
+        <Route path="/accountant" element={<RequireAuth allowedRoles={['accountant']}><AccountantDashboard /></RequireAuth>} />
+        <Route path="/accountant/fees" element={<RequireAuth allowedRoles={['accountant']}><AccountantFees /></RequireAuth>} />
+        <Route path="/accountant/payments" element={<RequireAuth allowedRoles={['accountant']}><AccountantPayments /></RequireAuth>} />
+        <Route path="/accountant/invoices" element={<RequireAuth allowedRoles={['accountant']}><AccountantInvoices /></RequireAuth>} />
+        <Route path="/accountant/reports" element={<RequireAuth allowedRoles={['accountant']}><AccountantReports /></RequireAuth>} />
+        <Route path="/accountant/profile" element={<RequireAuth allowedRoles={['accountant']}><ProfilePage /></RequireAuth>} />
+
+        {/* Librarian Routes */}
+        <Route path="/librarian" element={<RequireAuth allowedRoles={['librarian']}><LibrarianDashboard /></RequireAuth>} />
+        <Route path="/librarian/books" element={<RequireAuth allowedRoles={['librarian']}><LibrarianBooks /></RequireAuth>} />
+        <Route path="/librarian/loans" element={<RequireAuth allowedRoles={['librarian']}><LibrarianLoans /></RequireAuth>} />
+        <Route path="/librarian/profile" element={<RequireAuth allowedRoles={['librarian']}><ProfilePage /></RequireAuth>} />
+
+        {/* Security Routes */}
+        <Route path="/security" element={<RequireAuth allowedRoles={['security']}><SecurityDashboard /></RequireAuth>} />
+        <Route path="/security/visitors" element={<RequireAuth allowedRoles={['security']}><SecurityVisitorLog /></RequireAuth>} />
+        <Route path="/security/incidents" element={<RequireAuth allowedRoles={['security']}><SecurityIncidents /></RequireAuth>} />
+        <Route path="/security/attendance" element={<RequireAuth allowedRoles={['security']}><SecurityAttendance /></RequireAuth>} />
+        <Route path="/security/profile" element={<RequireAuth allowedRoles={['security']}><ProfilePage /></RequireAuth>} />
+
+        {/* Cleaner Routes */}
+        <Route path="/cleaner" element={<RequireAuth allowedRoles={['cleaner']}><CleanerDashboard /></RequireAuth>} />
+        <Route path="/cleaner/tasks" element={<RequireAuth allowedRoles={['cleaner']}><CleanerTasks /></RequireAuth>} />
+        <Route path="/cleaner/attendance" element={<RequireAuth allowedRoles={['cleaner']}><CleanerAttendance /></RequireAuth>} />
+        <Route path="/cleaner/profile" element={<RequireAuth allowedRoles={['cleaner']}><ProfilePage /></RequireAuth>} />
 
         {/* Generic profile redirect */}
         <Route path="/profile" element={<ProfilePage />} />

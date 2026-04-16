@@ -176,20 +176,32 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         model = Announcement
         fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience',
                   'target_class', 'class_name', 'date_posted', 'is_active']
+        read_only_fields = ['author', 'author_name', 'class_name', 'date_posted']
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
-    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
-    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    student_number = serializers.SerializerMethodField()
     submitted_by_name = serializers.CharField(source='submitted_by.full_name', read_only=True)
 
     class Meta:
         model = Complaint
         fields = [
             'id', 'student', 'student_name', 'student_number', 'submitted_by',
-            'submitted_by_name', 'title', 'description', 'status',
+            'submitted_by_name', 'complaint_type', 'title', 'description', 'status',
             'date_submitted', 'date_resolved'
         ]
+        read_only_fields = ['submitted_by', 'student_name', 'student_number', 'submitted_by_name', 'date_submitted', 'date_resolved']
+
+    def get_student_name(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.full_name
+        return None
+
+    def get_student_number(self, obj):
+        if obj.student and obj.student.user:
+            return obj.student.user.student_number
+        return None
 
 
 class SuspensionSerializer(serializers.ModelSerializer):

@@ -194,8 +194,16 @@ class ReportCardRelease(models.Model):
 
 
 class Complaint(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='complaints')
+    COMPLAINT_TYPE_CHOICES = [
+        ('parent', 'Parent'),
+        ('teacher', 'Teacher'),
+        ('general', 'General'),
+    ]
+
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, related_name='complaints', null=True, blank=True)
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='complaints', null=True, blank=True)
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    complaint_type = models.CharField(max_length=20, choices=COMPLAINT_TYPE_CHOICES, default='general')
     title = models.CharField(max_length=200)
     description = models.TextField()
     status = models.CharField(max_length=50, default='pending')  # pending, in_progress, resolved

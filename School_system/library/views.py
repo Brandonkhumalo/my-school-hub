@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def book_list(request):
     """
     GET  — list / search books (all authenticated users)
-    POST — add a new book (admin only)
+    POST — add a new book (admin/librarian)
     """
     school = request.user.school
     if not school:
@@ -45,9 +45,9 @@ def book_list(request):
         serializer = BookSerializer(qs, many=True)
         return Response(serializer.data)
 
-    # POST — admin only
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can add books'}, status=status.HTTP_403_FORBIDDEN)
+    # POST — admin/librarian only
+    if request.user.role not in ('admin', 'librarian', 'superadmin'):
+        return Response({'error': 'Only admin/librarian can add books'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = BookSerializer(data=request.data)
     if serializer.is_valid():
@@ -59,7 +59,7 @@ def book_list(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def book_detail(request, book_id):
-    """Retrieve, update, or delete a single book (admin only for write)."""
+    """Retrieve, update, or delete a single book (admin/librarian for write)."""
     school = request.user.school
     try:
         book = Book.objects.get(id=book_id, school=school)
@@ -69,8 +69,8 @@ def book_detail(request, book_id):
     if request.method == 'GET':
         return Response(BookSerializer(book).data)
 
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can modify books'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'librarian', 'superadmin'):
+        return Response({'error': 'Only admin/librarian can modify books'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'PUT':
         serializer = BookSerializer(book, data=request.data, partial=True)
@@ -89,9 +89,9 @@ def book_detail(request, book_id):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def issue_book(request, book_id):
-    """Issue a book to a student. Admin only."""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can issue books'}, status=status.HTTP_403_FORBIDDEN)
+    """Issue a book to a student. Admin/librarian only."""
+    if request.user.role not in ('admin', 'librarian', 'superadmin'):
+        return Response({'error': 'Only admin/librarian can issue books'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
     try:
@@ -131,9 +131,9 @@ def issue_book(request, book_id):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def return_book(request, loan_id):
-    """Return a book. Admin only."""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can process returns'}, status=status.HTTP_403_FORBIDDEN)
+    """Return a book. Admin/librarian only."""
+    if request.user.role not in ('admin', 'librarian', 'superadmin'):
+        return Response({'error': 'Only admin/librarian can process returns'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
     try:
@@ -163,7 +163,7 @@ def return_book(request, loan_id):
 @permission_classes([permissions.IsAuthenticated])
 def loan_list(request):
     """
-    Admin sees all school loans. Students see their own.
+    Admin/librarian sees all school loans. Students see their own.
     Filter by ?status=issued / returned / overdue / lost
     """
     school = request.user.school
@@ -193,9 +193,9 @@ def loan_list(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def overdue_loans(request):
-    """List overdue loans (admin)."""
-    if request.user.role != 'admin':
-        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    """List overdue loans (admin/librarian)."""
+    if request.user.role not in ('admin', 'librarian', 'superadmin'):
+        return Response({'error': 'Admin/librarian only'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
     today = date.today()

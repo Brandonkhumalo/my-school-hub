@@ -35,6 +35,7 @@ function Layout() {
       { path: '/admin/library', icon: 'fa-book-reader', title: 'Library' },
       { path: '/admin/health', icon: 'fa-heartbeat', title: 'Health Records' },
       { path: '/admin/analytics', icon: 'fa-chart-pie', title: 'Analytics' },
+      { path: '/admin/audit-logs', icon: 'fa-clipboard-list', title: 'Audit Logs' },
       { path: '/admin/report-config', icon: 'fa-file-pdf', title: 'Report Card Design' },
       { path: '/admin/settings', icon: 'fa-sliders-h', title: 'School Settings' },
     ],
@@ -46,6 +47,7 @@ function Layout() {
       { path: '/teacher/homework', icon: 'fa-book-open', title: 'Homework' },
       { path: '/teacher/conferences', icon: 'fa-calendar-check', title: 'Conferences' },
       { path: '/teacher/messages', icon: 'fa-comments', title: 'Messages' },
+      { path: '/teacher/complaints', icon: 'fa-exclamation-circle', title: 'Complaints' },
     ],
     student: [
       { path: '/student', icon: 'fa-home', title: 'Dashboard' },
@@ -72,6 +74,26 @@ function Layout() {
     ],
     accountant: [
       { path: '/accountant', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/accountant/fees', icon: 'fa-money-bill', title: 'Fees' },
+      { path: '/accountant/payments', icon: 'fa-credit-card', title: 'Payments' },
+      { path: '/accountant/invoices', icon: 'fa-file-invoice', title: 'Invoices' },
+      { path: '/accountant/reports', icon: 'fa-chart-bar', title: 'Reports' },
+    ],
+    librarian: [
+      { path: '/librarian', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/librarian/books', icon: 'fa-book', title: 'Books' },
+      { path: '/librarian/loans', icon: 'fa-exchange-alt', title: 'Loans' },
+    ],
+    security: [
+      { path: '/security', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/security/visitors', icon: 'fa-id-card', title: 'Visitor Log' },
+      { path: '/security/incidents', icon: 'fa-exclamation-triangle', title: 'Incidents' },
+      { path: '/security/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
+    ],
+    cleaner: [
+      { path: '/cleaner', icon: 'fa-home', title: 'Dashboard' },
+      { path: '/cleaner/tasks', icon: 'fa-broom', title: 'Tasks' },
+      { path: '/cleaner/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
     ],
     hr: [
       { path: '/hr', icon: 'fa-home', title: 'Dashboard' },
@@ -80,6 +102,15 @@ function Layout() {
       { path: '/hr/payroll', icon: 'fa-money-bill-wave', title: 'Payroll' },
       { path: '/hr/attendance', icon: 'fa-clipboard-check', title: 'Attendance' },
       { path: '/hr/meetings', icon: 'fa-handshake', title: 'Meetings' },
+      { path: '/hr/visitor-logs', icon: 'fa-id-card', title: 'Visitor Logs' },
+      { path: '/hr/incidents', icon: 'fa-exclamation-triangle', title: 'Incidents' },
+      { path: '/hr/cleaning', icon: 'fa-broom', title: 'Cleaning' },
+      { path: '/hr/discipline', icon: 'fa-gavel', title: 'Discipline' },
+      { path: '/hr/promotions', icon: 'fa-graduation-cap', title: 'Promotions' },
+      { path: '/hr/complaints', icon: 'fa-exclamation-circle', title: 'Complaints' },
+      { path: '/hr/announcements', icon: 'fa-bullhorn', title: 'Announcements' },
+      { path: '/hr/timetable', icon: 'fa-calendar-alt', title: 'Timetable' },
+      { path: '/hr/report-config', icon: 'fa-file-pdf', title: 'Report Config' },
     ],
   };
 

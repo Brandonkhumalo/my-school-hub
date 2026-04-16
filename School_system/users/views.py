@@ -234,7 +234,11 @@ def dashboard_stats_view(request):
                 is_confirmed=True,
                 student__user__school=school
             ).values('parent').distinct().count(),
-            'total_staff': CustomUser.objects.filter(role__in=['admin', 'hr', 'accountant'], is_active=True, school=school).count(),
+            'total_staff': CustomUser.objects.filter(
+                role__in=['admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian'],
+                is_active=True,
+                school=school
+            ).count(),
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
             'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
@@ -389,8 +393,8 @@ def current_academic_period_view(request):
 @api_view(['GET', 'PUT'])
 @permission_classes([permissions.IsAuthenticated])
 def report_card_config_view(request):
-    """Get or update report card configuration (admin only)."""
-    if request.user.role not in ('admin', 'superadmin'):
+    """Get or update report card configuration (admin/hr)."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
@@ -415,7 +419,7 @@ def report_card_config_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def report_card_upload_image(request):
     """Upload logo or stamp image for report card config."""
-    if request.user.role not in ('admin', 'superadmin'):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
@@ -451,9 +455,28 @@ def audit_logs_view(request):
 
     school = request.user.school
     if school:
-        logs = AuditLog.objects.filter(school=school).select_related('user')[:200]
+        logs = AuditLog.objects.filter(school=school).select_related('user')
     else:
         logs = AuditLog.objects.none()
+
+    user_id = request.query_params.get('user_id')
+    action = request.query_params.get('action')
+    model_name = request.query_params.get('model')
+    from_date = request.query_params.get('from')
+    to_date = request.query_params.get('to')
+
+    if user_id:
+        logs = logs.filter(user_id=user_id)
+    if action:
+        logs = logs.filter(action__iexact=action.strip())
+    if model_name:
+        logs = logs.filter(model_name__icontains=model_name.strip())
+    if from_date:
+        logs = logs.filter(timestamp__date__gte=from_date)
+    if to_date:
+        logs = logs.filter(timestamp__date__lte=to_date)
+
+    logs = logs.order_by('-timestamp')[:500]
 
     data = [
         {

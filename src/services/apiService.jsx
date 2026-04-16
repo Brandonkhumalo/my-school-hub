@@ -542,7 +542,10 @@ const apiService = {
   },
 
   // Audit logs (admin)
-  getAuditLogs: () => request("/auth/audit-logs/", "GET"),
+  getAuditLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/auth/audit-logs/${q ? '?' + q : ''}`, "GET");
+  },
 
   // Global search
   globalSearch: (q) => request(`/auth/search/?q=${encodeURIComponent(q)}`, "GET"),
@@ -590,6 +593,36 @@ const apiService = {
   createMeeting: (data) => request("/staff/meetings/", "POST", data),
   updateMeeting: (id, data) => request(`/staff/meetings/${id}/`, "PATCH", data),
   deleteMeeting: (id) => request(`/staff/meetings/${id}/`, "DELETE"),
+
+  // Security operations
+  getVisitorLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/visitors/${q ? '?' + q : ''}`, "GET");
+  },
+  logVisitor: (data) => request("/staff/visitors/", "POST", data),
+  checkOutVisitor: (id, data = {}) => request(`/staff/visitors/${id}/checkout/`, "PATCH", data),
+
+  getIncidentReports: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/incidents/${q ? '?' + q : ''}`, "GET");
+  },
+  createIncidentReport: (data) => request("/staff/incidents/", "POST", data),
+  getIncidentReportDetail: (id) => request(`/staff/incidents/${id}/`, "GET"),
+  updateIncidentReport: (id, data) => request(`/staff/incidents/${id}/`, "PATCH", data),
+
+  // Cleaning schedules and tasks
+  getCleaningSchedules: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/cleaning-schedules/${q ? '?' + q : ''}`, "GET");
+  },
+  createCleaningSchedule: (data) => request("/staff/cleaning-schedules/", "POST", data),
+  updateCleaningSchedule: (id, data) => request(`/staff/cleaning-schedules/${id}/`, "PATCH", data),
+
+  getCleaningTasks: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/cleaning-tasks/${q ? '?' + q : ''}`, "GET");
+  },
+  completeCleaningTask: (id, data = {}) => request(`/staff/cleaning-tasks/${id}/complete/`, "PATCH", data),
 
   // Promotion endpoints
   getPromotionPreview: (classId, academicYear) => request(`/academics/promotions/preview/?class_id=${classId}&academic_year=${encodeURIComponent(academicYear)}`, "GET"),

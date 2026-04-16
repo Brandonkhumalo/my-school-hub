@@ -1,6 +1,6 @@
 """
 Views for student year-end promotions (promote, repeat, graduate).
-All endpoints are admin-only.
+All endpoints are admin/HR.
 """
 
 import logging
@@ -15,9 +15,9 @@ from .models import Student, Class, PromotionRecord
 logger = logging.getLogger(__name__)
 
 
-def _is_admin(user):
-    """Return True if the authenticated user has the 'admin' role."""
-    return getattr(user, 'role', None) == 'admin'
+def _is_admin_or_hr(user):
+    """Return True if the authenticated user has the admin/HR role."""
+    return getattr(user, 'role', None) in ('admin', 'hr', 'superadmin')
 
 
 @api_view(['GET'])
@@ -36,8 +36,8 @@ def promotion_preview(request):
     - All students default to 'promote' unless they are in the final
       grade, in which case the suggestion is 'graduate'.
     """
-    if not _is_admin(request.user):
-        return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+    if not _is_admin_or_hr(request.user):
+        return Response({'error': 'Admin/HR access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     class_id = request.query_params.get('class_id')
     academic_year = request.query_params.get('academic_year')
@@ -130,8 +130,8 @@ def process_promotions(request):
       not possible because of FK constraint, so we keep the class but
       record the graduation)
     """
-    if not _is_admin(request.user):
-        return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+    if not _is_admin_or_hr(request.user):
+        return Response({'error': 'Admin/HR access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     academic_year = request.data.get('academic_year')
     promotions = request.data.get('promotions', [])
@@ -227,8 +227,8 @@ def promotion_history(request):
     Returns all promotion records for the school, optionally filtered by
     academic_year.
     """
-    if not _is_admin(request.user):
-        return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+    if not _is_admin_or_hr(request.user):
+        return Response({'error': 'Admin/HR access required.'}, status=status.HTTP_403_FORBIDDEN)
 
     qs = (
         PromotionRecord.objects

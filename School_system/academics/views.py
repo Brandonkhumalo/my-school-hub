@@ -459,9 +459,10 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
             queryset = Announcement.objects.none()
         user_role = user.role
 
-        queryset = queryset.filter(
-            Q(target_audience='all') | Q(target_audience=user_role)
-        )
+        if user_role not in ('admin', 'hr', 'superadmin'):
+            queryset = queryset.filter(
+                Q(target_audience='all') | Q(target_audience=user_role)
+            )
 
         # Filter by target_class: show announcements with no class (general)
         # or where the user belongs to that class
@@ -511,6 +512,9 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-date_posted')
 
     def perform_create(self, serializer):
+        if self.request.user.role not in ('admin', 'hr', 'teacher', 'superadmin'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admin, HR, and teachers can create announcements.')
         announcement = serializer.save(author=self.request.user)
         # Notify parents if target_audience is 'all' or 'parent'
         if announcement.target_audience not in ('all', 'parent'):
@@ -561,24 +565,54 @@ class ComplaintListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            queryset = Complaint.objects.filter(student__user__school=user.school).select_related(
+            queryset = Complaint.objects.filter(
+                Q(school=user.school) | Q(student__user__school=user.school)
+            ).distinct().select_related(
                 'student__user', 'submitted_by'
             )
         else:
             queryset = Complaint.objects.none()
 
-        if user.role == 'student':
+        if user.role in ('admin', 'hr', 'superadmin'):
+            pass
+        elif user.role == 'student':
             queryset = queryset.filter(student__user=user)
         elif user.role == 'parent':
-            children_ids = user.parent.children.values_list('id', flat=True)
-            queryset = queryset.filter(student_id__in=children_ids)
+            queryset = queryset.filter(submitted_by=user)
         elif user.role == 'teacher':
             queryset = queryset.filter(submitted_by=user)
+        else:
+            queryset = Complaint.objects.none()
 
         return queryset.order_by('-date_submitted')
 
     def perform_create(self, serializer):
-        serializer.save(submitted_by=self.request.user)
+        user = self.request.user
+        if user.role not in ('admin', 'hr', 'teacher', 'parent', 'superadmin'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admin, HR, teachers, and parents can create complaints.')
+
+        student = serializer.validated_data.get('student')
+        if student:
+            if user.school and student.user.school_id != user.school_id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('Selected student is outside your school.')
+            if user.role == 'parent' and not user.parent.children.filter(id=student.id).exists():
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('Parents can only file complaints for their linked children.')
+
+        complaint_type = serializer.validated_data.get('complaint_type')
+        if not complaint_type:
+            complaint_type = {
+                'parent': 'parent',
+                'teacher': 'teacher',
+            }.get(user.role, 'general')
+
+        serializer.save(
+            submitted_by=user,
+            school=user.school,
+            complaint_type=complaint_type,
+        )
 
 
 class ComplaintDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -588,9 +622,30 @@ class ComplaintDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        if user.school:
-            return Complaint.objects.filter(student__user__school=user.school)
+        if not user.school:
+            return Complaint.objects.none()
+
+        queryset = Complaint.objects.filter(
+            Q(school=user.school) | Q(student__user__school=user.school)
+        ).distinct()
+
+        if user.role in ('admin', 'hr', 'superadmin'):
+            return queryset
+        if user.role in ('teacher', 'parent'):
+            return queryset.filter(submitted_by=user)
+        if user.role == 'student':
+            return queryset.filter(student__user=user)
         return Complaint.objects.none()
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Only admin/HR can update complaints.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Only admin/HR can delete complaints.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Suspension Views
@@ -819,8 +874,8 @@ def class_averages_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def generate_timetable_view(request):
     """Generate timetables for all classes using CSP algorithm - filtered by school"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can generate timetables'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can generate timetables'}, status=status.HTTP_403_FORBIDDEN)
     
     school = request.user.school
     if not school:
@@ -862,8 +917,8 @@ def generate_timetable_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def get_timetable_stats(request):
     """Get timetable statistics for admin - filtered by school"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can view timetable stats'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can view timetable stats'}, status=status.HTTP_403_FORBIDDEN)
     
     school = request.user.school
     if not school:

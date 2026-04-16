@@ -13,7 +13,7 @@ def discipline_list_create(request):
            Supports query params: ?severity=minor&is_resolved=false&student_id=1
     POST — Create a new disciplinary record (admin/teacher).
     """
-    if request.user.role not in ('admin', 'teacher'):
+    if request.user.role not in ('admin', 'teacher', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
@@ -90,9 +90,9 @@ def discipline_list_create(request):
 @api_view(['PUT'])
 @permission_classes([permissions.IsAuthenticated])
 def discipline_update(request, record_id):
-    """Update a disciplinary record (admin only)."""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can update records'}, status=status.HTTP_403_FORBIDDEN)
+    """Update a disciplinary record (admin/hr only)."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can update records'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
     try:
@@ -118,7 +118,7 @@ def discipline_update(request, record_id):
 @permission_classes([permissions.IsAuthenticated])
 def discipline_by_student(request, student_id):
     """Get disciplinary records for a specific student."""
-    if request.user.role not in ('admin', 'teacher', 'parent'):
+    if request.user.role not in ('admin', 'teacher', 'parent', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
@@ -150,7 +150,7 @@ def discipline_by_student(request, student_id):
 @permission_classes([permissions.IsAuthenticated])
 def discipline_resolve(request, record_id):
     """Mark a disciplinary record as resolved."""
-    if request.user.role not in ('admin', 'teacher'):
+    if request.user.role not in ('admin', 'teacher', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school

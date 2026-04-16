@@ -30,4 +30,16 @@ urlpatterns = [
     # Meetings
     path('meetings/', views.MeetingListCreateView.as_view(), name='meeting-list-create'),
     path('meetings/<int:pk>/', views.MeetingDetailView.as_view(), name='meeting-detail'),
+
+    # Security: visitors and incidents
+    path('visitors/', views.VisitorLogListCreateView.as_view(), name='visitor-log-list-create'),
+    path('visitors/<int:pk>/checkout/', views.visitor_checkout_view, name='visitor-checkout'),
+    path('incidents/', views.IncidentReportListCreateView.as_view(), name='incident-report-list-create'),
+    path('incidents/<int:pk>/', views.IncidentReportDetailView.as_view(), name='incident-report-detail'),
+
+    # Cleaning schedules/tasks
+    path('cleaning-schedules/', views.CleaningScheduleListCreateView.as_view(), name='cleaning-schedule-list-create'),
+    path('cleaning-schedules/<int:pk>/', views.CleaningScheduleDetailView.as_view(), name='cleaning-schedule-detail'),
+    path('cleaning-tasks/', views.CleaningTaskListView.as_view(), name='cleaning-task-list'),
+    path('cleaning-tasks/<int:pk>/complete/', views.complete_cleaning_task_view, name='cleaning-task-complete'),
 ]

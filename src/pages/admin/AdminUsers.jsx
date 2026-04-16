@@ -214,6 +214,9 @@ export default function AdminUsers() {
                   <option value="admin">Admin</option>
                   <option value="hr">HR</option>
                   <option value="accountant">Accountant</option>
+                  <option value="security">Security</option>
+                  <option value="cleaner">Cleaner</option>
+                  <option value="librarian">Librarian</option>
                 </select>
               </div>
 

@@ -13,6 +13,8 @@ const POSITIONS = [
   "secretary",
   "maintenance",
   "security",
+  "cleaner",
+  "librarian",
 ];
 
 const PAGE_SIZE = 20;
@@ -193,6 +195,8 @@ export default function AdminStaff() {
       secretary: "bg-indigo-100 text-indigo-700",
       maintenance: "bg-orange-100 text-orange-700",
       security: "bg-gray-200 text-gray-800",
+      cleaner: "bg-teal-100 text-teal-700",
+      librarian: "bg-cyan-100 text-cyan-700",
     };
     return `px-2 py-1 rounded-full text-xs ${colorMap[position] || "bg-gray-100 text-gray-700"}`;
   };

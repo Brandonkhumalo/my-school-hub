@@ -100,6 +100,9 @@ class CustomUser(AbstractUser):
         ('admin', 'Admin'),
         ('hr', 'HR'),
         ('accountant', 'Accountant'),
+        ('security', 'Security'),
+        ('cleaner', 'Cleaner'),
+        ('librarian', 'Librarian'),
         ('superadmin', 'Super Admin'),
     ]
 

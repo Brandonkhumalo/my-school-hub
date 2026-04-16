@@ -3,7 +3,10 @@ import string
 
 from rest_framework import serializers
 from django.db import transaction
-from .models import Department, Staff, Attendance, Leave, Payroll, Meeting
+from .models import (
+    Department, Staff, Attendance, Leave, Payroll, Meeting,
+    VisitorLog, IncidentReport, CleaningSchedule, CleaningTask
+)
 from users.models import CustomUser
 
 
@@ -118,8 +121,10 @@ class CreateStaffSerializer(serializers.Serializer):
             'accountant': 'accountant',
             'principal': 'admin',
             'secretary': 'admin',
-            'maintenance': 'admin',
-            'security': 'admin',
+            'maintenance': 'hr',
+            'security': 'security',
+            'cleaner': 'cleaner',
+            'librarian': 'librarian',
         }
         return mapping.get(position, 'hr')
 
@@ -174,6 +179,74 @@ class CreateStaffSerializer(serializers.Serializer):
         # Attach generated password for display (not stored)
         staff._generated_password = password
         return staff
+
+
+class VisitorLogSerializer(serializers.ModelSerializer):
+    logged_by_name = serializers.CharField(source='logged_by.full_name', read_only=True)
+
+    class Meta:
+        model = VisitorLog
+        fields = [
+            'id', 'school', 'visitor_name', 'visitor_id_number', 'purpose',
+            'host_name', 'check_in_time', 'check_out_time', 'vehicle_reg',
+            'logged_by', 'logged_by_name', 'notes', 'date'
+        ]
+        read_only_fields = ['id', 'school', 'check_in_time', 'logged_by', 'date']
+
+
+class IncidentReportSerializer(serializers.ModelSerializer):
+    reported_by_name = serializers.CharField(source='reported_by.full_name', read_only=True)
+
+    class Meta:
+        model = IncidentReport
+        fields = [
+            'id', 'school', 'reported_by', 'reported_by_name', 'incident_type',
+            'title', 'description', 'location', 'date_of_incident',
+            'action_taken', 'status', 'date_created'
+        ]
+        read_only_fields = ['id', 'school', 'reported_by', 'date_created']
+
+
+class CleaningScheduleSerializer(serializers.ModelSerializer):
+    assigned_to_name = serializers.CharField(source='assigned_to.user.full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+
+    class Meta:
+        model = CleaningSchedule
+        fields = [
+            'id', 'school', 'area_name', 'assigned_to', 'assigned_to_name', 'frequency',
+            'scheduled_time', 'notes', 'is_active', 'created_by', 'created_by_name', 'date_created'
+        ]
+        read_only_fields = ['id', 'school', 'created_by', 'date_created']
+
+    def validate_assigned_to(self, value):
+        if value and value.position != 'cleaner':
+            raise serializers.ValidationError('Assigned staff member must have cleaner position.')
+        return value
+
+    def validate(self, attrs):
+        assigned_to = attrs.get('assigned_to')
+        request = self.context.get('request')
+        school = request.user.school if request else None
+        if assigned_to and school and assigned_to.user.school_id != school.id:
+            raise serializers.ValidationError({'assigned_to': 'Assigned cleaner must belong to your school.'})
+        return attrs
+
+
+class CleaningTaskSerializer(serializers.ModelSerializer):
+    assigned_to_name = serializers.CharField(source='assigned_to.user.full_name', read_only=True)
+    schedule_area_name = serializers.CharField(source='schedule.area_name', read_only=True)
+    schedule_frequency = serializers.CharField(source='schedule.frequency', read_only=True)
+    scheduled_time = serializers.TimeField(source='schedule.scheduled_time', read_only=True)
+
+    class Meta:
+        model = CleaningTask
+        fields = [
+            'id', 'school', 'schedule', 'schedule_area_name', 'schedule_frequency',
+            'scheduled_time', 'assigned_to', 'assigned_to_name', 'date',
+            'is_done', 'completed_at', 'notes'
+        ]
+        read_only_fields = ['id', 'school', 'completed_at']
 
 
 class StaffAttendanceSerializer(serializers.ModelSerializer):

@@ -30,6 +30,21 @@ function Login() {
         case "admin":
           navigate("/admin");
           break;
+        case "hr":
+          navigate("/hr");
+          break;
+        case "accountant":
+          navigate("/accountant");
+          break;
+        case "security":
+          navigate("/security");
+          break;
+        case "cleaner":
+          navigate("/cleaner");
+          break;
+        case "librarian":
+          navigate("/librarian");
+          break;
         case "teacher":
           navigate("/teacher");
           break;
