@@ -22,7 +22,8 @@ from .serializers import (
     SubjectSerializer, ClassSerializer, StudentSerializer, TeacherSerializer,
     ParentSerializer, ResultSerializer, TimetableSerializer, AnnouncementSerializer,
     ComplaintSerializer, SuspensionSerializer, StudentPerformanceSerializer,
-    CreateResultSerializer, CreateStudentSerializer, CreateTeacherSerializer, CreateParentSerializer
+    CreateResultSerializer, CreateStudentSerializer, CreateTeacherSerializer, CreateParentSerializer,
+    UpdateStudentSerializer, UpdateTeacherSerializer, UpdateParentSerializer
 )
 
 
@@ -111,6 +112,15 @@ class StudentListView(generics.ListCreateAPIView):
             ).prefetch_related('parents__user')
         else:
             queryset = Student.objects.none()
+
+        search_q = self.request.query_params.get('q', '').strip()
+        if search_q:
+            queryset = queryset.filter(
+                Q(user__student_number__icontains=search_q) |
+                Q(user__first_name__icontains=search_q) |
+                Q(user__last_name__icontains=search_q)
+            )
+
         class_id = self.request.query_params.get('class', None)
         if class_id:
             queryset = queryset.filter(student_class_id=class_id)
@@ -119,8 +129,12 @@ class StudentListView(generics.ListCreateAPIView):
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Student.objects.all()
-    serializer_class = StudentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UpdateStudentSerializer
+        return StudentSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -129,6 +143,17 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
                 'user', 'student_class'
             ).prefetch_related('parents__user')
         return Student.objects.none()
+
+    def perform_update(self, serializer):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admins can edit students.')
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'error': 'Only admins can delete students.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 @api_view(['GET'])
@@ -213,6 +238,33 @@ class TeacherListView(generics.ListCreateAPIView):
         return Teacher.objects.none()
 
 
+class TeacherDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Teacher.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UpdateTeacherSerializer
+        return TeacherSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught')
+        return Teacher.objects.none()
+
+    def perform_update(self, serializer):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admins can edit teachers.')
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'error': 'Only admins can delete teachers.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+
 # Parent Views
 class ParentListView(generics.ListCreateAPIView):
     queryset = Parent.objects.all()
@@ -230,6 +282,35 @@ class ParentListView(generics.ListCreateAPIView):
                 user__school=user.school
             ).select_related('user').prefetch_related('children__user', 'children__student_class')
         return Parent.objects.none()
+
+
+class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Parent.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UpdateParentSerializer
+        return ParentSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Parent.objects.filter(
+                user__school=user.school
+            ).select_related('user').prefetch_related('children__user', 'children__student_class')
+        return Parent.objects.none()
+
+    def perform_update(self, serializer):
+        if self.request.user.role != 'admin':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admins can edit parents.')
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'error': 'Only admins can delete parents.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Result Views
@@ -600,6 +681,13 @@ def approve_parent_link_request(request, link_id):
         link = ParentChildLink.objects.select_related(
             'parent__user', 'student__user'
         ).get(id=link_id, is_confirmed=False, student__user__school=school)
+
+        current_parent_count = Parent.objects.filter(children=link.student).count()
+        if current_parent_count >= 2:
+            return Response(
+                {'error': 'Cannot approve link: this student already has 2 parents linked.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         link.is_confirmed = True
         link.confirmed_date = timezone.now()

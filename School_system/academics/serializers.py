@@ -343,6 +343,27 @@ class CreateTeacherSerializer(serializers.Serializer):
             subject_ids = data.get('subject_ids', [])
             if len(subject_ids) < 1 or len(subject_ids) > 3:
                 raise serializers.ValidationError("Secondary teachers must be assigned 1-3 subjects")
+
+        # Validate assigned class ownership and enforce one class teacher per class
+        assigned_class_id = data.get('assigned_class_id')
+        if assigned_class_id:
+            try:
+                assigned_class = Class.objects.select_related('class_teacher').get(id=assigned_class_id)
+            except Class.DoesNotExist:
+                raise serializers.ValidationError({"assigned_class_id": "Selected class does not exist"})
+
+            request = self.context.get('request')
+            school = request.user.school if request and hasattr(request.user, 'school') else None
+            if school and assigned_class.school_id != school.id:
+                raise serializers.ValidationError({"assigned_class_id": "You can only assign classes from your school"})
+
+            if assigned_class.class_teacher_id:
+                teacher_name = assigned_class.class_teacher.full_name if assigned_class.class_teacher else "another teacher"
+                raise serializers.ValidationError(
+                    {"assigned_class_id": f"This class is already assigned to {teacher_name}"}
+                )
+
+            data['assigned_class_obj'] = assigned_class
         return data
     
     def create(self, validated_data):
@@ -379,11 +400,14 @@ class CreateTeacherSerializer(serializers.Serializer):
             
             if validated_data.get('subject_ids'):
                 teacher.subjects_taught.set(validated_data['subject_ids'])
-            
-            if validated_data.get('assigned_class_id'):
+
+            assigned_class = validated_data.pop('assigned_class_obj', None)
+            if not assigned_class and validated_data.get('assigned_class_id'):
                 assigned_class = Class.objects.get(id=validated_data['assigned_class_id'])
+
+            if assigned_class:
                 assigned_class.class_teacher = user
-                assigned_class.save()
+                assigned_class.save(update_fields=['class_teacher'])
             
             return {
                 'id': teacher.id,
@@ -410,6 +434,40 @@ class CreateParentSerializer(serializers.Serializer):
     occupation = serializers.CharField(max_length=100, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=6)
     student_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
+
+    def validate(self, data):
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+        student_ids = data.get('student_ids', [])
+
+        if student_ids:
+            students = Student.objects.filter(id__in=student_ids).select_related('user')
+            if school:
+                students = students.filter(user__school=school)
+
+            found_ids = {s.id for s in students}
+            missing = [sid for sid in student_ids if sid not in found_ids]
+            if missing:
+                raise serializers.ValidationError({
+                    "student_ids": f"Some selected students are invalid for your school: {missing}"
+                })
+
+            over_limit = []
+            for student in students:
+                current_parent_count = Parent.objects.filter(children=student).count()
+                if current_parent_count >= 2:
+                    over_limit.append(
+                        f"{student.user.full_name} ({student.user.student_number or student.id})"
+                    )
+            if over_limit:
+                raise serializers.ValidationError({
+                    "student_ids": (
+                        "These students already have the maximum of 2 parents linked: "
+                        + ", ".join(over_limit)
+                    )
+                })
+
+        return data
     
     def create(self, validated_data):
         from users.models import CustomUser
@@ -452,6 +510,21 @@ class CreateParentSerializer(serializers.Serializer):
             if validated_data.get('student_ids'):
                 students = Student.objects.filter(id__in=validated_data['student_ids'])
                 parent.children.set(students)
+
+                # Keep ParentChildLink in sync for admin-created links
+                for student in students:
+                    link, created = ParentChildLink.objects.get_or_create(
+                        parent=parent,
+                        student=student,
+                        defaults={'is_confirmed': True, 'confirmed_date': timezone.now()}
+                    )
+                    if not created and not link.is_confirmed:
+                        link.is_confirmed = True
+                        link.confirmed_date = timezone.now()
+                        link.save(update_fields=['is_confirmed', 'confirmed_date'])
+
+                    if student.user.school:
+                        parent.schools.add(student.user.school)
             
             return {
                 'id': parent.id,
@@ -461,6 +534,226 @@ class CreateParentSerializer(serializers.Serializer):
                 'email': validated_data['email'],
                 'contact_number': validated_data['contact_number']
             }
+
+
+class UpdateStudentSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=100, required=False)
+    last_name = serializers.CharField(max_length=100, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    password = serializers.CharField(min_length=6, required=False, allow_blank=True)
+
+    student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all(), required=False)
+    admission_date = serializers.DateField(required=False)
+    parent_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    emergency_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
+
+    def validate(self, data):
+        instance = self.instance
+        email = data.get('email')
+        phone = data.get('phone_number')
+
+        if email and CustomUser.objects.filter(email=email).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"email": "This email is already registered"})
+        if phone and CustomUser.objects.filter(phone_number=phone).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"phone_number": "This phone number is already registered"})
+
+        student_class = data.get('student_class')
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+        if student_class and school and student_class.school_id != school.id:
+            raise serializers.ValidationError({"student_class": "Invalid class for your school"})
+
+        return data
+
+    def update(self, instance, validated_data):
+        user = instance.user
+
+        for field in ['first_name', 'last_name', 'email', 'phone_number']:
+            if field in validated_data:
+                setattr(user, field, validated_data[field] or '')
+
+        password = validated_data.get('password')
+        if password:
+            user.set_password(password)
+        user.save()
+
+        for field in ['student_class', 'admission_date', 'parent_contact', 'address', 'date_of_birth', 'gender', 'emergency_contact']:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        instance.save()
+        return instance
+
+
+class UpdateTeacherSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=100, required=False)
+    last_name = serializers.CharField(max_length=100, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    password = serializers.CharField(min_length=6, required=False, allow_blank=True)
+    hire_date = serializers.DateField(required=False)
+    qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    assigned_class_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        instance = self.instance
+        email = data.get('email')
+        phone = data.get('phone_number')
+        if email and CustomUser.objects.filter(email=email).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"email": "This email is already registered"})
+        if phone and CustomUser.objects.filter(phone_number=phone).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"phone_number": "This phone number is already registered"})
+
+        if 'subject_ids' in data:
+            subject_ids = data.get('subject_ids', [])
+            if len(subject_ids) > 3:
+                raise serializers.ValidationError({"subject_ids": "Maximum 3 subjects allowed"})
+
+        assigned_class_id = data.get('assigned_class_id', None)
+        if assigned_class_id:
+            try:
+                assigned_class = Class.objects.select_related('class_teacher').get(id=assigned_class_id)
+            except Class.DoesNotExist:
+                raise serializers.ValidationError({"assigned_class_id": "Selected class does not exist"})
+
+            request = self.context.get('request')
+            school = request.user.school if request and hasattr(request.user, 'school') else None
+            if school and assigned_class.school_id != school.id:
+                raise serializers.ValidationError({"assigned_class_id": "You can only assign classes from your school"})
+
+            if assigned_class.class_teacher_id and assigned_class.class_teacher_id != instance.user_id:
+                raise serializers.ValidationError({
+                    "assigned_class_id": f"This class is already assigned to {assigned_class.class_teacher.full_name}"
+                })
+            data['assigned_class_obj'] = assigned_class
+        return data
+
+    def update(self, instance, validated_data):
+        user = instance.user
+        for field in ['first_name', 'last_name', 'email', 'phone_number']:
+            if field in validated_data:
+                setattr(user, field, validated_data[field] or '')
+
+        password = validated_data.get('password')
+        if password:
+            user.set_password(password)
+        user.save()
+
+        if 'hire_date' in validated_data:
+            instance.hire_date = validated_data['hire_date']
+        if 'qualification' in validated_data:
+            instance.qualification = validated_data['qualification']
+        instance.save()
+
+        if 'subject_ids' in validated_data:
+            instance.subjects_taught.set(validated_data.get('subject_ids', []))
+
+        # Manage class responsibility: one class teacher slot per teacher in this flow
+        if 'assigned_class_id' in validated_data:
+            selected_class = validated_data.get('assigned_class_obj')
+            Class.objects.filter(class_teacher=user).update(class_teacher=None)
+            if selected_class:
+                selected_class.class_teacher = user
+                selected_class.save(update_fields=['class_teacher'])
+
+        return instance
+
+
+class UpdateParentSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255, required=False)
+    contact_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    occupation = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    password = serializers.CharField(min_length=6, required=False, allow_blank=True)
+    student_ids = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True)
+
+    def validate(self, data):
+        instance = self.instance
+        email = data.get('email')
+        phone = data.get('contact_number')
+        if email and CustomUser.objects.filter(email=email).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"email": "This email is already registered"})
+        if phone and CustomUser.objects.filter(phone_number=phone).exclude(id=instance.user_id).exists():
+            raise serializers.ValidationError({"contact_number": "This phone number is already registered"})
+
+        student_ids = data.get('student_ids')
+        if student_ids is not None:
+            request = self.context.get('request')
+            school = request.user.school if request and hasattr(request.user, 'school') else None
+            students = Student.objects.filter(id__in=student_ids).select_related('user')
+            if school:
+                students = students.filter(user__school=school)
+
+            found_ids = {s.id for s in students}
+            missing = [sid for sid in student_ids if sid not in found_ids]
+            if missing:
+                raise serializers.ValidationError({
+                    "student_ids": f"Some selected students are invalid for your school: {missing}"
+                })
+
+            over_limit = []
+            for student in students:
+                current_parent_count = Parent.objects.filter(children=student).exclude(id=instance.id).count()
+                if current_parent_count >= 2:
+                    over_limit.append(
+                        f"{student.user.full_name} ({student.user.student_number or student.id})"
+                    )
+            if over_limit:
+                raise serializers.ValidationError({
+                    "student_ids": (
+                        "These students already have the maximum of 2 parents linked: "
+                        + ", ".join(over_limit)
+                    )
+                })
+            data['students_qs'] = students
+
+        return data
+
+    def update(self, instance, validated_data):
+        user = instance.user
+
+        if 'full_name' in validated_data:
+            parts = (validated_data['full_name'] or '').strip().split(' ', 1)
+            user.first_name = parts[0] if parts and parts[0] else user.first_name
+            user.last_name = parts[1] if len(parts) > 1 else ''
+        if 'email' in validated_data:
+            user.email = validated_data['email']
+        if 'contact_number' in validated_data:
+            user.phone_number = validated_data['contact_number'] or None
+        password = validated_data.get('password')
+        if password:
+            user.set_password(password)
+        user.save()
+
+        if 'occupation' in validated_data:
+            instance.occupation = validated_data['occupation']
+        instance.save()
+
+        if 'student_ids' in validated_data:
+            students = validated_data.pop('students_qs', Student.objects.none())
+            instance.children.set(students)
+
+            selected_ids = list(students.values_list('id', flat=True))
+            ParentChildLink.objects.filter(parent=instance).exclude(student_id__in=selected_ids).delete()
+
+            for student in students:
+                link, created = ParentChildLink.objects.get_or_create(
+                    parent=instance,
+                    student=student,
+                    defaults={'is_confirmed': True, 'confirmed_date': timezone.now()}
+                )
+                if not created and not link.is_confirmed:
+                    link.is_confirmed = True
+                    link.confirmed_date = timezone.now()
+                    link.save(update_fields=['is_confirmed', 'confirmed_date'])
+                if student.user.school:
+                    instance.schools.add(student.user.school)
+
+        return instance
 
 
 class ParentChildLinkSerializer(serializers.ModelSerializer):

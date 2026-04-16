@@ -80,6 +80,7 @@ class SchoolRegistrationSerializer(serializers.Serializer):
 
 class UserSerializer(serializers.ModelSerializer):
     """Represents UserSerializer."""
+    full_name = serializers.CharField(read_only=True)
     school_name = serializers.SerializerMethodField()
     school_code = serializers.SerializerMethodField()
     
@@ -87,11 +88,11 @@ class UserSerializer(serializers.ModelSerializer):
         """Represents Meta."""
         model = CustomUser
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name',
+            'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'phone_number', 'role', 'student_number', 'is_active',
             'date_joined', 'password', 'school_name', 'school_code'
         ]
-        read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'school_name', 'school_code']
+        read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'full_name', 'school_name', 'school_code']
         extra_kwargs = {
             'password': {'write_only': True},
             'first_name': {'required': True},

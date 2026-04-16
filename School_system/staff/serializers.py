@@ -37,7 +37,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
 
 class StaffSerializer(serializers.ModelSerializer):
     """Represents StaffSerializer."""
-    user = StaffUserSerializer(read_only=True)
+    user = StaffUserSerializer(required=False)
     department_name = serializers.CharField(source='department.name', read_only=True)
     full_name = serializers.SerializerMethodField()
 
@@ -52,6 +52,31 @@ class StaffSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         """Return full name."""
         return obj.user.full_name
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop('user', None)
+
+        if user_data:
+            email = user_data.get('email')
+            phone = user_data.get('phone_number')
+            if email and CustomUser.objects.filter(email=email).exclude(id=instance.user_id).exists():
+                raise serializers.ValidationError({"user": {"email": "A user with this email already exists."}})
+            if phone and CustomUser.objects.filter(phone_number=phone).exclude(id=instance.user_id).exists():
+                raise serializers.ValidationError({"user": {"phone_number": "A user with this phone number already exists."}})
+
+            for field in ['first_name', 'last_name', 'email', 'phone_number']:
+                if field in user_data:
+                    value = user_data[field]
+                    if field == 'phone_number' and not value:
+                        value = None
+                    setattr(instance.user, field, value)
+            instance.user.save()
+
+        for field in ['department', 'position', 'hire_date', 'salary', 'is_active']:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        instance.save()
+        return instance
 
 
 class CreateStaffSerializer(serializers.Serializer):

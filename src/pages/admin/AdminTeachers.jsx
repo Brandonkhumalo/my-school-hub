@@ -7,16 +7,7 @@ import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminTeachers() {
   const PAGE_SIZE = 20;
-  const [teachers, setTeachers] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [showCredentials, setShowCredentials] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedTeacher, setSelectedTeacher] = useState(null);
-  const [formData, setFormData] = useState({
+  const getInitialFormData = () => ({
     first_name: '',
     last_name: '',
     email: '',
@@ -28,6 +19,24 @@ export default function AdminTeachers() {
     subject_ids: [],
     assigned_class_id: ''
   });
+
+  const [teachers, setTeachers] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingTeacher, setEditingTeacher] = useState(null);
+  const [showCredentials, setShowCredentials] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedTeacher, setSelectedTeacher] = useState(null);
+  const [formData, setFormData] = useState(getInitialFormData());
+
+  const resetForm = () => {
+    setFormData(getInitialFormData());
+    setShowForm(false);
+    setEditingTeacher(null);
+  };
 
   useEffect(() => {
     fetchData();
@@ -55,12 +64,37 @@ export default function AdminTeachers() {
     if (!searchQuery) return teachers;
     const query = searchQuery.toLowerCase();
     return teachers.filter(teacher => {
-      const fullName = teacher.user?.full_name?.toLowerCase() || '';
+      const fullName = (
+        teacher.user?.full_name ||
+        `${teacher.user?.first_name || ''} ${teacher.user?.last_name || ''}`.trim()
+      ).toLowerCase();
       const email = teacher.user?.email?.toLowerCase() || '';
       const staffNumber = teacher.user?.student_number?.toLowerCase() || '';
       return fullName.includes(query) || email.includes(query) || staffNumber.includes(query);
     });
   }, [teachers, searchQuery]);
+
+  const getTeacherName = (teacher) => {
+    const explicitName =
+      teacher?.user?.full_name ||
+      `${teacher?.user?.first_name || ''} ${teacher?.user?.last_name || ''}`.trim();
+    if (explicitName) return explicitName;
+    const emailFallback = teacher?.user?.email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+    return emailFallback || '-';
+  };
+
+  const availableClasses = useMemo(() => {
+    if (!Array.isArray(classes)) return [];
+    const editableClassIds = new Set(
+      (editingTeacher?.class_taught || []).map((cls) => String(cls.id))
+    );
+    return classes.filter(
+      (cls) =>
+        !cls.class_teacher ||
+        !cls.class_teacher_name ||
+        editableClassIds.has(String(cls.id))
+    );
+  }, [classes, editingTeacher]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredTeachers.length / PAGE_SIZE)),
@@ -82,11 +116,26 @@ export default function AdminTeachers() {
     }
   }, [currentPage, totalPages]);
 
+  useEffect(() => {
+    if (
+      formData.assigned_class_id &&
+      !availableClasses.some((cls) => String(cls.id) === String(formData.assigned_class_id))
+    ) {
+      setFormData((prev) => ({ ...prev, assigned_class_id: '' }));
+    }
+  }, [availableClasses, formData.assigned_class_id]);
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      };
+      if (name === 'is_secondary_teacher' && !checked) {
+        next.subject_ids = [];
+      }
+      return next;
     });
   };
 
@@ -118,30 +167,63 @@ export default function AdminTeachers() {
     }
     
     try {
-      const submitData = {
-        ...formData,
-        assigned_class_id: formData.assigned_class_id ? parseInt(formData.assigned_class_id) : null
-      };
-      const response = await apiService.createTeacher(submitData);
-      setShowCredentials(response);
-      setShowForm(false);
-      setFormData({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone_number: '',
-        hire_date: new Date().toISOString().split('T')[0],
-        qualification: '',
-        password: '',
-        is_secondary_teacher: false,
-        subject_ids: [],
-        assigned_class_id: ''
-      });
+      const assignedClassId = formData.assigned_class_id ? parseInt(formData.assigned_class_id, 10) : null;
+      const subjectIds = formData.is_secondary_teacher ? formData.subject_ids : [];
+
+      if (editingTeacher) {
+        const submitData = {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+          phone_number: formData.phone_number,
+          hire_date: formData.hire_date,
+          qualification: formData.qualification,
+          subject_ids: subjectIds,
+          assigned_class_id: assignedClassId
+        };
+        if (formData.password) submitData.password = formData.password;
+
+        const updatedTeacher = await apiService.updateTeacher(editingTeacher.id, submitData);
+        setSelectedTeacher((prev) => (prev && prev.id === editingTeacher.id ? updatedTeacher : prev));
+        alert("Teacher updated successfully.");
+        resetForm();
+      } else {
+        const submitData = {
+          ...formData,
+          subject_ids: subjectIds,
+          assigned_class_id: assignedClassId
+        };
+        const response = await apiService.createTeacher(submitData);
+        setShowCredentials(response);
+        resetForm();
+      }
       fetchData();
     } catch (error) {
-      console.error("Error creating teacher:", error);
-      alert("Failed to create teacher: " + (error.message || "Unknown error"));
+      console.error("Error saving teacher:", error);
+      alert("Failed to save teacher: " + (error.message || "Unknown error"));
     }
+  };
+
+  const handleEditTeacher = (teacher) => {
+    setEditingTeacher(teacher);
+    const currentSubjects = Array.isArray(teacher.subjects)
+      ? teacher.subjects.map((subject) => (typeof subject === 'object' ? subject.id : subject)).filter(Boolean)
+      : [];
+    const currentClassId = teacher.class_taught?.[0]?.id || '';
+    setFormData({
+      first_name: teacher.user?.first_name || '',
+      last_name: teacher.user?.last_name || '',
+      email: teacher.user?.email || '',
+      phone_number: teacher.user?.phone_number || '',
+      hire_date: teacher.hire_date || new Date().toISOString().split('T')[0],
+      qualification: teacher.qualification || '',
+      password: '',
+      is_secondary_teacher: currentSubjects.length > 0,
+      subject_ids: currentSubjects,
+      assigned_class_id: currentClassId ? String(currentClassId) : ''
+    });
+    setShowCredentials(null);
+    setShowForm(true);
   };
 
   if (isLoading) return (
@@ -158,7 +240,15 @@ export default function AdminTeachers() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">All Teachers ({teachers.length})</h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+              } else {
+                setEditingTeacher(null);
+                setFormData(getInitialFormData());
+                setShowForm(true);
+              }
+            }}
             className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center"
           >
             <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'} mr-2`}></i>
@@ -217,7 +307,7 @@ export default function AdminTeachers() {
 
         {showForm && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="text-xl font-semibold mb-4">Add New Teacher</h3>
+            <h3 className="text-xl font-semibold mb-4">{editingTeacher ? "Edit Teacher" : "Add New Teacher"}</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
@@ -245,7 +335,16 @@ export default function AdminTeachers() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                <input type="password" name="password" value={formData.password} onChange={handleInputChange} required minLength="6" placeholder="Minimum 6 characters" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  required={!editingTeacher}
+                  minLength="6"
+                  placeholder={editingTeacher ? "Leave blank to keep current password" : "Minimum 6 characters"}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
               </div>
               <div className="col-span-full">
                 <label className="flex items-center">
@@ -270,14 +369,32 @@ export default function AdminTeachers() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Class Responsibility (Class Teacher)</label>
                 <select name="assigned_class_id" value={formData.assigned_class_id} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
                   <option value="">No class responsibility (optional)...</option>
-                  {Array.isArray(classes) && classes.map((cls) => (
+                  {availableClasses.map((cls) => (
                     <option key={cls.id} value={cls.id}>{cls.name} ({cls.grade_level <= 7 ? `Grade ${cls.grade_level}` : `Form ${cls.grade_level - 7}`})</option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">Assign this teacher as the class teacher responsible for a specific class</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Only unassigned classes are shown to prevent assigning one class to multiple teachers.
+                </p>
+                {availableClasses.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    All classes already have class teachers assigned.
+                  </p>
+                )}
               </div>
               <div className="col-span-full">
-                <button type="submit" className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">Add Teacher</button>
+                <button type="submit" className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">
+                  {editingTeacher ? "Save Changes" : "Add Teacher"}
+                </button>
+                {editingTeacher && (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="ml-3 px-6 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -288,9 +405,15 @@ export default function AdminTeachers() {
             <button onClick={() => setSelectedTeacher(null)} className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium">
               <i className="fas fa-arrow-left mr-2"></i>Back to List
             </button>
+            <button
+              onClick={() => handleEditTeacher(selectedTeacher)}
+              className="mb-4 ml-4 px-4 py-2 bg-green-100 text-green-700 rounded hover:bg-green-200"
+            >
+              <i className="fas fa-edit mr-2"></i>Edit Teacher
+            </button>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-4">{selectedTeacher.user?.full_name}</h3>
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">{getTeacherName(selectedTeacher)}</h3>
                 <div className="space-y-3">
                   <p><i className="fas fa-id-badge text-blue-500 mr-2 w-5"></i><strong>Staff Number:</strong> {selectedTeacher.user?.student_number || '-'}</p>
                   <p><i className="fas fa-envelope text-blue-500 mr-2 w-5"></i><strong>Email:</strong> {selectedTeacher.user?.email}</p>
@@ -347,7 +470,7 @@ export default function AdminTeachers() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {paginatedTeachers.map((teacher) => (
                       <tr key={teacher.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{teacher.user?.full_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getTeacherName(teacher)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.phone_number || '-'}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">
@@ -373,6 +496,9 @@ export default function AdminTeachers() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <button onClick={() => setSelectedTeacher(teacher)} className="text-blue-600 hover:text-blue-800">
                             <i className="fas fa-eye mr-1"></i>View
+                          </button>
+                          <button onClick={() => handleEditTeacher(teacher)} className="ml-3 text-green-600 hover:text-green-800">
+                            <i className="fas fa-edit mr-1"></i>Edit
                           </button>
                         </td>
                       </tr>

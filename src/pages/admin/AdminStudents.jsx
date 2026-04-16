@@ -11,6 +11,7 @@ export default function AdminStudents() {
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null);
   const [showCredentials, setShowCredentials] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -28,6 +29,24 @@ export default function AdminStudents() {
     emergency_contact: "",
     password: "",
   });
+
+  const resetForm = () => {
+    setFormData({
+      first_name: "",
+      last_name: "",
+      student_class: "",
+      admission_date: new Date().toISOString().split("T")[0],
+      student_email: "",
+      student_contact: "",
+      student_address: "",
+      date_of_birth: "",
+      gender: "",
+      emergency_contact: "",
+      password: "",
+    });
+    setEditingStudent(null);
+    setShowForm(false);
+  };
 
   useEffect(() => {
     fetchData();
@@ -91,48 +110,72 @@ export default function AdminStudents() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const formattedData = {
-      user: {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        password: formData.password,
-      },
-      student_class: formData.student_class,
-      admission_date: formData.admission_date,
-      student_email: formData.student_email,
-      student_contact: formData.student_contact,
-      student_address: formData.student_address,
-      date_of_birth: formData.date_of_birth || null,
-      gender: formData.gender,
-      emergency_contact: formData.emergency_contact,
-    };
 
     try {
-      const response = await apiService.createStudent(formattedData);
-      setShowCredentials({
-        full_name: `${response.user.first_name} ${response.user.last_name}`,
-        student_number: response.user.student_number,
-        password: formData.password,
-      });
-      setShowForm(false);
-      setFormData({
-        first_name: "",
-        last_name: "",
-        student_class: "",
-        admission_date: new Date().toISOString().split("T")[0],
-        student_email: "",
-        student_contact: "",
-        student_address: "",
-        date_of_birth: "",
-        gender: "",
-        emergency_contact: "",
-        password: "",
-      });
+      if (editingStudent) {
+        const payload = {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.student_email,
+          phone_number: formData.student_contact,
+          student_class: formData.student_class,
+          admission_date: formData.admission_date,
+          parent_contact: formData.student_contact,
+          address: formData.student_address,
+          date_of_birth: formData.date_of_birth || null,
+          gender: formData.gender,
+          emergency_contact: formData.emergency_contact,
+        };
+        if (formData.password) payload.password = formData.password;
+        await apiService.updateStudent(editingStudent.id, payload);
+        alert("Student updated successfully.");
+      } else {
+        const formattedData = {
+          user: {
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            password: formData.password,
+          },
+          student_class: formData.student_class,
+          admission_date: formData.admission_date,
+          student_email: formData.student_email,
+          student_contact: formData.student_contact,
+          student_address: formData.student_address,
+          date_of_birth: formData.date_of_birth || null,
+          gender: formData.gender,
+          emergency_contact: formData.emergency_contact,
+        };
+        const response = await apiService.createStudent(formattedData);
+        setShowCredentials({
+          full_name: `${response.user.first_name} ${response.user.last_name}`,
+          student_number: response.user.student_number,
+          password: formData.password,
+        });
+      }
+      resetForm();
       fetchData();
     } catch (error) {
-      console.error("Error creating student:", error);
-      alert("Failed to create student: " + (error.message || "Unknown error"));
+      console.error("Error saving student:", error);
+      alert("Failed to save student: " + (error.message || "Unknown error"));
     }
+  };
+
+  const handleEditStudent = (student) => {
+    setEditingStudent(student);
+    setFormData({
+      first_name: student.user?.first_name || "",
+      last_name: student.user?.last_name || "",
+      student_class: student.student_class || "",
+      admission_date: student.admission_date || new Date().toISOString().split("T")[0],
+      student_email: student.user?.email || "",
+      student_contact: student.user?.phone_number || student.parent_contact || "",
+      student_address: student.address || "",
+      date_of_birth: student.date_of_birth || "",
+      gender: student.gender || "",
+      emergency_contact: student.emergency_contact || "",
+      password: "",
+    });
+    setShowForm(true);
   };
 
   if (isLoading)
@@ -152,7 +195,13 @@ export default function AdminStudents() {
             All Students ({students.length})
           </h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+              } else {
+                setShowForm(true);
+              }
+            }}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center"
           >
             <i className={`fas ${showForm ? "fa-times" : "fa-plus"} mr-2`}></i>
@@ -210,7 +259,9 @@ export default function AdminStudents() {
 
         {showForm && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="text-xl font-semibold mb-4">Add New Student</h3>
+            <h3 className="text-xl font-semibold mb-4">
+              {editingStudent ? "Edit Student" : "Add New Student"}
+            </h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
@@ -258,14 +309,34 @@ export default function AdminStudents() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                <input type="password" name="password" value={formData.password} onChange={handleInputChange} required minLength="6" placeholder="Minimum 6 characters" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  required={!editingStudent}
+                  minLength="6"
+                  placeholder={editingStudent ? "Leave blank to keep current password" : "Minimum 6 characters"}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
               <div className="col-span-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Student Address</label>
                 <textarea name="student_address" value={formData.student_address} onChange={handleInputChange} rows="3" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
               </div>
               <div className="col-span-full">
-                <button type="submit" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">Add Student</button>
+                <button type="submit" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
+                  {editingStudent ? "Save Changes" : "Add Student"}
+                </button>
+                {editingStudent && (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="ml-3 px-6 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -400,6 +471,9 @@ export default function AdminStudents() {
                         <td className="px-6 py-4 text-sm">
                           <button onClick={() => setSelectedStudent(student)} className="text-blue-600 hover:text-blue-800">
                             <i className="fas fa-eye mr-1"></i>View Details
+                          </button>
+                          <button onClick={() => handleEditStudent(student)} className="ml-3 text-green-600 hover:text-green-800">
+                            <i className="fas fa-edit mr-1"></i>Edit
                           </button>
                         </td>
                       </tr>

@@ -256,16 +256,20 @@ const apiService = {
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
 
   fetchStudents: () => requestAllPages("/academics/students/"),
+  searchAcademicStudents: (q) => request(`/academics/students/?q=${encodeURIComponent(q)}`, "GET"),
   fetchStudentsByClass: (classId) => requestAllPages(`/academics/students/?class=${classId}`),
   fetchStudentById: (id) => request(`/academics/students/${id}/`, "GET"),
   fetchStudentPerformance: (studentId) => request(`/academics/students/${studentId}/performance/`, "GET"),
   createStudent: (data) => request("/academics/students/", "POST", data),
+  updateStudent: (id, data) => request(`/academics/students/${id}/`, "PATCH", data),
 
   fetchTeachers: () => request("/academics/teachers/", "GET"),
   createTeacher: (data) => request("/academics/teachers/", "POST", data),
+  updateTeacher: (id, data) => request(`/academics/teachers/${id}/`, "PATCH", data),
 
   fetchParents: () => request("/academics/parents/", "GET"),
   createParent: (data) => request("/academics/parents/", "POST", data),
+  updateParent: (id, data) => request(`/academics/parents/${id}/`, "PATCH", data),
 
   fetchResults: () => request("/academics/results/", "GET"),
   fetchClassAverages: () => request("/academics/results/class-averages/", "GET"),

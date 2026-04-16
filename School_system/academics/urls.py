@@ -21,9 +21,11 @@ urlpatterns = [
     
     # Teacher endpoints
     path('teachers/', views.TeacherListView.as_view(), name='teacher-list'),
+    path('teachers/<int:pk>/', views.TeacherDetailView.as_view(), name='teacher-detail'),
     
     # Parent endpoints
     path('parents/', views.ParentListView.as_view(), name='parent-list'),
+    path('parents/<int:pk>/', views.ParentDetailView.as_view(), name='parent-detail'),
     
     # Result endpoints
     path('results/', views.ResultListCreateView.as_view(), name='result-list-create'),
