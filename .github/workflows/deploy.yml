@@ -143,14 +143,17 @@ jobs:
           (cd go-gateway && go test -coverprofile=coverage.out ./...)
           (cd go-services && go test -coverprofile=coverage.out ./...)
 
-          echo "Go Gateway coverage summary:"
-          go tool cover -func=go-gateway/coverage.out | tail -n 8
-          echo "Go Services coverage summary:"
-          go tool cover -func=go-services/coverage.out | tail -n 8
+          gateway_cover_report=$(cd go-gateway && go tool cover -func=coverage.out)
+          services_cover_report=$(cd go-services && go tool cover -func=coverage.out)
 
-          gateway_auth_cov=$(go tool cover -func=go-gateway/coverage.out | awk '/AuthMiddleware/ {gsub("%","",$3); print $3; exit}')
-          gateway_route_cov=$(go tool cover -func=go-gateway/coverage.out | awk '/selectRouteTarget/ {gsub("%","",$3); print $3; exit}')
-          services_auth_cov=$(go tool cover -func=go-services/coverage.out | awk '/AuthCheckMiddleware/ {gsub("%","",$3); print $3; exit}')
+          echo "Go Gateway coverage summary:"
+          echo "$gateway_cover_report" | tail -n 8
+          echo "Go Services coverage summary:"
+          echo "$services_cover_report" | tail -n 8
+
+          gateway_auth_cov=$(echo "$gateway_cover_report" | awk '/AuthMiddleware/ {gsub("%","",$3); print $3; exit}')
+          gateway_route_cov=$(echo "$gateway_cover_report" | awk '/selectRouteTarget/ {gsub("%","",$3); print $3; exit}')
+          services_auth_cov=$(echo "$services_cover_report" | awk '/AuthCheckMiddleware/ {gsub("%","",$3); print $3; exit}')
 
           echo "Auth/Routing coverage -> gateway auth: ${gateway_auth_cov}%, gateway route: ${gateway_route_cov}%, services auth: ${services_auth_cov}%"
 
