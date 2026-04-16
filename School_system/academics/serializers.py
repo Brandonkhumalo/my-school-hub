@@ -88,14 +88,27 @@ class TeacherSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     subjects = SubjectSerializer(source='subjects_taught', many=True, read_only=True)
     class_taught = serializers.SerializerMethodField()
+    teaching_classes = serializers.SerializerMethodField()
 
     class Meta:
         model = Teacher
-        fields = ['id', 'user', 'subjects', 'hire_date', 'qualification', 'class_taught']
+        fields = ['id', 'user', 'subjects', 'hire_date', 'qualification', 'class_taught', 'teaching_classes']
 
     def get_class_taught(self, obj):
         classes = obj.user.taught_classes.all()
         return [{'id': cls.id, 'name': cls.name} for cls in classes]
+
+    def get_teaching_classes(self, obj):
+        classes = sorted(
+            obj.teaching_classes.all(),
+            key=lambda cls: (cls.grade_level, cls.name),
+        )
+        return [{
+            'id': cls.id,
+            'name': cls.name,
+            'grade_level': cls.grade_level,
+            'academic_year': cls.academic_year,
+        } for cls in classes]
 
 
 class ParentSerializer(serializers.ModelSerializer):
@@ -347,6 +360,7 @@ class CreateTeacherSerializer(serializers.Serializer):
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
     password = serializers.CharField(min_length=6)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    teaching_class_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     assigned_class_id = serializers.IntegerField(required=False, allow_null=True)
     is_secondary_teacher = serializers.BooleanField(default=False)
     staff_number = serializers.CharField(read_only=True)
@@ -370,8 +384,41 @@ class CreateTeacherSerializer(serializers.Serializer):
         # Validate subject assignments for secondary teachers
         if data.get('is_secondary_teacher'):
             subject_ids = data.get('subject_ids', [])
-            if len(subject_ids) < 1 or len(subject_ids) > 3:
-                raise serializers.ValidationError("Secondary teachers must be assigned 1-3 subjects")
+            if len(subject_ids) < 1:
+                raise serializers.ValidationError("Secondary teachers must have at least one assigned subject")
+
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+
+        # Validate subject IDs belong to school
+        if 'subject_ids' in data:
+            subject_ids = list(dict.fromkeys(data.get('subject_ids', [])))
+            if subject_ids:
+                subjects_qs = Subject.objects.filter(id__in=subject_ids)
+                if school:
+                    subjects_qs = subjects_qs.filter(school=school)
+                found_subject_ids = set(subjects_qs.values_list('id', flat=True))
+                missing_subject_ids = [sid for sid in subject_ids if sid not in found_subject_ids]
+                if missing_subject_ids:
+                    raise serializers.ValidationError({
+                        "subject_ids": f"Invalid subject IDs for your school: {missing_subject_ids}"
+                    })
+            data['subject_ids'] = subject_ids
+
+        # Validate teaching class IDs belong to school
+        if 'teaching_class_ids' in data:
+            teaching_class_ids = list(dict.fromkeys(data.get('teaching_class_ids', [])))
+            if teaching_class_ids:
+                classes_qs = Class.objects.filter(id__in=teaching_class_ids)
+                if school:
+                    classes_qs = classes_qs.filter(school=school)
+                found_class_ids = set(classes_qs.values_list('id', flat=True))
+                missing_class_ids = [cid for cid in teaching_class_ids if cid not in found_class_ids]
+                if missing_class_ids:
+                    raise serializers.ValidationError({
+                        "teaching_class_ids": f"Invalid class IDs for your school: {missing_class_ids}"
+                    })
+            data['teaching_class_ids'] = teaching_class_ids
 
         # Validate assigned class ownership and enforce one class teacher per class
         assigned_class_id = data.get('assigned_class_id')
@@ -381,8 +428,6 @@ class CreateTeacherSerializer(serializers.Serializer):
             except Class.DoesNotExist:
                 raise serializers.ValidationError({"assigned_class_id": "Selected class does not exist"})
 
-            request = self.context.get('request')
-            school = request.user.school if request and hasattr(request.user, 'school') else None
             if school and assigned_class.school_id != school.id:
                 raise serializers.ValidationError({"assigned_class_id": "You can only assign classes from your school"})
 
@@ -429,6 +474,8 @@ class CreateTeacherSerializer(serializers.Serializer):
             
             if validated_data.get('subject_ids'):
                 teacher.subjects_taught.set(validated_data['subject_ids'])
+            if 'teaching_class_ids' in validated_data:
+                teacher.teaching_classes.set(validated_data.get('teaching_class_ids', []))
 
             assigned_class = validated_data.pop('assigned_class_obj', None)
             if not assigned_class and validated_data.get('assigned_class_id'):
@@ -450,6 +497,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 'hire_date': str(validated_data['hire_date']),
                 'qualification': validated_data.get('qualification', ''),
                 'subject_ids': validated_data.get('subject_ids', []),
+                'teaching_class_ids': validated_data.get('teaching_class_ids', []),
                 'assigned_class_id': validated_data.get('assigned_class_id'),
                 'is_secondary_teacher': validated_data.get('is_secondary_teacher', False)
             }
@@ -635,6 +683,7 @@ class UpdateTeacherSerializer(serializers.Serializer):
     hire_date = serializers.DateField(required=False)
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
+    teaching_class_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     assigned_class_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, data):
@@ -646,10 +695,36 @@ class UpdateTeacherSerializer(serializers.Serializer):
         if phone and CustomUser.objects.filter(phone_number=phone).exclude(id=instance.user_id).exists():
             raise serializers.ValidationError({"phone_number": "This phone number is already registered"})
 
+        request = self.context.get('request')
+        school = request.user.school if request and hasattr(request.user, 'school') else None
+
         if 'subject_ids' in data:
-            subject_ids = data.get('subject_ids', [])
-            if len(subject_ids) > 3:
-                raise serializers.ValidationError({"subject_ids": "Maximum 3 subjects allowed"})
+            subject_ids = list(dict.fromkeys(data.get('subject_ids', [])))
+            if subject_ids:
+                subjects_qs = Subject.objects.filter(id__in=subject_ids)
+                if school:
+                    subjects_qs = subjects_qs.filter(school=school)
+                found_subject_ids = set(subjects_qs.values_list('id', flat=True))
+                missing_subject_ids = [sid for sid in subject_ids if sid not in found_subject_ids]
+                if missing_subject_ids:
+                    raise serializers.ValidationError({
+                        "subject_ids": f"Invalid subject IDs for your school: {missing_subject_ids}"
+                    })
+            data['subject_ids'] = subject_ids
+
+        if 'teaching_class_ids' in data:
+            teaching_class_ids = list(dict.fromkeys(data.get('teaching_class_ids', [])))
+            if teaching_class_ids:
+                classes_qs = Class.objects.filter(id__in=teaching_class_ids)
+                if school:
+                    classes_qs = classes_qs.filter(school=school)
+                found_class_ids = set(classes_qs.values_list('id', flat=True))
+                missing_class_ids = [cid for cid in teaching_class_ids if cid not in found_class_ids]
+                if missing_class_ids:
+                    raise serializers.ValidationError({
+                        "teaching_class_ids": f"Invalid class IDs for your school: {missing_class_ids}"
+                    })
+            data['teaching_class_ids'] = teaching_class_ids
 
         assigned_class_id = data.get('assigned_class_id', None)
         if assigned_class_id:
@@ -658,8 +733,6 @@ class UpdateTeacherSerializer(serializers.Serializer):
             except Class.DoesNotExist:
                 raise serializers.ValidationError({"assigned_class_id": "Selected class does not exist"})
 
-            request = self.context.get('request')
-            school = request.user.school if request and hasattr(request.user, 'school') else None
             if school and assigned_class.school_id != school.id:
                 raise serializers.ValidationError({"assigned_class_id": "You can only assign classes from your school"})
 
@@ -689,6 +762,8 @@ class UpdateTeacherSerializer(serializers.Serializer):
 
         if 'subject_ids' in validated_data:
             instance.subjects_taught.set(validated_data.get('subject_ids', []))
+        if 'teaching_class_ids' in validated_data:
+            instance.teaching_classes.set(validated_data.get('teaching_class_ids', []))
 
         # Manage class responsibility: one class teacher slot per teacher in this flow
         if 'assigned_class_id' in validated_data:

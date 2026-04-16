@@ -234,7 +234,7 @@ class TeacherListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught')
+            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught', 'teaching_classes')
         return Teacher.objects.none()
 
 
@@ -250,7 +250,7 @@ class TeacherDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught')
+            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught', 'teaching_classes')
         return Teacher.objects.none()
 
     def perform_update(self, serializer):

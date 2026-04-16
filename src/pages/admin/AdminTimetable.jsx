@@ -50,39 +50,39 @@ export default function AdminTimetable() {
 
   const generateAllTimeSlots = (classData) => {
     if (!classData) return [];
-    
+
     const slots = [];
     const firstStart = classData.first_period_start ? timeToMinutes(classData.first_period_start) : 7 * 60 + 30;
     const lastEnd = classData.last_period_end ? timeToMinutes(classData.last_period_end) : 16 * 60;
     const duration = classData.period_duration_minutes || 45;
     const transition = classData.include_transition_time ? 5 : 0;
     const effectiveDuration = duration - transition;
-    
+
     const breakStart = classData.break_start ? timeToMinutes(classData.break_start) : null;
     const breakEnd = classData.break_end ? timeToMinutes(classData.break_end) : null;
     const lunchStart = classData.lunch_start ? timeToMinutes(classData.lunch_start) : null;
     const lunchEnd = classData.lunch_end ? timeToMinutes(classData.lunch_end) : null;
-    
+
     let current = firstStart;
     let iterations = 0;
-    
+
     while (current < lastEnd && iterations < 50) {
       iterations++;
-      
+
       if (breakStart && breakEnd && current >= breakStart && current < breakEnd) {
         slots.push({ start: minutesToTime(breakStart), end: minutesToTime(breakEnd), isBreak: true });
         current = breakEnd;
         continue;
       }
-      
+
       if (lunchStart && lunchEnd && current >= lunchStart && current < lunchEnd) {
         slots.push({ start: minutesToTime(lunchStart), end: minutesToTime(lunchEnd), isLunch: true });
         current = lunchEnd;
         continue;
       }
-      
+
       let periodEnd = current + effectiveDuration;
-      
+
       if (breakStart && current < breakStart && periodEnd > breakStart) {
         if (breakStart - current >= 10) {
           periodEnd = breakStart;
@@ -92,7 +92,7 @@ export default function AdminTimetable() {
           continue;
         }
       }
-      
+
       if (lunchStart && current < lunchStart && periodEnd > lunchStart) {
         if (lunchStart - current >= 10) {
           periodEnd = lunchStart;
@@ -102,7 +102,7 @@ export default function AdminTimetable() {
           continue;
         }
       }
-      
+
       if (periodEnd > lastEnd) {
         if (lastEnd - current >= 10) {
           periodEnd = lastEnd;
@@ -110,17 +110,17 @@ export default function AdminTimetable() {
           break;
         }
       }
-      
+
       slots.push({ start: minutesToTime(current), end: minutesToTime(periodEnd), isBreak: false, isLunch: false });
       current = periodEnd + transition;
     }
-    
+
     return slots;
   };
 
   const organizeTimetable = (entries, classData) => {
     const allSlots = generateAllTimeSlots(classData);
-    
+
     const entryMap = {};
     entries.forEach(entry => {
       const startClean = entry.start_time?.slice(0, 5) || '';
@@ -131,13 +131,13 @@ export default function AdminTimetable() {
       }
       entryMap[key][entry.day_of_week] = entry;
     });
-    
+
     const result = allSlots.map(slot => {
       const key = `${slot.start} - ${slot.end}`;
       const dayEntries = entryMap[key] || {};
       return [key, { ...dayEntries, isBreak: slot.isBreak, isLunch: slot.isLunch }];
     });
-    
+
     return result;
   };
 
@@ -279,8 +279,8 @@ export default function AdminTimetable() {
                   {primaryClasses.map((cls) => {
                     const timetableCount = getClassTimetable(cls.id).length;
                     return (
-                      <div 
-                        key={cls.id} 
+                      <div
+                        key={cls.id}
                         className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition cursor-pointer border-l-4 border-blue-500"
                         onClick={() => setSelectedClass(cls)}
                       >
@@ -328,8 +328,8 @@ export default function AdminTimetable() {
                   {secondaryClasses.map((cls) => {
                     const timetableCount = getClassTimetable(cls.id).length;
                     return (
-                      <div 
-                        key={cls.id} 
+                      <div
+                        key={cls.id}
                         className="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition cursor-pointer border-l-4 border-green-500"
                         onClick={() => setSelectedClass(cls)}
                       >

@@ -17,6 +17,7 @@ export default function AdminTeachers() {
     password: '',
     is_secondary_teacher: false,
     subject_ids: [],
+    teaching_class_ids: [],
     assigned_class_id: ''
   });
 
@@ -125,6 +126,17 @@ export default function AdminTeachers() {
     }
   }, [availableClasses, formData.assigned_class_id]);
 
+  useEffect(() => {
+    if (!Array.isArray(classes) || classes.length === 0 || !Array.isArray(formData.teaching_class_ids)) {
+      return;
+    }
+    const validClassIds = new Set(classes.map((cls) => cls.id));
+    const filtered = formData.teaching_class_ids.filter((id) => validClassIds.has(id));
+    if (filtered.length !== formData.teaching_class_ids.length) {
+      setFormData((prev) => ({ ...prev, teaching_class_ids: filtered }));
+    }
+  }, [classes, formData.teaching_class_ids]);
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => {
@@ -147,28 +159,40 @@ export default function AdminTeachers() {
         subject_ids: currentSubjects.filter(id => id !== subjectId)
       });
     } else {
-      if (currentSubjects.length < 3) {
-        setFormData({
-          ...formData,
-          subject_ids: [...currentSubjects, subjectId]
-        });
-      } else {
-        alert("Maximum 3 subjects allowed");
-      }
+      setFormData({
+        ...formData,
+        subject_ids: [...currentSubjects, subjectId]
+      });
+    }
+  };
+
+  const handleTeachingClassToggle = (classId) => {
+    const currentClassIds = formData.teaching_class_ids || [];
+    if (currentClassIds.includes(classId)) {
+      setFormData({
+        ...formData,
+        teaching_class_ids: currentClassIds.filter((id) => id !== classId)
+      });
+    } else {
+      setFormData({
+        ...formData,
+        teaching_class_ids: [...currentClassIds, classId]
+      });
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (formData.is_secondary_teacher && (formData.subject_ids.length < 1 || formData.subject_ids.length > 3)) {
-      alert("Secondary teachers must be assigned 1-3 subjects");
+
+    if (formData.is_secondary_teacher && formData.subject_ids.length < 1) {
+      alert("Secondary teachers must be assigned at least one subject");
       return;
     }
-    
+
     try {
       const assignedClassId = formData.assigned_class_id ? parseInt(formData.assigned_class_id, 10) : null;
       const subjectIds = formData.is_secondary_teacher ? formData.subject_ids : [];
+      const teachingClassIds = (formData.teaching_class_ids || []).map((id) => parseInt(id, 10)).filter(Boolean);
 
       if (editingTeacher) {
         const submitData = {
@@ -179,6 +203,7 @@ export default function AdminTeachers() {
           hire_date: formData.hire_date,
           qualification: formData.qualification,
           subject_ids: subjectIds,
+          teaching_class_ids: teachingClassIds,
           assigned_class_id: assignedClassId
         };
         if (formData.password) submitData.password = formData.password;
@@ -191,6 +216,7 @@ export default function AdminTeachers() {
         const submitData = {
           ...formData,
           subject_ids: subjectIds,
+          teaching_class_ids: teachingClassIds,
           assigned_class_id: assignedClassId
         };
         const response = await apiService.createTeacher(submitData);
@@ -209,6 +235,11 @@ export default function AdminTeachers() {
     const currentSubjects = Array.isArray(teacher.subjects)
       ? teacher.subjects.map((subject) => (typeof subject === 'object' ? subject.id : subject)).filter(Boolean)
       : [];
+    const currentTeachingClassIds = Array.isArray(teacher.teaching_classes)
+      ? teacher.teaching_classes
+          .map((cls) => (typeof cls === 'object' ? cls.id : cls))
+          .filter(Boolean)
+      : [];
     const currentClassId = teacher.class_taught?.[0]?.id || '';
     setFormData({
       first_name: teacher.user?.first_name || '',
@@ -220,6 +251,7 @@ export default function AdminTeachers() {
       password: '',
       is_secondary_teacher: currentSubjects.length > 0,
       subject_ids: currentSubjects,
+      teaching_class_ids: currentTeachingClassIds,
       assigned_class_id: currentClassId ? String(currentClassId) : ''
     });
     setShowCredentials(null);
@@ -354,7 +386,7 @@ export default function AdminTeachers() {
               </div>
               {formData.is_secondary_teacher && (
                 <div className="col-span-full">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Subjects (Select 1-3) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Subjects (Select all that apply) *</label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {Array.isArray(subjects) && subjects.map((subject) => (
                       <label key={subject.id} className="flex items-center p-2 border rounded hover:bg-gray-50">
@@ -365,6 +397,29 @@ export default function AdminTeachers() {
                   </div>
                 </div>
               )}
+              <div className="col-span-full">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Forms/Grades This Teacher Can Teach</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-56 overflow-y-auto border border-gray-200 rounded-md p-3">
+                  {Array.isArray(classes) && classes.length > 0 ? classes.map((cls) => (
+                    <label key={cls.id} className="flex items-center p-2 border rounded hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={formData.teaching_class_ids.includes(cls.id)}
+                        onChange={() => handleTeachingClassToggle(cls.id)}
+                        className="mr-2"
+                      />
+                      <span className="text-sm">
+                        {cls.name} ({cls.grade_level <= 7 ? `Grade ${cls.grade_level}` : `Form ${cls.grade_level - 7}`})
+                      </span>
+                    </label>
+                  )) : (
+                    <p className="text-sm text-gray-500">No classes available.</p>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Use this to allow one teacher to teach the selected forms/grades across their assigned subjects.
+                </p>
+              </div>
               <div className="col-span-full">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Class Responsibility (Class Teacher)</label>
                 <select name="assigned_class_id" value={formData.assigned_class_id} onChange={handleInputChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
@@ -447,6 +502,16 @@ export default function AdminTeachers() {
                       </div>
                     </div>
                   )}
+                  {selectedTeacher.teaching_classes && selectedTeacher.teaching_classes.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-2">Teaching Forms/Grades:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedTeacher.teaching_classes.map((cls, idx) => (
+                          <span key={idx} className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">{cls.name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -457,53 +522,64 @@ export default function AdminTeachers() {
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subjects</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {paginatedTeachers.map((teacher) => (
-                      <tr key={teacher.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getTeacherName(teacher)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.email}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.phone_number || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          <div className="flex flex-wrap gap-1">
-                            {teacher.subjects && teacher.subjects.length > 0 ? (
-                              teacher.subjects.map((subject, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">{subject.name || subject}</span>
-                              ))
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {teacher.class_taught && teacher.class_taught.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {teacher.class_taught.map((cls, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">{cls.name}</span>
-                              ))}
-                            </div>
-                          ) : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button onClick={() => setSelectedTeacher(teacher)} className="text-blue-600 hover:text-blue-800">
-                            <i className="fas fa-eye mr-1"></i>View
-                          </button>
-                          <button onClick={() => handleEditTeacher(teacher)} className="ml-3 text-green-600 hover:text-green-800">
-                            <i className="fas fa-edit mr-1"></i>Edit
-                          </button>
-                        </td>
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subjects</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedTeachers.map((teacher) => (
+                        <tr key={teacher.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getTeacherName(teacher)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.email}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.user?.phone_number || '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            <div className="flex flex-wrap gap-1">
+                              {teacher.subjects && teacher.subjects.length > 0 ? (
+                                teacher.subjects.map((subject, idx) => (
+                                  <span key={idx} className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs">{subject.name || subject}</span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <div className="flex flex-wrap gap-1">
+                              {teacher.class_taught && teacher.class_taught.length > 0 ? (
+                                teacher.class_taught.map((cls, idx) => (
+                                  <span key={`ct-${idx}`} className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">{cls.name}</span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400">No class responsibility</span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {teacher.teaching_classes && teacher.teaching_classes.length > 0 ? (
+                                teacher.teaching_classes.map((cls, idx) => (
+                                  <span key={`tc-${idx}`} className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded text-xs">{cls.name}</span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400">No teaching forms set</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <button onClick={() => setSelectedTeacher(teacher)} className="text-blue-600 hover:text-blue-800">
+                              <i className="fas fa-eye mr-1"></i>View
+                            </button>
+                            <button onClick={() => handleEditTeacher(teacher)} className="ml-3 text-green-600 hover:text-green-800">
+                              <i className="fas fa-edit mr-1"></i>Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
                 <PaginationControls

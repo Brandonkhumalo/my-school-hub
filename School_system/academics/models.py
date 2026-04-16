@@ -428,6 +428,12 @@ class StudentWellnessCheckIn(models.Model):
 class Teacher(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     subjects_taught = models.ManyToManyField(Subject, related_name='teachers')
+    teaching_classes = models.ManyToManyField(
+        Class,
+        related_name='assigned_subject_teachers',
+        blank=True,
+        help_text='Forms/grades this teacher is approved to teach across (in addition to class teacher role).',
+    )
     hire_date = models.DateField()
     qualification = models.CharField(max_length=200, blank=True)
     

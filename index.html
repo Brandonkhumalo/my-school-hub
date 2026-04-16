@@ -107,6 +107,13 @@
 
     <!-- TailwindCSS (via CDN for dev, or use PostCSS config if preferred) -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Drive Tailwind's `dark:` variant from the same [data-theme="dark"] attribute
+      // that ThemeContext sets on <html>, so dark-mode utilities light up automatically.
+      tailwind.config = {
+        darkMode: ['class', '[data-theme="dark"]'],
+      };
+    </script>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"

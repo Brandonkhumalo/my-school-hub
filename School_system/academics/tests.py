@@ -734,3 +734,100 @@ class GradePredictionAPITest(APITestCase):
         """Test that grade prediction requires authentication."""
         response = self.client.get(self._url(self.student.pk))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ---------------------------------------------------------------------------
+# API tests — Teacher form/grade assignment scope
+# ---------------------------------------------------------------------------
+
+class TeacherAssignmentScopeAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Scope School")
+        self.teacher = make_teacher(self.school, username="scope_teacher")
+        self.subject = make_subject(self.school, name="History", code="HIS01")
+        self.cls_form1 = make_class(self.school, name="Form 1A", grade_level=8)
+        self.cls_form5 = make_class(self.school, name="Form 5A", grade_level=12)
+        self.cls_other = make_class(self.school, name="Form 4A", grade_level=11)
+
+        self.stu_form1 = make_student(self.school, self.cls_form1, username="scope_stu_1", student_number="SCP001")
+        self.stu_form5 = make_student(self.school, self.cls_form5, username="scope_stu_2", student_number="SCP002")
+        self.stu_other = make_student(self.school, self.cls_other, username="scope_stu_3", student_number="SCP003")
+
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls_form1, self.cls_form5])
+
+        self.students_url = f"/api/v1/teachers/subjects/{self.subject.id}/students/"
+        self.marks_url = "/api/v1/teachers/marks/add/"
+
+    def test_subject_students_returns_multiple_assigned_forms(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.get(self.students_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.data}
+        self.assertIn(self.stu_form1.id, ids)
+        self.assertIn(self.stu_form5.id, ids)
+        self.assertNotIn(self.stu_other.id, ids)
+
+    def test_add_mark_rejects_student_in_unassigned_form(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.marks_url, {
+            "student_id": self.stu_other.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Test",
+            "score": 65,
+            "max_score": 100,
+            "academic_term": "Term 1",
+            "academic_year": "2026",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_add_mark_allows_student_in_assigned_form(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.marks_url, {
+            "student_id": self.stu_form5.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Test",
+            "score": 78,
+            "max_score": 100,
+            "academic_term": "Term 1",
+            "academic_year": "2026",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+class TeacherAdminAssignmentAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Admin Assign School")
+        self.admin = make_user(self.school, "assign_admin", role="admin")
+        self.subject_math = make_subject(self.school, name="Math", code="MAT01")
+        self.subject_history = make_subject(self.school, name="History", code="HIS02")
+        self.cls_form1 = make_class(self.school, name="Form 1B", grade_level=8)
+        self.cls_form5 = make_class(self.school, name="Form 5B", grade_level=12)
+        self.url = "/api/v1/academics/teachers/"
+
+    def test_admin_can_assign_subjects_and_multiple_forms_on_teacher_create(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "first_name": "Tariro",
+            "last_name": "Moyo",
+            "email": "tariro.moyo@assign.test",
+            "phone_number": "+263771000111",
+            "hire_date": "2026-01-10",
+            "qualification": "B.Ed",
+            "password": "teachpass123",
+            "is_secondary_teacher": True,
+            "subject_ids": [self.subject_math.id, self.subject_history.id],
+            "teaching_class_ids": [self.cls_form1.id, self.cls_form5.id],
+            "assigned_class_id": None,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        created_teacher = Teacher.objects.get(id=response.data["id"])
+        subject_ids = set(created_teacher.subjects_taught.values_list("id", flat=True))
+        class_ids = set(created_teacher.teaching_classes.values_list("id", flat=True))
+        self.assertEqual(subject_ids, {self.subject_math.id, self.subject_history.id})
+        self.assertEqual(class_ids, {self.cls_form1.id, self.cls_form5.id})

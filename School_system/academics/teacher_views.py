@@ -14,6 +14,34 @@ from .models import (
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
 
+def _teacher_authorized_class_ids(teacher, subject_id=None, fallback_to_school=True):
+    """
+    Return class IDs this teacher can teach for the given subject.
+
+    Sources:
+    - class teacher ownership
+    - explicit admin form/grade assignments (`teaching_classes`)
+    - generated timetable entries (optionally filtered by subject)
+    """
+    class_ids = set(
+        Class.objects.filter(class_teacher=teacher.user).values_list('id', flat=True)
+    )
+    class_ids.update(teacher.teaching_classes.values_list('id', flat=True))
+
+    timetable_qs = Timetable.objects.filter(teacher=teacher)
+    if subject_id is not None:
+        timetable_qs = timetable_qs.filter(subject_id=subject_id)
+    class_ids.update(timetable_qs.values_list('class_assigned_id', flat=True).distinct())
+
+    if class_ids or not fallback_to_school:
+        return class_ids
+
+    # Legacy fallback: if no explicit mapping exists yet, allow existing behavior.
+    return set(
+        Class.objects.filter(school=teacher.user.school).values_list('id', flat=True)
+    )
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def teacher_subjects(request):
@@ -24,17 +52,15 @@ def teacher_subjects(request):
     
     try:
         teacher = request.user.teacher
-        subjects = teacher.subjects_taught.all()
+        subjects = teacher.subjects_taught.filter(school=request.user.school)
         
         data = []
         for subject in subjects:
-            # Get students count for this subject
+            authorized_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject.id)
             students_count = Student.objects.filter(
-                student_class__in=Class.objects.filter(
-                    students__results__subject=subject,
-                    students__results__teacher=teacher
-                ).distinct()
-            ).distinct().count()
+                student_class_id__in=authorized_class_ids,
+                user__is_active=True
+            ).count()
             
             data.append({
                 'id': subject.id,
@@ -60,30 +86,26 @@ def subject_students(request, subject_id):
     
     try:
         teacher = request.user.teacher
-        subject = Subject.objects.get(id=subject_id)
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
         
         # Verify teacher teaches this subject
         if not teacher.subjects_taught.filter(id=subject_id).exists():
             return Response({'error': 'You do not teach this subject'}, 
                            status=status.HTTP_403_FORBIDDEN)
         
-        # Filter students more intelligently:
-        # 1. Students who already have results for this subject with this teacher (enrolled)
-        # 2. Students from classes that this teacher teaches (class teacher)
-        # This provides a better filtering approach than showing all students
-        
         # Get students who have existing results for this subject
         students_with_results = Student.objects.filter(
             results__subject=subject,
             results__teacher=teacher
         ).distinct().values_list('id', flat=True)
-        
-        # Get classes taught by this teacher
-        classes_taught = Class.objects.filter(class_teacher=teacher.user)
-        
-        # Combine both filters
+
+        # Classes explicitly/implicitly assigned for this subject
+        authorized_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject.id)
+
+        # Combine both filters so historical entries remain visible
         students = Student.objects.filter(
-            Q(id__in=students_with_results) | Q(student_class__in=classes_taught),
+            Q(id__in=students_with_results) | Q(student_class_id__in=authorized_class_ids),
+            student_class__school=request.user.school,
             user__is_active=True
         ).distinct().select_related('user', 'student_class')
         
@@ -154,8 +176,8 @@ def add_student_mark(request):
         
         # Get student and subject
         try:
-            student = Student.objects.get(id=student_id)
-            subject = Subject.objects.get(id=subject_id)
+            student = Student.objects.get(id=student_id, student_class__school=request.user.school)
+            subject = Subject.objects.get(id=subject_id, school=request.user.school)
         except (Student.DoesNotExist, Subject.DoesNotExist):
             return Response({'error': 'Student or subject not found'}, 
                            status=status.HTTP_404_NOT_FOUND)
@@ -164,6 +186,13 @@ def add_student_mark(request):
         if not teacher.subjects_taught.filter(id=subject_id).exists():
             return Response({'error': 'You do not teach this subject'}, 
                            status=status.HTTP_403_FORBIDDEN)
+
+        authorized_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject.id)
+        if student.student_class_id not in authorized_class_ids:
+            return Response(
+                {'error': "You are not assigned to teach this student's class for this subject"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         
         # SECURITY: Verify student is active and exists
         if not student.user.is_active:
@@ -209,7 +238,7 @@ def subject_performance(request, subject_id):
     
     try:
         teacher = request.user.teacher
-        subject = Subject.objects.get(id=subject_id)
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
         
         # Verify teacher teaches this subject
         if not teacher.subjects_taught.filter(id=subject_id).exists():
@@ -822,7 +851,7 @@ def update_report_settings(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def teacher_classes(request):
-    """Get all classes this teacher is authorized for (class teacher + timetable)"""
+    """Get all classes this teacher is authorized for (class teacher + assigned forms + timetable)."""
     if request.user.role != 'teacher':
         return Response({'error': 'Only teachers can access this endpoint'},
                        status=status.HTTP_403_FORBIDDEN)
@@ -835,12 +864,17 @@ def teacher_classes(request):
             class_teacher=request.user
         ).values_list('id', flat=True))
 
+        # Classes explicitly assigned by admin for teaching
+        assigned_teaching_classes = set(
+            teacher.teaching_classes.values_list('id', flat=True)
+        )
+
         # Classes where teacher has timetable entries
         timetable_classes = set(Timetable.objects.filter(
             teacher=teacher
         ).values_list('class_assigned_id', flat=True).distinct())
 
-        all_class_ids = class_teacher_classes | timetable_classes
+        all_class_ids = class_teacher_classes | assigned_teaching_classes | timetable_classes
         classes = Class.objects.filter(id__in=all_class_ids).order_by('name')
 
         data = [{
@@ -849,6 +883,7 @@ def teacher_classes(request):
             'grade_level': c.grade_level,
             'academic_year': c.academic_year,
             'is_class_teacher': c.id in class_teacher_classes,
+            'is_assigned_teaching_class': c.id in assigned_teaching_classes,
             'student_count': c.students.count(),
         } for c in classes]
 
@@ -860,17 +895,34 @@ def teacher_classes(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def teacher_class_subjects(request, class_id):
-    """Get subjects this teacher teaches in a specific class (from timetable)."""
+    """Get subjects this teacher teaches in a specific class."""
     if request.user.role != 'teacher':
         return Response({'error': 'Only teachers can access this endpoint'},
                         status=status.HTTP_403_FORBIDDEN)
     try:
         teacher = request.user.teacher
-        subject_ids = (Timetable.objects
-                       .filter(teacher=teacher, class_assigned_id=class_id)
-                       .values_list('subject_id', flat=True)
-                       .distinct())
-        subjects = Subject.objects.filter(id__in=subject_ids).order_by('name')
+
+        try:
+            class_id_int = int(class_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'Invalid class id'}, status=status.HTTP_400_BAD_REQUEST)
+
+        authorized_class_ids = _teacher_authorized_class_ids(
+            teacher, fallback_to_school=False
+        )
+        if class_id_int not in authorized_class_ids:
+            return Response({'error': 'You are not assigned to this class'}, status=status.HTTP_403_FORBIDDEN)
+
+        subject_ids = list(
+            Timetable.objects
+            .filter(teacher=teacher, class_assigned_id=class_id_int)
+            .values_list('subject_id', flat=True)
+            .distinct()
+        )
+        if not subject_ids:
+            subject_ids = list(teacher.subjects_taught.values_list('id', flat=True))
+
+        subjects = Subject.objects.filter(id__in=subject_ids, school=request.user.school).order_by('name')
         data = [{'id': s.id, 'name': s.name, 'code': s.code} for s in subjects]
         return Response(data)
     except Teacher.DoesNotExist:

@@ -118,9 +118,12 @@ def generate_periods_for_class(class_obj):
     return day_periods
 
 
-def _find_teacher(subject_teachers, sid, time_key, teacher_busy):
-    """Find a teacher for subject `sid` who is free at `time_key`."""
-    candidates = list(subject_teachers.get(sid, []))
+def _find_teacher(subject_teachers, sid, class_id, time_key, teacher_busy, teacher_scoped_classes):
+    """Find a teacher for subject `sid` and class who is free at `time_key`."""
+    candidates = [
+        tid for tid in subject_teachers.get(sid, [])
+        if not teacher_scoped_classes.get(tid) or class_id in teacher_scoped_classes[tid]
+    ]
     random.shuffle(candidates)
     for tid in candidates:
         if time_key not in teacher_busy[tid]:
@@ -154,7 +157,7 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
         class_qs = class_qs.filter(academic_year=academic_year)
     classes = list(class_qs)
     subjects = list(Subject.objects.filter(school=school, is_deleted=False))
-    teachers = list(Teacher.objects.filter(user__school=school).prefetch_related('subjects_taught'))
+    teachers = list(Teacher.objects.filter(user__school=school).prefetch_related('subjects_taught', 'teaching_classes'))
 
     if not classes:
         return False, "No classes found", []
@@ -174,8 +177,13 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
     if not teachable:
         return False, "No subjects have assigned teachers. Assign teachers to subjects first.", []
 
-    priority_subjects = [s for s in teachable if s.is_priority]
-    normal_subjects = [s for s in teachable if not s.is_priority]
+    # Teacher class scopes:
+    # - Empty set means unrestricted (legacy behavior) so existing schools continue to work.
+    # - Non-empty set means admin explicitly limited this teacher to those forms/grades.
+    teacher_scoped_classes = {
+        teacher.id: set(teacher.teaching_classes.values_list('id', flat=True))
+        for teacher in teachers
+    }
 
     # ── Periods per class ──
     class_periods = {}
@@ -200,6 +208,26 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
         total_slots = sum(len(slots) for slots in day_periods_map.values())
         if total_slots == 0:
             continue
+
+        class_teachable_subjects = []
+        for subj in teachable:
+            teacher_ids = subject_teachers.get(subj.id, [])
+            if any(
+                not teacher_scoped_classes.get(tid) or cls.id in teacher_scoped_classes[tid]
+                for tid in teacher_ids
+            ):
+                class_teachable_subjects.append(subj)
+
+        if not class_teachable_subjects:
+            logger.warning(
+                "Skipping class %s (%s): no teachers assigned for its allowed form/grade scope.",
+                cls.id,
+                cls.name,
+            )
+            continue
+
+        priority_subjects = [s for s in class_teachable_subjects if s.is_priority]
+        normal_subjects = [s for s in class_teachable_subjects if not s.is_priority]
 
         # ── Per-class: calculate how many weekly periods each subject gets ──
         # Priority subjects: 1 period/day = 5/week, or 2/day on some days
@@ -287,7 +315,14 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
                         continue
 
                     # Find available teacher
-                    tid = _find_teacher(subject_teachers, sid, time_key, teacher_busy)
+                    tid = _find_teacher(
+                        subject_teachers,
+                        sid,
+                        cls.id,
+                        time_key,
+                        teacher_busy,
+                        teacher_scoped_classes,
+                    )
                     if tid is None:
                         # Teacher busy — carry this subject over to next day
                         if sid not in carryover:

@@ -235,3 +235,96 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 .portal-input::placeholder { color: var(--text-muted); }
+
+/* ============================================================
+   DARK MODE OVERRIDES FOR TAILWIND UTILITY CLASSES
+   Pages across the app use hardcoded Tailwind colors (bg-white,
+   bg-gray-*, text-gray-*, border-gray-*) that would otherwise
+   stay light when the user toggles dark mode. These rules remap
+   those utilities to dark-surface equivalents when
+   [data-theme="dark"] is active on <html>. Specificity of
+   `[attr] .class` (0,2,0) beats Tailwind's single-class (0,1,0),
+   so no !important is needed.
+   ============================================================ */
+[data-theme="dark"] .bg-white { background-color: #1e293b; }
+[data-theme="dark"] .bg-gray-50 { background-color: #273549; }
+[data-theme="dark"] .bg-gray-100 { background-color: #334155; }
+[data-theme="dark"] .bg-gray-200 { background-color: #3f4b62; }
+
+[data-theme="dark"] .hover\:bg-gray-50:hover { background-color: #273549; }
+[data-theme="dark"] .hover\:bg-gray-100:hover { background-color: #334155; }
+[data-theme="dark"] .hover\:bg-gray-200:hover { background-color: #3f4b62; }
+[data-theme="dark"] .hover\:bg-white:hover { background-color: #1e293b; }
+
+[data-theme="dark"] .text-gray-400 { color: #94a3b8; }
+[data-theme="dark"] .text-gray-500 { color: #cbd5e1; }
+[data-theme="dark"] .text-gray-600 { color: #e2e8f0; }
+[data-theme="dark"] .text-gray-700 { color: #e2e8f0; }
+[data-theme="dark"] .text-gray-800 { color: #f1f5f9; }
+[data-theme="dark"] .text-gray-900 { color: #f1f5f9; }
+
+[data-theme="dark"] .hover\:text-gray-600:hover { color: #f1f5f9; }
+[data-theme="dark"] .hover\:text-gray-700:hover { color: #f1f5f9; }
+[data-theme="dark"] .hover\:text-gray-800:hover { color: #f1f5f9; }
+[data-theme="dark"] .hover\:text-gray-900:hover { color: #ffffff; }
+
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-300 { border-color: #334155; }
+
+[data-theme="dark"] .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+[data-theme="dark"] .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+[data-theme="dark"] .divide-gray-300 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155;
+}
+
+/* Form inputs with Tailwind borders — give them a surface that reads in dark mode */
+[data-theme="dark"] input.border-gray-300,
+[data-theme="dark"] select.border-gray-300,
+[data-theme="dark"] textarea.border-gray-300,
+[data-theme="dark"] input.border-gray-200,
+[data-theme="dark"] select.border-gray-200,
+[data-theme="dark"] textarea.border-gray-200 {
+  background-color: #273549;
+  color: #f1f5f9;
+  border-color: #334155;
+}
+[data-theme="dark"] input.border-gray-300::placeholder,
+[data-theme="dark"] select.border-gray-300::placeholder,
+[data-theme="dark"] textarea.border-gray-300::placeholder {
+  color: #94a3b8;
+}
+[data-theme="dark"] .disabled\:bg-gray-100:disabled { background-color: #1e293b; }
+
+/* Tint the pastel "badge" backgrounds so they still read on dark surfaces.
+   We darken the fill and lift the text so the chips remain legible. */
+[data-theme="dark"] .bg-blue-50 { background-color: #1e3a5f; }
+[data-theme="dark"] .bg-blue-100 { background-color: #1e40af; color: #dbeafe; }
+[data-theme="dark"] .bg-green-50 { background-color: #14532d; }
+[data-theme="dark"] .bg-green-100 { background-color: #166534; color: #dcfce7; }
+[data-theme="dark"] .bg-red-50 { background-color: #450a0a; }
+[data-theme="dark"] .bg-red-100 { background-color: #7f1d1d; color: #fee2e2; }
+[data-theme="dark"] .bg-yellow-50 { background-color: #422006; }
+[data-theme="dark"] .bg-yellow-100 { background-color: #713f12; color: #fef3c7; }
+[data-theme="dark"] .bg-amber-50 { background-color: #422006; }
+[data-theme="dark"] .bg-amber-100 { background-color: #78350f; color: #fef3c7; }
+[data-theme="dark"] .bg-purple-50 { background-color: #3b0764; }
+[data-theme="dark"] .bg-purple-100 { background-color: #6b21a8; color: #f3e8ff; }
+[data-theme="dark"] .bg-orange-50 { background-color: #431407; }
+[data-theme="dark"] .bg-orange-100 { background-color: #7c2d12; color: #ffedd5; }
+[data-theme="dark"] .bg-indigo-50 { background-color: #1e1b4b; }
+[data-theme="dark"] .bg-indigo-100 { background-color: #3730a3; color: #e0e7ff; }
+[data-theme="dark"] .bg-pink-50 { background-color: #500724; }
+[data-theme="dark"] .bg-pink-100 { background-color: #9d174d; color: #fce7f3; }
+
+/* Brighten the paired text colors so pastel-chip labels stay readable */
+[data-theme="dark"] .text-blue-800 { color: #bfdbfe; }
+[data-theme="dark"] .text-green-700,
+[data-theme="dark"] .text-green-800 { color: #bbf7d0; }
+[data-theme="dark"] .text-red-800 { color: #fecaca; }
+[data-theme="dark"] .text-yellow-800,
+[data-theme="dark"] .text-amber-800 { color: #fde68a; }
+[data-theme="dark"] .text-purple-800 { color: #e9d5ff; }
+[data-theme="dark"] .text-orange-800 { color: #fed7aa; }
+[data-theme="dark"] .text-indigo-800 { color: #c7d2fe; }
+[data-theme="dark"] .text-pink-800 { color: #fbcfe8; }
