@@ -101,8 +101,46 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
     }
     const data = await response.json();
 
-    // Handle paginated responses - extract results array
-    if (data && typeof data === 'object' && 'results' in data) {
+    // Handle DRF paginated responses by following `next` links so routes receive full datasets.
+    if (data && typeof data === "object" && "results" in data) {
+      const isPaginated =
+        Array.isArray(data.results) &&
+        ("next" in data || "previous" in data || "count" in data);
+
+      if (method.toUpperCase() === "GET" && isPaginated && data.next) {
+        const allResults = [...data.results];
+        const visitedUrls = new Set([`${API_BASE_URL}${endpoint}`]);
+        let nextUrl = data.next;
+
+        while (nextUrl) {
+          if (visitedUrls.has(nextUrl)) {
+            throw new Error("Pagination loop detected while fetching records.");
+          }
+          visitedUrls.add(nextUrl);
+
+          const nextResponse = await fetch(nextUrl, { method: "GET", headers });
+
+          if (nextResponse.status === 401 && useAuth) {
+            handleAuthExpired();
+            throw new Error("Session expired. Please log in again.");
+          }
+
+          if (!nextResponse.ok) {
+            throw new Error("API request failed while fetching paginated data.");
+          }
+
+          const nextData = await nextResponse.json();
+          if (!nextData || typeof nextData !== "object" || !Array.isArray(nextData.results)) {
+            break;
+          }
+
+          allResults.push(...nextData.results);
+          nextUrl = nextData.next;
+        }
+
+        return allResults;
+      }
+
       return data.results;
     }
 
@@ -111,6 +149,78 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
     console.error("API Service Error:", error.message);
     throw error;
   }
+}
+
+async function requestAllPages(endpoint, useAuth = true) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (useAuth) {
+    const token = getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
+  const allResults = [];
+  const visitedUrls = new Set();
+  let nextUrl = `${API_BASE_URL}${endpoint}`;
+
+  while (nextUrl) {
+    if (visitedUrls.has(nextUrl)) {
+      throw new Error("Pagination loop detected while fetching all records.");
+    }
+    visitedUrls.add(nextUrl);
+
+    const response = await fetch(nextUrl, {
+      method: "GET",
+      headers,
+    });
+
+    if (response.status === 401 && useAuth) {
+      handleAuthExpired();
+      throw new Error("Session expired. Please log in again.");
+    }
+
+    if (!response.ok) {
+      let errorData = null;
+      try {
+        const errorText = await response.text();
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || "API request failed" };
+        }
+      } catch {
+        errorData = { error: "API request failed" };
+      }
+
+      let errorMessage = errorData.error || errorData.message || errorData.detail;
+      if (!errorMessage && typeof errorData === "object") {
+        const messages = Object.entries(errorData)
+          .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(", ") : val}`)
+          .join("; ");
+        errorMessage = messages || "API request failed";
+      }
+
+      const error = new Error(errorMessage || "API request failed");
+      error.response = { data: errorData, status: response.status };
+      throw error;
+    }
+
+    const data = await response.json();
+
+    if (data && typeof data === "object" && Array.isArray(data.results)) {
+      allResults.push(...data.results);
+      nextUrl = data.next;
+      continue;
+    }
+
+    return data;
+  }
+
+  return allResults;
 }
 
 const apiService = {
@@ -145,8 +255,8 @@ const apiService = {
   updateClass: (id, data) => request(`/academics/classes/${id}/`, "PATCH", data),
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
 
-  fetchStudents: () => request("/academics/students/", "GET"),
-  fetchStudentsByClass: (classId) => request(`/academics/students/?class=${classId}`, "GET"),
+  fetchStudents: () => requestAllPages("/academics/students/"),
+  fetchStudentsByClass: (classId) => requestAllPages(`/academics/students/?class=${classId}`),
   fetchStudentById: (id) => request(`/academics/students/${id}/`, "GET"),
   fetchStudentPerformance: (studentId) => request(`/academics/students/${studentId}/performance/`, "GET"),
   createStudent: (data) => request("/academics/students/", "POST", data),
@@ -193,7 +303,7 @@ const apiService = {
   fetchTeacherClasses: () => request("/academics/classes/", "GET"),
   getTeacherClasses: () => request("/teachers/classes/", "GET"),
   getTeacherClassSubjects: (classId) => request(`/teachers/classes/${classId}/subjects/`, "GET"),
-  fetchTeacherStudents: () => request("/academics/students/", "GET"),
+  fetchTeacherStudents: () => requestAllPages("/academics/students/"),
   fetchTeacherResults: () => request("/academics/results/", "GET"),
   getResultsForReport: (params) => {
     const q = new URLSearchParams(params).toString();
@@ -206,7 +316,7 @@ const apiService = {
   publishAllReports: (data) => request("/academics/reports/publish-all/", "POST", data),
   getPublishedReports: () => request("/academics/reports/published/", "GET"),
 
-  fetchParentChildren: () => request("/academics/students/", "GET"),
+  fetchParentChildren: () => requestAllPages("/academics/students/"),
   fetchParentResults: () => request("/academics/results/", "GET"),
   fetchParentFeeSummary: () => request("/finances/student-fees/", "GET"),
 

@@ -2,12 +2,15 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 
 export default function AdminUsers() {
+  const PAGE_SIZE = 20;
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [filterRole, setFilterRole] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -80,6 +83,22 @@ export default function AdminUsers() {
   const filteredUsers = filterRole === 'all' 
     ? users 
     : users.filter(user => user.role === filterRole);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const paginatedUsers = filteredUsers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterRole]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   if (isLoading) return (
     <div>
@@ -236,8 +255,9 @@ export default function AdminUsers() {
 
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           {filteredUsers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
@@ -250,7 +270,7 @@ export default function AdminUsers() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredUsers.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.full_name}</td>
@@ -279,8 +299,17 @@ export default function AdminUsers() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredUsers.length}
+                pageSize={PAGE_SIZE}
+                onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              />
+            </>
           ) : (
             <div className="text-center py-12">
               <i className="fas fa-users text-gray-400 text-5xl mb-4"></i>

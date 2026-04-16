@@ -2,11 +2,13 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 import { formatDateTime } from "../../utils/dateFormat";
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
 export default function AdminHealth() {
+  const PAGE_SIZE = 20;
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [healthRecord, setHealthRecord] = useState(null);
@@ -17,6 +19,7 @@ export default function AdminHealth() {
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [activeTab, setActiveTab] = useState("record");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [healthForm, setHealthForm] = useState({
     blood_type: "", allergies: "", chronic_conditions: "",
@@ -126,6 +129,18 @@ export default function AdminHealth() {
   });
 
   const getStudentName = (s) => s?.user?.full_name || s?.full_name || `${s?.first_name || ""} ${s?.last_name || ""}`;
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
+  const paginatedStudents = filteredStudents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <div>
@@ -150,7 +165,7 @@ export default function AdminHealth() {
             className="w-full border rounded-lg px-3 py-2 mb-3"
           />
           <div className="max-h-[60vh] overflow-y-auto space-y-1">
-            {filteredStudents.map((s) => (
+            {paginatedStudents.map((s) => (
               <button
                 key={s.id}
                 onClick={() => selectStudent(s)}
@@ -164,6 +179,14 @@ export default function AdminHealth() {
             ))}
             {filteredStudents.length === 0 && <p className="text-gray-500 text-sm text-center py-4">No students found</p>}
           </div>
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredStudents.length}
+            pageSize={PAGE_SIZE}
+            onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+          />
         </div>
 
         {/* Health Details */}

@@ -3,8 +3,10 @@ import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 
 export default function AdminClasses() {
+  const PAGE_SIZE = 20;
   const { currentAcademicYear } = useSchoolSettings();
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -12,6 +14,7 @@ export default function AdminClasses() {
   const [showForm, setShowForm] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [schoolType, setSchoolType] = useState('combined');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const defaultFormData = {
     grade_level: '',
@@ -158,6 +161,14 @@ export default function AdminClasses() {
 
   const showPrimary = schoolType === 'primary' || schoolType === 'combined';
   const showSecondary = schoolType === 'secondary' || schoolType === 'high' || schoolType === 'combined';
+  const totalPages = Math.max(1, Math.ceil(classes.length / PAGE_SIZE));
+  const paginatedClasses = classes.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   if (isLoading) return (
     <div>
@@ -419,8 +430,9 @@ export default function AdminClasses() {
 
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           {classes.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
@@ -431,7 +443,7 @@ export default function AdminClasses() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {classes.map((cls) => (
+                  {paginatedClasses.map((cls) => (
                     <tr key={cls.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -467,8 +479,17 @@ export default function AdminClasses() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={classes.length}
+                pageSize={PAGE_SIZE}
+                onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              />
+            </>
           ) : (
             <div className="text-center py-12">
               <i className="fas fa-chalkboard text-gray-400 text-6xl mb-4"></i>

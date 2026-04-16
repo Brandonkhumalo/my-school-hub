@@ -2,12 +2,15 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 
 export default function AdminSubjects() {
+  const PAGE_SIZE = 20;
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState({ name: '', code: '', description: '' });
 
   const togglePriority = async (subject) => {
@@ -121,6 +124,14 @@ export default function AdminSubjects() {
   const availableTeachers = teachers.filter(
     t => !subjectTeachers.some(st => st.id === t.id)
   );
+  const totalPages = Math.max(1, Math.ceil(subjects.length / PAGE_SIZE));
+  const paginatedSubjects = subjects.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   if (isLoading) return (
     <div>
@@ -177,8 +188,9 @@ export default function AdminSubjects() {
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               {subjects.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
                     <thead className="bg-gray-100">
                       <tr>
                         <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Code</th>
@@ -189,7 +201,7 @@ export default function AdminSubjects() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {subjects.map((subject) => (
+                      {paginatedSubjects.map((subject) => (
                         <tr key={subject.id} className={`hover:bg-gray-50 cursor-pointer ${selectedSubject?.id === subject.id ? 'bg-purple-50' : ''}`}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm font-semibold">
@@ -225,8 +237,17 @@ export default function AdminSubjects() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                    </table>
+                  </div>
+                  <PaginationControls
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={subjects.length}
+                    pageSize={PAGE_SIZE}
+                    onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  />
+                </>
               ) : (
                 <div className="text-center py-12">
                   <i className="fas fa-book text-gray-400 text-6xl mb-4"></i>

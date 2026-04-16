@@ -2,15 +2,18 @@ import React, { useState, useEffect, useMemo } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminStudents() {
+  const PAGE_SIZE = 20;
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showCredentials, setShowCredentials] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [formData, setFormData] = useState({
     first_name: "",
@@ -58,6 +61,26 @@ export default function AdminStudents() {
       return fullName.includes(query) || studentNumber.includes(query) || className.includes(query);
     });
   }, [students, searchQuery]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE)),
+    [filteredStudents.length]
+  );
+
+  const paginatedStudents = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredStudents.slice(start, start + PAGE_SIZE);
+  }, [filteredStudents, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -349,8 +372,9 @@ export default function AdminStudents() {
         ) : (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             {filteredStudents.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
                   <thead className="bg-gray-100">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student #</th>
@@ -362,7 +386,7 @@ export default function AdminStudents() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredStudents.map((student) => (
+                    {paginatedStudents.map((student) => (
                       <tr key={student.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 text-sm text-gray-900">{student.user?.student_number}</td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-900">
@@ -381,8 +405,17 @@ export default function AdminStudents() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                  </table>
+                </div>
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredStudents.length}
+                  pageSize={PAGE_SIZE}
+                  onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                />
+              </>
             ) : (
               <div className="text-center py-12">
                 <i className="fas fa-user-graduate text-gray-400 text-6xl mb-4"></i>

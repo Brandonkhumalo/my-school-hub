@@ -2,15 +2,18 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import PaginationControls from "../../components/PaginationControls";
 import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminDiscipline() {
+  const PAGE_SIZE = 20;
   const [records, setRecords] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ severity: "", resolved: "" });
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState({
     student_id: "",
     incident_type: "",
@@ -85,6 +88,19 @@ export default function AdminDiscipline() {
     const name = (r.student_name || "").toLowerCase();
     return name.includes(search.toLowerCase());
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedRecords = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filter.severity, filter.resolved]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   if (loading) return (<div><Header title="Disciplinary Records" /><LoadingSpinner /></div>);
 
@@ -191,7 +207,7 @@ export default function AdminDiscipline() {
               <p className="text-gray-500 text-lg">No disciplinary records found</p>
             </div>
           ) : (
-            filtered.map((record) => (
+            paginatedRecords.map((record) => (
               <div key={record.id} className={`bg-white rounded-lg shadow-sm p-5 border-l-4 ${record.is_resolved ? "border-green-400" : "border-red-400"}`}>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
@@ -228,6 +244,14 @@ export default function AdminDiscipline() {
             ))
           )}
         </div>
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={PAGE_SIZE}
+          onPrevious={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+          onNext={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+        />
       </div>
     </div>
   );
