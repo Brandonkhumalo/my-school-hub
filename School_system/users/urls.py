@@ -17,6 +17,7 @@ urlpatterns = [
 
     # User management
     path('users/', views.UserListView.as_view(), name='user-list'),
+    path('users/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'),
     path('users/<int:user_id>/delete/', views.delete_user_view, name='delete-user'),
 
     # Dashboard
@@ -36,6 +37,11 @@ urlpatterns = [
     path('school/current-period/', views.current_academic_period_view, name='current-academic-period'),
     path('school/report-config/', views.report_card_config_view, name='report-card-config'),
     path('school/report-config/upload/', views.report_card_upload_image, name='report-card-upload'),
+    path('school/report-templates/', views.report_card_templates_view, name='report-card-templates'),
+    path('school/report-templates/<int:template_id>/', views.report_card_template_detail_view, name='report-card-template-detail'),
+    path('school/subject-groups/', views.subject_groups_view, name='subject-groups'),
+    path('school/subject-groups/<int:group_id>/', views.subject_group_detail_view, name='subject-group-detail'),
+    path('reports/verify/<str:token>/', views.verify_report_card, name='verify-report-card'),
 
     # Audit logs
     path('audit-logs/', views.audit_logs_view, name='audit-logs'),

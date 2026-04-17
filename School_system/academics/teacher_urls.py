@@ -24,6 +24,10 @@ urlpatterns = [
     path('homework/classes/', homework_views.teacher_classes_for_homework, name='teacher-homework-classes'),
     path('homework/<int:homework_id>/download/', homework_views.download_homework_file, name='download-homework-file'),
 
+    # Subject feedback (per-subject teacher comment + effort grade for report cards)
+    path('subject-feedback/', teacher_views.subject_feedback_list, name='subject-feedback-list'),
+    path('subject-feedback/save/', teacher_views.subject_feedback_upsert, name='subject-feedback-save'),
+
     # Conference slots
     path('conference-slots/', conference_views.teacher_conference_slots, name='teacher-conference-slots'),
     path('conference-slots/<int:slot_id>/', conference_views.teacher_delete_conference_slot, name='teacher-delete-conference-slot'),

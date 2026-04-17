@@ -9,7 +9,8 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from .models import (
-    Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable
+    Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable,
+    SubjectTermFeedback,
 )
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
@@ -927,3 +928,109 @@ def teacher_class_subjects(request, class_id):
         return Response(data)
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ---------------------------------------------------------------
+# Per-subject report card feedback (comment + effort grade)
+# ---------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_feedback_list(request):
+    """List per-subject feedback for a class/subject/term.
+    Query: ?class_id=&subject_id=&year=&term="""
+    user = request.user
+    if user.role not in ('teacher', 'admin', 'hr'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.query_params.get('class_id')
+    subject_id = request.query_params.get('subject_id')
+    year = request.query_params.get('year', '')
+    term = request.query_params.get('term', '')
+    if not (class_id and subject_id and year and term):
+        return Response({'error': 'class_id, subject_id, year, term are required'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    if user.role == 'teacher':
+        try:
+            teacher = user.teacher
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        authorised = _teacher_authorized_class_ids(teacher, subject_id=int(subject_id))
+        if int(class_id) not in authorised:
+            return Response({'error': 'Not authorised for this class/subject'}, status=status.HTTP_403_FORBIDDEN)
+
+    students = Student.objects.filter(
+        student_class_id=class_id, user__school=user.school,
+    ).select_related('user').order_by('user__last_name', 'user__first_name')
+    existing = {
+        fb.student_id: fb for fb in SubjectTermFeedback.objects.filter(
+            student__in=students, subject_id=subject_id,
+            academic_year=year, academic_term=term,
+        )
+    }
+    data = []
+    for s in students:
+        fb = existing.get(s.id)
+        data.append({
+            'student_id': s.id,
+            'full_name': s.user.full_name,
+            'student_number': s.user.student_number or '',
+            'comment': fb.comment if fb else '',
+            'effort_grade': fb.effort_grade if fb else '',
+        })
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_feedback_upsert(request):
+    """Body: { student_id, subject_id, year, term, comment, effort_grade }"""
+    user = request.user
+    if user.role not in ('teacher', 'admin', 'hr'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        student_id = int(request.data.get('student_id'))
+        subject_id = int(request.data.get('subject_id'))
+    except (TypeError, ValueError):
+        return Response({'error': 'student_id and subject_id must be integers'}, status=status.HTTP_400_BAD_REQUEST)
+    year = request.data.get('year', '')
+    term = request.data.get('term', '')
+    comment = (request.data.get('comment') or '').strip()
+    effort = (request.data.get('effort_grade') or '').strip().upper()
+    if effort and effort not in {'A', 'B', 'C', 'D', 'E'}:
+        return Response({'error': 'effort_grade must be A-E or blank'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        student = Student.objects.select_related('user').get(id=student_id, user__school=user.school)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    teacher = None
+    if user.role == 'teacher':
+        try:
+            teacher = user.teacher
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        authorised = _teacher_authorized_class_ids(teacher, subject_id=subject_id)
+        if student.student_class_id not in authorised:
+            return Response({'error': 'Not authorised for this student'}, status=status.HTTP_403_FORBIDDEN)
+
+    from users.models import ReportCardConfig
+    try:
+        limit = ReportCardConfig.objects.get(school=user.school).comment_char_limit
+    except ReportCardConfig.DoesNotExist:
+        limit = 250
+    if limit and len(comment) > limit:
+        comment = comment[:limit]
+
+    fb, _ = SubjectTermFeedback.objects.update_or_create(
+        student_id=student_id, subject_id=subject_id,
+        academic_year=year, academic_term=term,
+        defaults={'comment': comment, 'effort_grade': effort, 'teacher': teacher},
+    )
+    return Response({
+        'id': fb.id, 'student_id': student_id, 'subject_id': subject_id,
+        'comment': fb.comment, 'effort_grade': fb.effort_grade,
+    })

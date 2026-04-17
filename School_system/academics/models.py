@@ -502,6 +502,31 @@ class Result(models.Model):
         return f"{self.student.user.full_name} - {self.subject.name}: {self.score}/{self.max_score}"
 
 
+class SubjectTermFeedback(models.Model):
+    """Per-student, per-subject, per-term teacher comment + effort grade for the report card."""
+    EFFORT_CHOICES = [
+        ('A', 'Excellent'),
+        ('B', 'Good'),
+        ('C', 'Satisfactory'),
+        ('D', 'Needs Improvement'),
+        ('E', 'Poor'),
+    ]
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='subject_feedback')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='term_feedback')
+    teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True)
+    academic_year = models.CharField(max_length=20, db_index=True)
+    academic_term = models.CharField(max_length=50, db_index=True)
+    comment = models.TextField(blank=True)
+    effort_grade = models.CharField(max_length=1, choices=EFFORT_CHOICES, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('student', 'subject', 'academic_year', 'academic_term')
+
+    def __str__(self):
+        return f"{self.student.user.full_name} – {self.subject.name} ({self.academic_term} {self.academic_year})"
+
+
 class Timetable(models.Model):
     class_assigned = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='timetable')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)

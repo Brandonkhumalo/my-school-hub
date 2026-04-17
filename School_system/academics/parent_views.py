@@ -12,7 +12,8 @@ from .models import (
     Parent, Student, ParentChildLink, Result, WeeklyMessage, ClassAttendance
 )
 from .serializers import ParentChildLinkSerializer, WeeklyMessageSerializer
-from finances.models import StudentFee, Payment
+from finances.models import StudentFee, Payment, StudentPaymentRecord, PaymentTransaction
+from finances.fee_calculator import build_school_fee_breakdown, get_additional_fees_for_student
 
 
 @api_view(['GET'])
@@ -512,28 +513,62 @@ def child_fees(request, child_id):
         # Verify this child belongs to the parent and is confirmed
         link = ParentChildLink.objects.get(parent=parent, student_id=child_id, is_confirmed=True)
         student = link.student
-        
-        # Get all fees for this student
+        school = request.user.school
+
+        # Legacy per-student fees (still supported)
         student_fees = StudentFee.objects.filter(student=student)
-        
-        # Calculate totals
-        total_fees = sum(fee.amount_due for fee in student_fees)
-        total_paid = sum(fee.amount_paid for fee in student_fees)
-        
-        # Include additional fees
-        from finances.models import AdditionalFee
-        from django.db.models import Q
-        additional_fees = AdditionalFee.objects.filter(
-            school=request.user.school,
-            is_paid=False
-        ).filter(Q(student=student) | Q(student_class=student.student_class))
+
+        fee_breakdown = build_school_fee_breakdown(student, school, parent=parent)
+        additional_fees = get_additional_fees_for_student(student, school)
+
+        legacy_total_fees = sum(float(fee.amount_due) for fee in student_fees)
+        school_fee_total = float(fee_breakdown['total_school_fee'])
         additional_fees_total = sum(float(f.amount) for f in additional_fees)
-        
-        total_fees = float(total_fees) + additional_fees_total
-        outstanding = total_fees - float(total_paid)
+        total_fees = school_fee_total + additional_fees_total + legacy_total_fees
+
+        # Paid amounts from both legacy and new payment-record paths.
+        legacy_paid = sum(float(fee.amount_paid) for fee in student_fees)
+        payment_records_paid = sum(
+            float(record.amount_paid) for record in StudentPaymentRecord.objects.filter(
+                student=student,
+                school=school,
+            )
+        )
+        total_paid = legacy_paid + payment_records_paid
+        outstanding = max(total_fees - total_paid, 0)
         
         # Build fees list
+        today_str = timezone.now().date().strftime('%Y-%m-%d')
         fees_list = []
+
+        # Current school fee structure (applies by child residence type)
+        if fee_breakdown['school_fee']:
+            fees_list.extend([
+                {'id': 'sf-tuition', 'type': 'Tuition Fee', 'amount': float(fee_breakdown['tuition']), 'due_date': today_str, 'status': 'pending'},
+                {'id': 'sf-levy', 'type': 'Levy Fee', 'amount': float(fee_breakdown['levy']), 'due_date': today_str, 'status': 'pending'},
+                {'id': 'sf-sports', 'type': 'Sports Fee', 'amount': float(fee_breakdown['sports']), 'due_date': today_str, 'status': 'pending'},
+                {'id': 'sf-computer', 'type': 'Computer Fee', 'amount': float(fee_breakdown['computer']), 'due_date': today_str, 'status': 'pending'},
+                {'id': 'sf-other', 'type': 'Other Fees', 'amount': float(fee_breakdown['other']), 'due_date': today_str, 'status': 'pending'},
+            ])
+
+            if fee_breakdown['boarding_applied'] and fee_breakdown['boarding'] > 0:
+                fees_list.append({
+                    'id': 'sf-boarding',
+                    'type': 'Boarding Fee',
+                    'amount': float(fee_breakdown['boarding']),
+                    'due_date': today_str,
+                    'status': 'pending',
+                })
+
+            if fee_breakdown['transport'] > 0:
+                fees_list.append({
+                    'id': 'sf-transport',
+                    'type': 'Transport Fee',
+                    'amount': float(fee_breakdown['transport']),
+                    'due_date': today_str,
+                    'status': 'pending',
+                })
+
         for fee in student_fees:
             fee_status = 'paid' if fee.is_paid else 'pending'
             if not fee.is_paid and fee.due_date < timezone.now().date():
@@ -572,6 +607,19 @@ def child_fees(request, child_id):
                 'amount': float(payment.amount),
                 'date': payment.payment_date.strftime('%Y-%m-%d')
             })
+
+        payment_transactions = PaymentTransaction.objects.filter(
+            payment_record__student=student,
+            payment_record__school=school,
+        ).order_by('-payment_date')[:20]
+        for tx in payment_transactions:
+            payment_history.append({
+                'id': f'ptr-{tx.id}',
+                'description': f"{tx.payment_record.get_payment_type_display()} payment",
+                'amount': float(tx.amount),
+                'date': tx.payment_date.strftime('%Y-%m-%d')
+            })
+        payment_history = sorted(payment_history, key=lambda p: p['date'], reverse=True)
         
         data = {
             'total_fees': float(total_fees),
@@ -579,7 +627,18 @@ def child_fees(request, child_id):
             'outstanding': float(outstanding),
             'fees': fees_list,
             'payment_history': payment_history,
-            'additional_fees_total': additional_fees_total
+            'additional_fees_total': additional_fees_total,
+            'residence_type': student.residence_type,
+            'transport': {
+                'available': bool(fee_breakdown['transport_available']),
+                'configured_amount': float(fee_breakdown['transport_configured']),
+                'include_transport_fee': bool(fee_breakdown['transport_opted_in']),
+                'applied_amount': float(fee_breakdown['transport']),
+            },
+            'boarding': {
+                'applied': bool(fee_breakdown['boarding_applied']),
+                'amount': float(fee_breakdown['boarding']),
+            },
         }
         
         return Response(data)

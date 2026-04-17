@@ -4,10 +4,6 @@ function getToken() {
   return localStorage.getItem('token');
 }
 
-function getRefreshToken() {
-  return localStorage.getItem('refresh_token');
-}
-
 // Handle 401 — clear auth and redirect to login
 function handleAuthExpired() {
   localStorage.removeItem('token');
@@ -241,6 +237,8 @@ const apiService = {
   setWhatsAppPin: (data) => request("/auth/profile/set-whatsapp-pin/", "POST", data),
 
   fetchUsers: () => request("/auth/users/", "GET"),
+  createManagedUser: (userData) => request("/auth/users/", "POST", userData),
+  updateManagedUser: (userId, userData) => request(`/auth/users/${userId}/`, "PATCH", userData),
   deleteUser: (userId) => request(`/auth/users/${userId}/delete/`, "DELETE"),
 
   getDashboardStats: () => request("/auth/dashboard/stats/", "GET"),
@@ -462,6 +460,7 @@ const apiService = {
   },
   getInvoiceDetail: (id) => request(`/finances/invoices/${id}/detail/`, "GET"),
   getParentInvoices: () => request("/finances/invoices/parent/", "GET"),
+  updateParentTransportPreference: (childId, data) => request(`/finances/transport-preferences/${childId}/`, "PUT", data),
 
   // Additional Fees endpoints
   getAdditionalFees: (params = {}) => {
@@ -540,6 +539,24 @@ const apiService = {
     formData.append('file', file);
     return requestMultipart("/auth/school/report-config/upload/", "POST", formData);
   },
+
+  // Report card templates (shareable across tenants)
+  getReportCardTemplates: () => request("/auth/school/report-templates/", "GET"),
+  saveReportCardTemplate: (data) => request("/auth/school/report-templates/", "POST", data),
+  applyReportCardTemplate: (id) => request(`/auth/school/report-templates/${id}/`, "POST"),
+  deleteReportCardTemplate: (id) => request(`/auth/school/report-templates/${id}/`, "DELETE"),
+
+  // Subject groups (used for grouped report card sections)
+  getSubjectGroups: () => request("/auth/school/subject-groups/", "GET"),
+  saveSubjectGroup: (data) => request("/auth/school/subject-groups/", "POST", data),
+  deleteSubjectGroup: (id) => request(`/auth/school/subject-groups/${id}/`, "DELETE"),
+
+  // Per-subject teacher feedback (comment + effort grade)
+  getSubjectFeedback: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/teachers/subject-feedback/${q ? '?' + q : ''}`, "GET");
+  },
+  saveSubjectFeedback: (data) => request("/teachers/subject-feedback/save/", "POST", data),
 
   // Audit logs (admin)
   getAuditLogs: (params = {}) => {

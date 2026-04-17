@@ -1069,173 +1069,429 @@ def _get_report_config(school):
         return None
 
 
+def _cfg(cfg, attr, default):
+    """Safe getattr for config or default."""
+    return getattr(cfg, attr, default) if cfg else default
+
+
+def _font_name(family, bold=False, italic=False):
+    """Map font_family config → reportlab built-in font."""
+    if family == 'sans':
+        base = 'Helvetica'
+    elif family == 'elegant':
+        base = 'Times-Roman'
+        italic = True  # elegant is italic-leaning
+    else:
+        base = 'Times-Roman'  # serif
+    if bold and italic:
+        suffix = '-BoldOblique' if base == 'Helvetica' else '-BoldItalic'
+    elif bold:
+        suffix = '-Bold'
+    elif italic:
+        suffix = '-Oblique' if base == 'Helvetica' else '-Italic'
+    else:
+        suffix = ''
+    return base + suffix
+
+
+def _font_scale(scale):
+    return {'compact': 0.88, 'normal': 1.0, 'large': 1.12}.get(scale, 1.0)
+
+
+def _compute_class_position(student, year, term):
+    """Return (rank, class_size) for this student in their class for the term."""
+    from django.db.models import Sum, F, FloatField, ExpressionWrapper
+    if not student.student_class_id:
+        return None, None
+    class_students = Student.objects.filter(
+        student_class_id=student.student_class_id, user__is_active=True,
+    ).values_list('id', flat=True)
+    totals = {}
+    for r in Result.objects.filter(
+        student_id__in=class_students, academic_year=year,
+        academic_term=term, include_in_report=True, max_score__gt=0,
+    ).values('student_id', 'score', 'max_score'):
+        pct = (r['score'] / r['max_score']) * 100 if r['max_score'] else 0
+        totals.setdefault(r['student_id'], []).append(pct)
+    averages = [(sid, sum(v) / len(v)) for sid, v in totals.items() if v]
+    if not averages:
+        return None, None
+    averages.sort(key=lambda x: x[1], reverse=True)
+    for i, (sid, _) in enumerate(averages, start=1):
+        if sid == student.id:
+            return i, len(averages)
+    return None, len(averages)
+
+
+def _previous_term(term):
+    return {'Term 2': 'Term 1', 'Term 3': 'Term 2'}.get(term)
+
+
+def _previous_term_averages(student, year, prev_term):
+    """Return {subject_name: pct} for the student's previous term."""
+    if not prev_term:
+        return {}
+    out = {}
+    for r in Result.objects.filter(
+        student=student, academic_year=year, academic_term=prev_term,
+        include_in_report=True,
+    ).select_related('subject'):
+        out.setdefault(r.subject.name, []).append(
+            (r.score / r.max_score * 100) if r.max_score else 0.0
+        )
+    return {k: round(sum(v) / len(v), 1) for k, v in out.items() if v}
+
+
+def _class_subject_stats(student, year, term):
+    """Return {subject_name: (avg, high)} across the class for each subject."""
+    if not student.student_class_id:
+        return {}
+    out = {}
+    rows = Result.objects.filter(
+        student__student_class_id=student.student_class_id,
+        academic_year=year, academic_term=term, include_in_report=True, max_score__gt=0,
+    ).select_related('subject').values('subject__name', 'score', 'max_score', 'student_id')
+    by_subj = {}
+    for r in rows:
+        pct = (r['score'] / r['max_score']) * 100
+        by_subj.setdefault(r['subject__name'], {}).setdefault(r['student_id'], []).append(pct)
+    for subj, per_student in by_subj.items():
+        student_avgs = [sum(v) / len(v) for v in per_student.values() if v]
+        if student_avgs:
+            out[subj] = (round(sum(student_avgs) / len(student_avgs), 1),
+                         round(max(student_avgs), 1))
+    return out
+
+
 def _build_report_card_pdf(student, results, school, year, term):
     """Build a single student report card PDF and return a BytesIO buffer (seeked to 0)."""
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, letter
+    from reportlab.lib.pagesizes import A4, letter, landscape
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm, mm
     from reportlab.platypus import (
-        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Frame, PageTemplate
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, Frame, PageTemplate,
     )
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
     from .grading import percentage_to_grade, score_to_percentage
+    from .models import SubjectTermFeedback, PromotionRecord
     from io import BytesIO
     import os
 
     cfg = _get_report_config(school)
 
     # ── Config values (with defaults) ───────────────────────────────
-    primary = cfg.primary_color if cfg else '#1d4ed8'
-    secondary = cfg.secondary_color if cfg else '#f3f4f6'
-    show_grading_key = cfg.show_grading_key if cfg else True
-    show_attendance = cfg.show_attendance if cfg else True
-    show_overall_avg = cfg.show_overall_average if cfg else True
-    show_grade_remark = cfg.show_grade_remark if cfg else True
-    show_exam_types = cfg.show_exam_types if cfg else True
-    highlight_pf = cfg.highlight_pass_fail if cfg else False
-    principal_name = cfg.principal_name if cfg else ''
-    principal_title = cfg.principal_title if cfg else 'Head of School'
-    show_class_teacher = cfg.show_class_teacher if cfg else True
-    teacher_comment = cfg.teacher_comments_default if cfg else ''
-    principal_comment = cfg.principal_comments_default if cfg else ''
-    show_next_term = cfg.show_next_term_dates if cfg else True
-    footer_text = cfg.custom_footer_text if cfg else ''
-    watermark = cfg.watermark_text if cfg else ''
-    border_style = cfg.border_style if cfg else 'simple'
-    show_conduct = cfg.show_conduct_section if cfg else False
-    show_activities = cfg.show_activities_section if cfg else False
+    primary = _cfg(cfg, 'primary_color', '#1d4ed8')
+    secondary = _cfg(cfg, 'secondary_color', '#f3f4f6')
+    grad_start = _cfg(cfg, 'gradient_start_color', primary)
+    grad_end = _cfg(cfg, 'gradient_end_color', primary)
+    header_style_kind = _cfg(cfg, 'header_style', 'solid')
+    font_family = _cfg(cfg, 'font_family', 'serif')
+    font_scale_k = _font_scale(_cfg(cfg, 'font_size_scale', 'normal'))
+    page_size_name = _cfg(cfg, 'page_size', 'A4')
+    orientation = _cfg(cfg, 'page_orientation', 'portrait')
+    one_page_fit = _cfg(cfg, 'one_page_fit', False)
+    if one_page_fit:
+        font_scale_k *= 0.9
+    show_grading_key = _cfg(cfg, 'show_grading_key', True)
+    show_attendance = _cfg(cfg, 'show_attendance', True)
+    show_attendance_breakdown = _cfg(cfg, 'show_attendance_breakdown', False)
+    show_overall_avg = _cfg(cfg, 'show_overall_average', True)
+    show_position = _cfg(cfg, 'show_position', True)
+    show_class_avg = _cfg(cfg, 'show_class_average', False)
+    show_prev_term = _cfg(cfg, 'show_previous_term', False)
+    show_effort = _cfg(cfg, 'show_effort_grade', False)
+    show_chart = _cfg(cfg, 'show_subject_chart', False)
+    show_promotion = _cfg(cfg, 'show_promotion_status', False)
+    show_fees_status = _cfg(cfg, 'show_fees_status', False)
+    show_qr = _cfg(cfg, 'show_qr_code', False)
+    grouping_on = _cfg(cfg, 'subject_grouping_enabled', False)
+    show_grade_remark = _cfg(cfg, 'show_grade_remark', True)
+    show_exam_types = _cfg(cfg, 'show_exam_types', True)
+    highlight_pf = _cfg(cfg, 'highlight_pass_fail', False)
+    principal_name = _cfg(cfg, 'principal_name', '')
+    principal_title = _cfg(cfg, 'principal_title', 'Head of School')
+    show_class_teacher = _cfg(cfg, 'show_class_teacher', True)
+    teacher_comment = _cfg(cfg, 'teacher_comments_default', '')
+    principal_comment = _cfg(cfg, 'principal_comments_default', '')
+    show_next_term = _cfg(cfg, 'show_next_term_dates', True)
+    footer_text = _cfg(cfg, 'custom_footer_text', '')
+    watermark = _cfg(cfg, 'watermark_text', '')
+    border_style = _cfg(cfg, 'border_style', 'simple')
+    show_conduct = _cfg(cfg, 'show_conduct_section', False)
+    show_activities = _cfg(cfg, 'show_activities_section', False)
 
-    attendance_total = student.class_attendance_records.filter(date__isnull=False).count()
-    present_count = student.class_attendance_records.filter(status='present').count()
+    # ── Attendance ──
+    attendance_qs = student.class_attendance_records.filter(date__isnull=False)
+    attendance_total = attendance_qs.count()
+    present_count = attendance_qs.filter(status='present').count()
+    absent_count = attendance_qs.filter(status='absent').count()
+    late_count = attendance_qs.filter(status='late').count()
+
+    # ── Per-subject feedback (comments + effort) ──
+    feedback_map = {
+        fb.subject.name: fb for fb in SubjectTermFeedback.objects.filter(
+            student=student, academic_year=year, academic_term=term,
+        ).select_related('subject')
+    }
+
+    # ── Previous term data ──
+    prev_term = _previous_term(term) if show_prev_term else None
+    prev_averages = _previous_term_averages(student, year, prev_term) if prev_term else {}
+
+    # ── Class stats ──
+    class_stats = _class_subject_stats(student, year, term) if show_class_avg else {}
+
+    # ── Subject groups ──
+    subject_group_map = {}
+    if grouping_on:
+        from users.models import SubjectGroup
+        for sg in SubjectGroup.objects.filter(school=school).select_related('subject'):
+            subject_group_map[sg.subject.name] = sg.group_type
+
+    # ── Page setup ──
+    base_page = A4 if page_size_name == 'A4' else letter
+    pagesize = landscape(base_page) if orientation == 'landscape' else base_page
 
     buffer = BytesIO()
-    pagesize = A4
-    doc = SimpleDocTemplate(buffer, pagesize=pagesize, topMargin=1.5*cm, bottomMargin=1.5*cm,
-                            leftMargin=1.5*cm, rightMargin=1.5*cm)
+    doc = SimpleDocTemplate(buffer, pagesize=pagesize, topMargin=1.3*cm, bottomMargin=1.3*cm,
+                            leftMargin=1.3*cm, rightMargin=1.3*cm)
     styles = getSampleStyleSheet()
     elements = []
 
     primary_color = colors.HexColor(primary)
     secondary_color = colors.HexColor(secondary)
+    grad_start_c = colors.HexColor(grad_start)
+    grad_end_c = colors.HexColor(grad_end)
 
-    # ── Border / page decorator ─────────────────────────────────────
+    base_font = _font_name(font_family)
+    bold_font = _font_name(font_family, bold=True)
+
+    # ── Page decorator: watermark + border ──
     def _page_decorator(canvas, doc):
         canvas.saveState()
         w, h = pagesize
-        # Watermark
         if watermark:
-            canvas.setFont('Helvetica-Bold', 48)
+            canvas.setFont(bold_font, 48)
             canvas.setFillColor(colors.Color(0, 0, 0, alpha=0.04))
-            canvas.translate(w/2, h/2)
+            canvas.translate(w / 2, h / 2)
             canvas.rotate(45)
             canvas.drawCentredString(0, 0, watermark)
             canvas.restoreState()
             canvas.saveState()
-        # Border
         if border_style == 'simple':
             canvas.setStrokeColor(primary_color)
             canvas.setLineWidth(1.5)
-            canvas.rect(1*cm, 1*cm, w - 2*cm, h - 2*cm)
+            canvas.rect(1 * cm, 1 * cm, w - 2 * cm, h - 2 * cm)
         elif border_style == 'decorative':
             canvas.setStrokeColor(primary_color)
             canvas.setLineWidth(2.5)
-            canvas.rect(0.8*cm, 0.8*cm, w - 1.6*cm, h - 1.6*cm)
+            canvas.rect(0.8 * cm, 0.8 * cm, w - 1.6 * cm, h - 1.6 * cm)
             canvas.setLineWidth(0.5)
-            canvas.rect(1.1*cm, 1.1*cm, w - 2.2*cm, h - 2.2*cm)
+            canvas.rect(1.1 * cm, 1.1 * cm, w - 2.2 * cm, h - 2.2 * cm)
         canvas.restoreState()
 
     doc.addPageTemplates([
-        PageTemplate(id='decorated',
-                     frames=[Frame(1.5*cm, 1.5*cm, pagesize[0]-3*cm, pagesize[1]-3*cm,
-                                   id='main')],
-                     onPage=_page_decorator)
+        PageTemplate(
+            id='decorated',
+            frames=[Frame(1.3 * cm, 1.3 * cm, pagesize[0] - 2.6 * cm, pagesize[1] - 2.6 * cm, id='main')],
+            onPage=_page_decorator,
+        )
     ])
 
-    # ── Header with optional logo ───────────────────────────────────
-    header_style = ParagraphStyle('Header', parent=styles['Title'], fontSize=18,
-                                  spaceAfter=2, textColor=primary_color, alignment=TA_CENTER)
-    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], fontSize=11,
-                                spaceAfter=4, alignment=TA_CENTER)
+    # ── Header block ──
+    header_font_size = 18 * font_scale_k
+    sub_font_size = 11 * font_scale_k
+    header_text_color = colors.white if header_style_kind in ('gradient', 'banner') else primary_color
 
-    logo_position = cfg.logo_position if cfg else 'center'
+    header_para_style = ParagraphStyle(
+        'Header', parent=styles['Title'], fontName=bold_font,
+        fontSize=header_font_size, spaceAfter=2, textColor=header_text_color,
+        alignment=TA_CENTER,
+    )
+    sub_style = ParagraphStyle(
+        'Sub', parent=styles['Normal'], fontName=base_font, fontSize=sub_font_size,
+        spaceAfter=4, alignment=TA_CENTER,
+        textColor=header_text_color,
+    )
+
     logo_img = None
     if cfg and cfg.logo and hasattr(cfg.logo, 'path') and os.path.exists(cfg.logo.path):
         try:
-            logo_img = Image(cfg.logo.path, width=2.5*cm, height=2.5*cm)
+            logo_img = Image(cfg.logo.path, width=2.2 * cm, height=2.2 * cm)
         except Exception:
             logo_img = None
 
-    # Build motto paragraph
     motto_para = None
-    if cfg and cfg.school and hasattr(cfg.school, 'settings') and cfg.school.settings.school_motto:
-        motto_style = ParagraphStyle('Motto', parent=styles['Normal'], fontSize=8,
-                                      textColor=colors.grey, alignment=TA_CENTER, spaceAfter=4)
-        motto_para = Paragraph(f'<i>{cfg.school.settings.school_motto}</i>', motto_style)
+    if cfg and hasattr(school, 'settings') and getattr(school.settings, 'school_motto', ''):
+        motto_style = ParagraphStyle(
+            'Motto', parent=styles['Normal'], fontName=_font_name(font_family, italic=True),
+            fontSize=8 * font_scale_k, textColor=header_text_color,
+            alignment=TA_CENTER, spaceAfter=4,
+        )
+        motto_para = Paragraph(f'<i>{school.settings.school_motto}</i>', motto_style)
 
+    name_para = Paragraph(school.name, header_para_style)
+    term_para = Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style)
+
+    text_parts = [[name_para]]
+    if motto_para:
+        text_parts.append([motto_para])
+    text_parts.append([term_para])
+    full_w = pagesize[0] - 2.6 * cm
+
+    # Build the inner header table (logo + text arrangement)
+    logo_position = _cfg(cfg, 'logo_position', 'center')
     if logo_img and logo_position in ('left', 'right'):
-        # Logo beside school name using a table layout
-        from reportlab.platypus import KeepTogether
-        name_para = Paragraph(school.name, header_style)
-        term_para = Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style)
-        text_parts = [[name_para]]
-        if motto_para:
-            text_parts.append([motto_para])
-        text_parts.append([term_para])
-        text_col = Table(text_parts, colWidths=[13*cm])
-
+        logo_cell_w = 2.6 * cm
+        text_cell_w = full_w - logo_cell_w
+        text_col = Table(text_parts, colWidths=[text_cell_w])
         if logo_position == 'left':
-            header_data = [[logo_img, text_col]]
+            inner_data = [[logo_img, text_col]]
+            inner_widths = [logo_cell_w, text_cell_w]
         else:
-            header_data = [[text_col, logo_img]]
-
-        header_table = Table(header_data, colWidths=[3*cm, 13*cm] if logo_position == 'left' else [13*cm, 3*cm])
-        header_table.setStyle(TableStyle([
+            inner_data = [[text_col, logo_img]]
+            inner_widths = [text_cell_w, logo_cell_w]
+        inner = Table(inner_data, colWidths=inner_widths)
+        inner.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
-        elements.append(header_table)
     else:
-        # Centered layout (logo above name)
+        center_parts = []
         if logo_img:
             logo_img.hAlign = 'CENTER'
-            elements.append(logo_img)
-            elements.append(Spacer(1, 0.2*cm))
-        elements.append(Paragraph(school.name, header_style))
-        if motto_para:
-            elements.append(motto_para)
-        elements.append(Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style))
-    elements.append(Spacer(1, 0.4*cm))
+            center_parts.append([logo_img])
+        center_parts.extend(text_parts)
+        inner = Table(center_parts, colWidths=[full_w])
+        inner.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
 
-    # ── Student info table ──────────────────────────────────────────
+    # Wrap with a styled header based on header_style_kind
+    banner_img = None
+    if header_style_kind == 'banner' and cfg and cfg.banner_image and \
+            hasattr(cfg.banner_image, 'path') and os.path.exists(cfg.banner_image.path):
+        try:
+            banner_img = Image(cfg.banner_image.path, width=full_w, height=2.8 * cm)
+        except Exception:
+            banner_img = None
+
+    if banner_img:
+        elements.append(banner_img)
+        elements.append(Spacer(1, 0.15 * cm))
+        # Use primary-coloured text on top of a second copy of inner (no bg)
+        inner_plain_text_color = primary_color
+        # Rebuild text pieces with primary colour for banners (readable outside the banner)
+        header_para_style2 = ParagraphStyle('HeaderP', parent=header_para_style, textColor=inner_plain_text_color)
+        sub_style2 = ParagraphStyle('SubP', parent=sub_style, textColor=colors.black)
+        plain_parts = [[Paragraph(school.name, header_para_style2)]]
+        if motto_para:
+            motto_style2 = ParagraphStyle('MottoP', parent=motto_style, textColor=colors.grey)
+            plain_parts.append([Paragraph(f'<i>{school.settings.school_motto}</i>', motto_style2)])
+        plain_parts.append([Paragraph(f'Student Report Card &mdash; {term} {year}', sub_style2)])
+        inner = Table(plain_parts, colWidths=[full_w])
+        inner.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+        elements.append(inner)
+    elif header_style_kind == 'gradient':
+        # Draw a gradient band as a Drawing then overlay text — simplest: solid fill at average for now.
+        # reportlab Drawing supports LinearGradient via shapes.Rect? We'll approximate with a solid mid colour strip.
+        from reportlab.graphics.shapes import Rect, Drawing as GDraw
+        from reportlab.graphics.shapes import String as GString
+        mid_r = (grad_start_c.red + grad_end_c.red) / 2
+        mid_g = (grad_start_c.green + grad_end_c.green) / 2
+        mid_b = (grad_start_c.blue + grad_end_c.blue) / 2
+        band = GDraw(full_w, 2.8 * cm)
+        # 16 vertical strips to fake a gradient
+        steps = 16
+        for i in range(steps):
+            frac = i / (steps - 1)
+            r = grad_start_c.red + (grad_end_c.red - grad_start_c.red) * frac
+            g = grad_start_c.green + (grad_end_c.green - grad_start_c.green) * frac
+            b = grad_start_c.blue + (grad_end_c.blue - grad_start_c.blue) * frac
+            band.add(Rect(i * full_w / steps, 0, full_w / steps + 0.5, 2.8 * cm,
+                          fillColor=colors.Color(r, g, b), strokeColor=None))
+        elements.append(band)
+        elements.append(Spacer(1, -2.8 * cm))  # overlap text on top
+        inner.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(inner)
+    elif header_style_kind == 'solid' and header_text_color == colors.white:
+        # (not possible since solid uses primary text colour — we keep plain inner)
+        elements.append(inner)
+    else:
+        elements.append(inner)
+
+    elements.append(Spacer(1, 0.3 * cm))
+
+    # ── Student info table ──
     info_data = [
         ['Student Name:', student.user.full_name, 'Student Number:', student.user.student_number or '-'],
         ['Class:', student.student_class.name if student.student_class else '-', 'Gender:', student.gender or '-'],
     ]
     if show_attendance:
-        info_data.append(['Admission Date:', str(student.admission_date),
-                          'Attendance:', f'{present_count}/{attendance_total} days'])
+        att_val = f'{present_count}/{attendance_total} days'
+        if show_attendance_breakdown:
+            att_val = f'P:{present_count} A:{absent_count} L:{late_count} (of {attendance_total})'
+        info_data.append(['Admission Date:', str(student.admission_date), 'Attendance:', att_val])
     if show_class_teacher and student.student_class and student.student_class.class_teacher:
         ct = student.student_class.class_teacher
         info_data.append(['Class Teacher:', ct.full_name, '', ''])
 
-    info_table = Table(info_data, colWidths=[3*cm, 7*cm, 3.5*cm, 5*cm])
+    if show_position:
+        rank, size = _compute_class_position(student, year, term)
+        if rank:
+            suffix = 'th' if 10 <= rank % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(rank % 10, 'th')
+            info_data.append(['Position in Class:', f'{rank}{suffix} of {size}', '', ''])
+
+    if show_promotion:
+        promo = PromotionRecord.objects.filter(student=student, academic_year=year).order_by('-date_processed').first()
+        if promo:
+            info_data.append(['Promotion Status:',
+                              f'{promo.get_action_display()}'
+                              + (f' → {promo.to_class.name}' if promo.to_class else ''),
+                              '', ''])
+
+    if show_fees_status:
+        try:
+            from finances.models import StudentFee
+            fees = StudentFee.objects.filter(student=student, academic_year=year, academic_term=term)
+            due = sum((f.amount_due for f in fees), 0)
+            paid = sum((f.amount_paid for f in fees), 0)
+            bal = due - paid
+            currency = getattr(school.settings, 'currency', 'USD') if hasattr(school, 'settings') else 'USD'
+            info_data.append(['Fees Status:',
+                              f'{currency} {float(bal):.2f} outstanding' if bal > 0 else 'Fully Paid',
+                              '', ''])
+        except Exception:
+            pass
+
+    # Compute column widths based on page width
+    col_total = pagesize[0] - 2.6 * cm
+    info_table = Table(info_data, colWidths=[3 * cm, col_total / 2 - 3 * cm,
+                                              3.5 * cm, col_total / 2 - 3.5 * cm])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e0e7ff')),
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#e0e7ff')),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTNAME', (0, 0), (-1, -1), base_font),
+        ('FONTNAME', (0, 0), (0, -1), bold_font),
+        ('FONTNAME', (2, 0), (2, -1), bold_font),
+        ('FONTSIZE', (0, 0), (-1, -1), 9 * font_scale_k),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('PADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Spacer(1, 0.4 * cm))
 
-    # ── Results table ───────────────────────────────────────────────
-    elements.append(Paragraph('Academic Results', styles['Heading2']))
-
-    # ── Aggregate results per subject (combined score, max, %) ────────
-    from collections import defaultdict, OrderedDict
+    # ── Aggregate results per subject ──
+    from collections import OrderedDict
     subject_data = OrderedDict()
     for r in results:
         name = r.subject.name
@@ -1244,40 +1500,118 @@ def _build_report_card_pdf(student, results, school, year, term):
         subject_data[name]['score'] += r.score
         subject_data[name]['max_score'] += r.max_score
 
-    result_header = ['Subject', 'Score', 'Max Score', '%', 'Grade']
-    if show_grade_remark:
-        result_header.append('Remark')
+    # Organise by group if enabled
+    def _subject_list():
+        if grouping_on:
+            groups_order = ['core', 'language', 'elective', 'other']
+            buckets = {g: [] for g in groups_order}
+            ungrouped = []
+            for subj_name, data in subject_data.items():
+                g = subject_group_map.get(subj_name)
+                if g in buckets:
+                    buckets[g].append((subj_name, data))
+                else:
+                    ungrouped.append((subj_name, data))
+            for g in groups_order:
+                if buckets[g]:
+                    yield (g.capitalize(), buckets[g])
+            if ungrouped:
+                yield ('Other', ungrouped)
+        else:
+            yield (None, list(subject_data.items()))
 
-    result_rows = [result_header]
-    total_pct = 0
+    # ── Build results heading + table(s) ──
+    heading_style = ParagraphStyle('H2', parent=styles['Heading2'], fontName=bold_font,
+                                   fontSize=13 * font_scale_k, textColor=primary_color)
+    elements.append(Paragraph('Academic Results', heading_style))
+
+    def _build_results_header():
+        header = ['Subject', 'Score', 'Max', '%', 'Grade']
+        if show_grade_remark:
+            header.append('Remark')
+        if show_effort:
+            header.append('Effort')
+        if show_class_avg:
+            header.append('Class Avg')
+            header.append('Top')
+        if show_prev_term and prev_averages:
+            header.append('Last Term')
+            header.append('Trend')
+        return header
+
+    total_pct = 0.0
     subject_count = 0
-    row_colors = []  # for highlight_pass_fail
+    row_colors_all = []
+    any_rows = False
 
-    for subj_name, data in subject_data.items():
-        pct = score_to_percentage(data['score'], data['max_score'])
-        gi = percentage_to_grade(pct)
-        row = [subj_name, str(round(data['score'], 1)), str(round(data['max_score'], 1)), f'{pct}%', gi['grade']]
-        if show_grade_remark:
-            row.append(gi['description'])
-        result_rows.append(row)
-        row_colors.append(gi['colour'])
-        total_pct += pct
-        subject_count += 1
+    for group_label, items in _subject_list():
+        if group_label:
+            gh = ParagraphStyle('GH', parent=styles['Heading3'], fontName=bold_font,
+                                fontSize=10 * font_scale_k, textColor=colors.HexColor('#374151'),
+                                spaceBefore=4, spaceAfter=2)
+            elements.append(Paragraph(group_label, gh))
 
-    if len(result_rows) > 1:
-        col_widths = [4.5*cm, 2*cm, 2*cm, 1.8*cm, 1.5*cm]
-        if show_grade_remark:
-            col_widths.append(3*cm)
+        header = _build_results_header()
+        rows = [header]
+        row_colors = []
 
-        result_table = Table(result_rows, colWidths=col_widths)
+        for subj_name, data in items:
+            pct = score_to_percentage(data['score'], data['max_score'])
+            gi = percentage_to_grade(pct)
+            row = [subj_name,
+                   str(round(data['score'], 1)),
+                   str(round(data['max_score'], 1)),
+                   f'{pct}%',
+                   gi['grade']]
+            if show_grade_remark:
+                row.append(gi['description'])
+            if show_effort:
+                fb = feedback_map.get(subj_name)
+                row.append(fb.effort_grade if fb and fb.effort_grade else '-')
+            if show_class_avg:
+                stats = class_stats.get(subj_name)
+                row.append(f'{stats[0]}%' if stats else '-')
+                row.append(f'{stats[1]}%' if stats else '-')
+            if show_prev_term and prev_averages:
+                prev = prev_averages.get(subj_name)
+                if prev is None:
+                    row.append('-')
+                    row.append('-')
+                else:
+                    row.append(f'{prev}%')
+                    if pct > prev + 1:
+                        row.append('▲')
+                    elif pct < prev - 1:
+                        row.append('▼')
+                    else:
+                        row.append('►')
+            rows.append(row)
+            row_colors.append(gi['colour'])
+            total_pct += pct
+            subject_count += 1
+
+        if len(rows) <= 1:
+            continue
+        any_rows = True
+
+        # Column widths scale to fit page
+        ncols = len(header)
+        subj_col = 4 * cm
+        remaining = col_total - subj_col
+        rest_w = remaining / (ncols - 1)
+        col_widths = [subj_col] + [rest_w] * (ncols - 1)
+
+        result_table = Table(rows, colWidths=col_widths, repeatRows=1)
         table_style_cmds = [
             ('BACKGROUND', (0, 0), (-1, 0), primary_color),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (-1, 0), bold_font),
+            ('FONTNAME', (0, 1), (-1, -1), base_font),
+            ('FONTSIZE', (0, 0), (-1, -1), 8.5 * font_scale_k),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ALIGN', (-3, 0), (-1, -1), 'CENTER'),
-            ('PADDING', (0, 0), (-1, -1), 5),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('PADDING', (0, 0), (-1, -1), 4),
         ]
         if not highlight_pf:
             table_style_cmds.append(
@@ -1285,59 +1619,101 @@ def _build_report_card_pdf(student, results, school, year, term):
             )
         result_table.setStyle(TableStyle(table_style_cmds))
 
-        # Per-row colouring for pass/fail highlighting
         if highlight_pf:
             for i, colour_hex in enumerate(row_colors, start=1):
                 c = colors.HexColor(colour_hex)
-                light = colors.Color(c.red, c.green, c.blue, alpha=0.12)
+                light = colors.Color(c.red, c.green, c.blue, alpha=0.14)
                 result_table.setStyle(TableStyle([('BACKGROUND', (0, i), (-1, i), light)]))
 
         elements.append(result_table)
-        elements.append(Spacer(1, 0.3*cm))
+        elements.append(Spacer(1, 0.3 * cm))
+        row_colors_all.extend(row_colors)
 
-        if show_overall_avg and subject_count > 0:
-            avg_pct = round(total_pct / subject_count, 1)
-            avg_grade = percentage_to_grade(avg_pct)
-            elements.append(Paragraph(
-                f'<b>Overall Average:</b> {avg_pct}% &mdash; Grade {avg_grade["grade"]} ({avg_grade["description"]})',
-                styles['Normal']
-            ))
-    else:
+    if not any_rows:
         elements.append(Paragraph('No results recorded for this term.', styles['Normal']))
 
-    # ── Conduct section ─────────────────────────────────────────────
+    # ── Per-subject teacher comments ──
+    subj_comments = [(name, fb) for name, fb in feedback_map.items() if fb.comment]
+    if subj_comments:
+        elements.append(Spacer(1, 0.2 * cm))
+        sc_head = ParagraphStyle('SC', parent=styles['Heading3'], fontName=bold_font,
+                                 fontSize=10 * font_scale_k, textColor=primary_color,
+                                 spaceAfter=2)
+        elements.append(Paragraph('Subject Teacher Comments', sc_head))
+        for subj_name, fb in subj_comments:
+            c_style = ParagraphStyle('C', parent=styles['Normal'], fontName=base_font,
+                                     fontSize=8.5 * font_scale_k, leftIndent=8, spaceAfter=2)
+            elements.append(Paragraph(f'<b>{subj_name}:</b> {fb.comment}', c_style))
+
+    # ── Overall average ──
+    if show_overall_avg and subject_count > 0:
+        avg_pct = round(total_pct / subject_count, 1)
+        avg_grade = percentage_to_grade(avg_pct)
+        elements.append(Spacer(1, 0.15 * cm))
+        elements.append(Paragraph(
+            f'<b>Overall Average:</b> {avg_pct}% &mdash; Grade {avg_grade["grade"]} ({avg_grade["description"]})',
+            styles['Normal'],
+        ))
+
+    # ── Subject score bar chart ──
+    if show_chart and subject_count > 0:
+        elements.append(Spacer(1, 0.4 * cm))
+        chart_head = ParagraphStyle('CH', parent=styles['Heading3'], fontName=bold_font,
+                                    fontSize=10 * font_scale_k, textColor=primary_color)
+        elements.append(Paragraph('Subject Performance', chart_head))
+        names = []
+        values = []
+        for subj_name, data in subject_data.items():
+            names.append(subj_name[:10])
+            values.append(score_to_percentage(data['score'], data['max_score']))
+        d = Drawing(col_total, 4.5 * cm)
+        bc = VerticalBarChart()
+        bc.x = 30
+        bc.y = 15
+        bc.height = 90
+        bc.width = col_total - 60
+        bc.data = [values]
+        bc.categoryAxis.categoryNames = names
+        bc.categoryAxis.labels.fontSize = 7
+        bc.categoryAxis.labels.angle = 30
+        bc.categoryAxis.labels.dy = -6
+        bc.valueAxis.valueMin = 0
+        bc.valueAxis.valueMax = 100
+        bc.valueAxis.valueStep = 25
+        bc.bars[0].fillColor = primary_color
+        d.add(bc)
+        elements.append(d)
+
+    # ── Conduct & Activities placeholders ──
     if show_conduct:
-        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Spacer(1, 0.3 * cm))
         elements.append(Paragraph('Conduct &amp; Discipline', styles['Heading3']))
-        elements.append(Paragraph('___________________________________________________________', styles['Normal']))
-        elements.append(Spacer(1, 0.3*cm))
-
-    # ── Activities section ──────────────────────────────────────────
+        elements.append(Paragraph('_' * 80, styles['Normal']))
     if show_activities:
-        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Spacer(1, 0.3 * cm))
         elements.append(Paragraph('Extra-Curricular Activities', styles['Heading3']))
-        elements.append(Paragraph('___________________________________________________________', styles['Normal']))
-        elements.append(Spacer(1, 0.3*cm))
+        elements.append(Paragraph('_' * 80, styles['Normal']))
 
-    # ── Comments section ────────────────────────────────────────────
+    # ── General comments ──
     if teacher_comment or principal_comment:
-        elements.append(Spacer(1, 0.4*cm))
-        comment_style = ParagraphStyle('Comment', parent=styles['Normal'], fontSize=9, spaceAfter=6)
+        elements.append(Spacer(1, 0.3 * cm))
+        c_style = ParagraphStyle('Comment', parent=styles['Normal'], fontName=base_font,
+                                 fontSize=9 * font_scale_k, spaceAfter=5)
         if teacher_comment:
-            elements.append(Paragraph(f"<b>Class Teacher's Comment:</b> {teacher_comment}", comment_style))
+            elements.append(Paragraph(f"<b>Class Teacher's Comment:</b> {teacher_comment}", c_style))
         if principal_comment:
-            elements.append(Paragraph(f"<b>Head of School's Comment:</b> {principal_comment}", comment_style))
+            elements.append(Paragraph(f"<b>Head of School's Comment:</b> {principal_comment}", c_style))
 
-    # ── Next term dates ─────────────────────────────────────────────
+    # ── Next term dates ──
     if show_next_term and term != 'Term 3':
         try:
-            settings = school.settings
+            sschool = school.settings
             next_num = {'Term 1': 2, 'Term 2': 3}.get(term)
             if next_num:
-                ns = getattr(settings, f'term_{next_num}_start', None)
-                ne = getattr(settings, f'term_{next_num}_end', None)
+                ns = getattr(sschool, f'term_{next_num}_start', None)
+                ne = getattr(sschool, f'term_{next_num}_end', None)
                 if ns or ne:
-                    elements.append(Spacer(1, 0.3*cm))
+                    elements.append(Spacer(1, 0.2 * cm))
                     parts = [f'<b>Next Term (Term {next_num}):</b>']
                     if ns:
                         parts.append(f'Opens {ns.strftime("%d %B %Y")}')
@@ -1347,9 +1723,9 @@ def _build_report_card_pdf(student, results, school, year, term):
         except Exception:
             pass
 
-    # ── Grading key ─────────────────────────────────────────────────
+    # ── Grading key ──
     if show_grading_key:
-        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Spacer(1, 0.3 * cm))
         elements.append(Paragraph('Grading Key', styles['Heading3']))
         key_data = [
             ['Grade', 'Description', 'Range'],
@@ -1359,47 +1735,87 @@ def _build_report_card_pdf(student, results, school, year, term):
             ['D', 'Satisfactory', '40 - 49%'],
             ['E', 'Fail', '0 - 39%'],
         ]
-        key_table = Table(key_data, colWidths=[2*cm, 3.5*cm, 3*cm])
+        key_table = Table(key_data, colWidths=[2 * cm, 3.5 * cm, 3 * cm])
         key_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#374151')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTNAME', (0, 0), (-1, 0), bold_font),
+            ('FONTNAME', (0, 1), (-1, -1), base_font),
+            ('FONTSIZE', (0, 0), (-1, -1), 8 * font_scale_k),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('PADDING', (0, 0), (-1, -1), 3),
         ]))
         elements.append(key_table)
 
-    # ── Signature section ───────────────────────────────────────────
-    if principal_name:
-        elements.append(Spacer(1, 1*cm))
-        sig_data = [['', ''], ['_____________________', '_____________________'],
-                    ['Class Teacher', f'{principal_name}']]
-        if show_class_teacher and student.student_class and student.student_class.class_teacher:
-            sig_data[2][0] = student.student_class.class_teacher.full_name
-        sig_table = Table(sig_data, colWidths=[9*cm, 9*cm])
-        sig_table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ]))
-        elements.append(sig_table)
+    # ── Signature + QR row ──
+    qr_image = None
+    if show_qr:
+        try:
+            from django.core.signing import TimestampSigner
+            import qrcode
+            signer = TimestampSigner(salt='report-card')
+            token = signer.sign(f'{student.id}|{year}|{term}')
+            base_url = getattr(school, 'website', '') or 'https://tishanyq.co.zw'
+            verify_url = f'{base_url.rstrip("/")}/api/auth/reports/verify/{token}/'
+            qr = qrcode.QRCode(box_size=4, border=1)
+            qr.add_data(verify_url)
+            qr.make(fit=True)
+            qr_img_pil = qr.make_image(fill_color='black', back_color='white')
+            qr_buf = BytesIO()
+            qr_img_pil.save(qr_buf, format='PNG')
+            qr_buf.seek(0)
+            qr_image = Image(qr_buf, width=2.3 * cm, height=2.3 * cm)
+        except Exception:
+            qr_image = None
 
+    if principal_name:
+        elements.append(Spacer(1, 0.7 * cm))
+        teacher_name_text = ''
+        if show_class_teacher and student.student_class and student.student_class.class_teacher:
+            teacher_name_text = student.student_class.class_teacher.full_name
+
+        # three-column row: class teacher signature | qr (if any) | principal stamp+name
+        stamp_img = None
         if cfg and cfg.stamp_image and hasattr(cfg.stamp_image, 'path') and os.path.exists(cfg.stamp_image.path):
             try:
-                stamp = Image(cfg.stamp_image.path, width=2*cm, height=2*cm)
-                stamp.hAlign = 'RIGHT'
-                elements.append(stamp)
+                stamp_img = Image(cfg.stamp_image.path, width=1.8 * cm, height=1.8 * cm)
             except Exception:
-                pass
+                stamp_img = None
 
-    # ── Footer ──────────────────────────────────────────────────────
-    elements.append(Spacer(1, 0.6*cm))
+        sig_cells = [[
+            Paragraph(f'<br/><br/>_________________________<br/><b>{teacher_name_text}</b><br/>Class Teacher', styles['Normal']),
+            qr_image if qr_image else '',
+            Paragraph(
+                (f'<br/><br/>_________________________<br/><b>{principal_name}</b><br/>{principal_title}'),
+                styles['Normal'],
+            ),
+        ]]
+        third = col_total / 3
+        sig_table = Table(sig_cells, colWidths=[third, third, third])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9 * font_scale_k),
+        ]))
+        elements.append(sig_table)
+        if stamp_img:
+            stamp_img.hAlign = 'RIGHT'
+            elements.append(stamp_img)
+    elif qr_image:
+        elements.append(Spacer(1, 0.5 * cm))
+        qr_image.hAlign = 'RIGHT'
+        elements.append(qr_image)
+
+    # ── Footer ──
+    elements.append(Spacer(1, 0.4 * cm))
     footer_parts = [f'Generated on {timezone.now().strftime("%d %B %Y")}', school.name]
     if footer_text:
         footer_parts.append(footer_text)
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
-                                   textColor=colors.grey, alignment=TA_CENTER)
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontName=base_font,
+                                  fontSize=7.5 * font_scale_k, textColor=colors.grey,
+                                  alignment=TA_CENTER)
     elements.append(Paragraph(' | '.join(footer_parts), footer_style))
 
     doc.build(elements)

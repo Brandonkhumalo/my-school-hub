@@ -119,6 +119,7 @@ const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 // Teacher Pages
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
 const TeacherMarks = lazy(() => import("./pages/teacher/TeacherMarks"));
+const TeacherSubjectFeedback = lazy(() => import("./pages/teacher/TeacherSubjectFeedback"));
 const TeacherAttendance = lazy(() => import("./pages/teacher/TeacherAttendance"));
 const TeacherPerformance = lazy(() => import("./pages/teacher/TeacherPerformance"));
 const TeacherMessages = lazy(() => import("./pages/teacher/TeacherMessages"));
@@ -269,6 +270,7 @@ function App() {
         {/* Teacher Routes */}
         <Route path="/teacher" element={<RequireAuth allowedRoles={['teacher']}><TeacherDashboard /></RequireAuth>} />
         <Route path="/teacher/marks" element={<RequireAuth allowedRoles={['teacher']}><TeacherMarks /></RequireAuth>} />
+        <Route path="/teacher/report-feedback" element={<RequireAuth allowedRoles={['teacher']}><TeacherSubjectFeedback /></RequireAuth>} />
         <Route path="/teacher/attendance" element={<RequireAuth allowedRoles={['teacher']}><TeacherAttendance /></RequireAuth>} />
         <Route path="/teacher/performance" element={<RequireAuth allowedRoles={['teacher']}><TeacherPerformance /></RequireAuth>} />
         <Route path="/teacher/homework" element={<RequireAuth allowedRoles={['teacher']}><TeacherHomework /></RequireAuth>} />
@@ -317,6 +319,7 @@ function App() {
         <Route path="/hr/payroll" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
         <Route path="/hr/attendance" element={<RequireAuth allowedRoles={['hr']}><HRAttendance /></RequireAuth>} />
         <Route path="/hr/meetings" element={<RequireAuth allowedRoles={['hr']}><HRMeetings /></RequireAuth>} />
+        <Route path="/hr/users" element={<RequireAuth allowedRoles={['hr']}><AdminUsers /></RequireAuth>} />
         <Route path="/hr/visitor-logs" element={<RequireAuth allowedRoles={['hr']}><HRVisitorLogs /></RequireAuth>} />
         <Route path="/hr/incidents" element={<RequireAuth allowedRoles={['hr']}><HRIncidents /></RequireAuth>} />
         <Route path="/hr/cleaning" element={<RequireAuth allowedRoles={['hr']}><HRCleaningSchedules /></RequireAuth>} />

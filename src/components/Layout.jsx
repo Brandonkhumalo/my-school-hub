@@ -57,6 +57,7 @@ const ALL_MENU_ITEMS = {
     { section: null, items: [
       { path: "/teacher",              icon: "fa-home",             title: "Dashboard" },
       { path: "/teacher/marks",        icon: "fa-pen-square",       title: "Add Marks" },
+      { path: "/teacher/report-feedback", icon: "fa-comment-dots",  title: "Report Feedback" },
       { path: "/teacher/attendance",   icon: "fa-clipboard-check",  title: "Attendance" },
       { path: "/teacher/performance",  icon: "fa-chart-line",       title: "Performance" },
       { path: "/teacher/homework",     icon: "fa-book-open",        title: "Homework" },
@@ -131,6 +132,7 @@ const ALL_MENU_ITEMS = {
     ]},
     { section: "STAFF", items: [
       { path: "/hr/staff",       icon: "fa-users",            title: "Staff" },
+      { path: "/hr/users",       icon: "fa-user-cog",         title: "User Management" },
       { path: "/hr/leaves",      icon: "fa-calendar-minus",   title: "Leave Requests" },
       { path: "/hr/payroll",     icon: "fa-money-bill-wave",  title: "Payroll" },
       { path: "/hr/attendance",  icon: "fa-clipboard-check",  title: "Attendance" },

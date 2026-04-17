@@ -4,9 +4,146 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
 
 const today = new Date().toISOString().split("T")[0];
+const studentSearchPlaceholder = "Search by name, surname, or student #";
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function filterOptions(options, query, includeValues = []) {
+  const normalizedQuery = (query || "").trim().toLowerCase();
+  const includedSet = new Set((Array.isArray(includeValues) ? includeValues : [includeValues]).filter(Boolean));
+
+  const filtered = normalizedQuery
+    ? options.filter((opt) => opt.label.toLowerCase().includes(normalizedQuery))
+    : [...options];
+
+  if (includedSet.size === 0) return filtered;
+
+  const existingValues = new Set(filtered.map((opt) => opt.value));
+  const missingIncluded = options.filter((opt) => includedSet.has(opt.value) && !existingValues.has(opt.value));
+  return [...filtered, ...missingIncluded];
+}
+
+function SearchableStudentSelect({
+  options,
+  value,
+  onChange,
+  searchValue,
+  onSearchChange,
+  selectPlaceholder = "Select student",
+  optional = false,
+}) {
+  const filteredOptions = useMemo(
+    () => filterOptions(options, searchValue, value ? [value] : []),
+    [options, searchValue, value]
+  );
+
+  return (
+    <div className="space-y-2">
+      <input
+        className="w-full border rounded px-3 py-2"
+        placeholder={studentSearchPlaceholder}
+        value={searchValue}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      <select
+        className="w-full border rounded px-3 py-2"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{optional ? `${selectPlaceholder} (optional)` : selectPlaceholder}</option>
+        {filteredOptions.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function SearchableStudentTagPicker({
+  options,
+  selectedValues,
+  onValuesChange,
+  searchValue,
+  onSearchChange,
+  selectPlaceholder,
+}) {
+  const [pendingSelection, setPendingSelection] = useState("");
+
+  const selectedValueSet = useMemo(
+    () => new Set((selectedValues || []).map((value) => String(value))),
+    [selectedValues]
+  );
+
+  const filteredOptions = useMemo(() => {
+    const pool = filterOptions(options, searchValue);
+    return pool.filter((opt) => !selectedValueSet.has(opt.value));
+  }, [options, searchValue, selectedValueSet]);
+
+  const selectedLabels = useMemo(() => {
+    const optionMap = new Map(options.map((opt) => [opt.value, opt.label]));
+    return (selectedValues || []).map((studentId) => {
+      const key = String(studentId);
+      return { value: studentId, label: optionMap.get(key) || `Student #${studentId}` };
+    });
+  }, [options, selectedValues]);
+
+  const addStudent = (value) => {
+    if (!value) return;
+    const numericId = Number(value);
+    if (!Number.isFinite(numericId)) return;
+    if (selectedValues.includes(numericId)) {
+      setPendingSelection("");
+      return;
+    }
+    onValuesChange([...selectedValues, numericId]);
+    setPendingSelection("");
+  };
+
+  const removeStudent = (studentId) => {
+    onValuesChange(selectedValues.filter((id) => id !== studentId));
+  };
+
+  return (
+    <div className="space-y-2">
+      <input
+        className="w-full border rounded px-3 py-2"
+        placeholder={studentSearchPlaceholder}
+        value={searchValue}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      <select
+        className="w-full border rounded px-3 py-2"
+        value={pendingSelection}
+        onChange={(e) => addStudent(e.target.value)}
+      >
+        <option value="">{selectPlaceholder}</option>
+        {filteredOptions.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {selectedLabels.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedLabels.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className="px-2 py-1 text-xs rounded bg-slate-100 text-slate-700 hover:bg-slate-200"
+              onClick={() => removeStudent(item.value)}
+              title="Remove"
+            >
+              {item.label} x
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BoardingOperations({ title = "Boarding Operations" }) {
@@ -15,7 +152,6 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
 
   const [mealMenus, setMealMenus] = useState([]);
   const [mealAttendance, setMealAttendance] = useState([]);
-  const [dietary, setDietary] = useState(null);
 
   const [dormitories, setDormitories] = useState([]);
   const [dormAssignments, setDormAssignments] = useState([]);
@@ -39,12 +175,15 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
   const [dormInspections, setDormInspections] = useState([]);
   const [wellnessCheckins, setWellnessCheckins] = useState([]);
 
-  const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedMenuId, setSelectedMenuId] = useState("");
 
   const [menuForm, setMenuForm] = useState({ date: today, meal_type: "breakfast", menu_text: "" });
-  const [mealAttendanceForm, setMealAttendanceForm] = useState({ status: "ate" });
-  const [dietaryForm, setDietaryForm] = useState({ allergies: "", special_diet: "", notes: "" });
+  const [mealBulkForm, setMealBulkForm] = useState({
+    absent_student_ids: [],
+    excused_student_ids: [],
+    mark_unlisted_as_ate: true,
+  });
+  const [mealSearch, setMealSearch] = useState({ absent: "", excused: "" });
 
   const [dormForm, setDormForm] = useState({ name: "", gender: "mixed", capacity: 0, is_active: true });
   const [assignmentForm, setAssignmentForm] = useState({ student: "", dormitory: "", room_name: "", bed_name: "", start_date: today, is_active: true });
@@ -66,11 +205,42 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
   const [inspectionForm, setInspectionForm] = useState({ dormitory: "", inspection_date: today, score: 0, max_score: 10, notes: "" });
   const [wellnessForm, setWellnessForm] = useState({ student: "", check_date: today, mood_score: 3, notes: "" });
 
+  const [studentSearch, setStudentSearch] = useState({
+    assignment: "",
+    rollCall: "",
+    lightsOut: "",
+    exeat: "",
+    exeatLog: "",
+    sickbay: "",
+    medication: "",
+    lostItem: "",
+    prep: "",
+    wellness: "",
+  });
+
   const students = safeArray(summary.students);
 
-  const studentOptions = useMemo(() => students.map((s) => ({ label: `${s.full_name} (${s.student_number})`, value: String(s.id) })), [students]);
+  const studentOptions = useMemo(
+    () => students.map((s) => ({ label: `${s.full_name} (${s.student_number})`, value: String(s.id) })),
+    [students]
+  );
 
-  const walletOptions = useMemo(() => wallets.map((w) => ({ label: `${w.student_name} (${w.student_number})`, value: String(w.id) })), [wallets]);
+  const walletOptions = useMemo(
+    () => wallets.map((w) => ({ label: `${w.student_name} (${w.student_number})`, value: String(w.id) })),
+    [wallets]
+  );
+
+  const mealStatusCounts = useMemo(() => {
+    const counts = { ate: 0, absent: 0, excused: 0 };
+    for (const row of mealAttendance) {
+      if (row?.status in counts) counts[row.status] += 1;
+    }
+    return counts;
+  }, [mealAttendance]);
+
+  const setStudentSearchField = (field, value) => {
+    setStudentSearch((prev) => ({ ...prev, [field]: value }));
+  };
 
   const refreshAll = async () => {
     const summaryData = await apiService.getBoardingSummary();
@@ -148,40 +318,22 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
   }, []);
 
   useEffect(() => {
-    if (!selectedMenuId) return;
+    if (!selectedMenuId) {
+      setMealAttendance([]);
+      return;
+    }
+
     const loadMenuAttendance = async () => {
       try {
         const rows = await apiService.getBoardingMealAttendance({ meal_menu_id: selectedMenuId });
         setMealAttendance(safeArray(rows));
-      } catch (error) {
+      } catch {
         setMealAttendance([]);
       }
     };
+
     loadMenuAttendance();
   }, [selectedMenuId]);
-
-  useEffect(() => {
-    if (!selectedStudentId) {
-      setDietary(null);
-      setDietaryForm({ allergies: "", special_diet: "", notes: "" });
-      return;
-    }
-    const loadDietary = async () => {
-      try {
-        const data = await apiService.getDietaryFlag(selectedStudentId);
-        setDietary(data);
-        setDietaryForm({
-          allergies: data?.allergies || "",
-          special_diet: data?.special_diet || "",
-          notes: data?.notes || "",
-        });
-      } catch {
-        setDietary(null);
-        setDietaryForm({ allergies: "", special_diet: "", notes: "" });
-      }
-    };
-    loadDietary();
-  }, [selectedStudentId]);
 
   const submitAction = async (fn, payload, onSuccess) => {
     try {
@@ -193,31 +345,37 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
     }
   };
 
-  const submitMealAttendance = async () => {
-    if (!selectedMenuId || !selectedStudentId) {
-      alert("Select a meal menu and student first.");
+  const submitMealAttendanceBulk = async () => {
+    if (!selectedMenuId) {
+      alert("Select a meal menu first.");
       return;
     }
+
     await submitAction(apiService.saveBoardingMealAttendance, {
       meal_menu_id: Number(selectedMenuId),
-      attendance: [{ student_id: Number(selectedStudentId), status: mealAttendanceForm.status }],
+      absent_student_ids: mealBulkForm.absent_student_ids,
+      excused_student_ids: mealBulkForm.excused_student_ids,
+      mark_unlisted_as_ate: mealBulkForm.mark_unlisted_as_ate,
     });
+
     const rows = await apiService.getBoardingMealAttendance({ meal_menu_id: selectedMenuId });
     setMealAttendance(safeArray(rows));
   };
 
-  const updateDietary = async () => {
-    if (!selectedStudentId) {
-      alert("Select a student first.");
-      return;
-    }
-    try {
-      const data = await apiService.updateDietaryFlag(selectedStudentId, dietaryForm);
-      setDietary(data);
-      await refreshAll();
-    } catch (error) {
-      alert(error.message || "Failed to update dietary profile.");
-    }
+  const updateAbsentStudents = (ids) => {
+    setMealBulkForm((prev) => ({
+      ...prev,
+      absent_student_ids: ids,
+      excused_student_ids: prev.excused_student_ids.filter((id) => !ids.includes(id)),
+    }));
+  };
+
+  const updateExcusedStudents = (ids) => {
+    setMealBulkForm((prev) => ({
+      ...prev,
+      excused_student_ids: ids,
+      absent_student_ids: prev.absent_student_ids.filter((id) => !ids.includes(id)),
+    }));
   };
 
   const decideExeat = async (id, status) => {
@@ -260,7 +418,8 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-800">Tier 1: Meals & Dietary</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Tier 1: Meals</h3>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input type="date" className="border rounded px-3 py-2" value={menuForm.date} onChange={(e) => setMenuForm({ ...menuForm, date: e.target.value })} />
             <select className="border rounded px-3 py-2" value={menuForm.meal_type} onChange={(e) => setMenuForm({ ...menuForm, meal_type: e.target.value })}>
@@ -270,37 +429,55 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
             </select>
             <button className="bg-blue-600 text-white rounded px-3 py-2" onClick={() => submitAction(apiService.createBoardingMealMenu, menuForm, () => setMenuForm({ ...menuForm, menu_text: "" }))}>Post Menu</button>
           </div>
+
           <textarea className="w-full border rounded px-3 py-2" rows={2} placeholder="Menu details" value={menuForm.menu_text} onChange={(e) => setMenuForm({ ...menuForm, menu_text: e.target.value })} />
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
             <select className="border rounded px-3 py-2" value={selectedMenuId} onChange={(e) => setSelectedMenuId(e.target.value)}>
               <option value="">Select meal menu</option>
               {mealMenus.map((m) => (
                 <option key={m.id} value={m.id}>{m.date} - {m.meal_type}</option>
               ))}
             </select>
-            <select className="border rounded px-3 py-2" value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
-              <option value="">Select student</option>
-              {studentOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <select className="border rounded px-3 py-2" value={mealAttendanceForm.status} onChange={(e) => setMealAttendanceForm({ ...mealAttendanceForm, status: e.target.value })}>
-              <option value="ate">Ate</option>
-              <option value="absent">Absent</option>
-              <option value="excused">Excused</option>
-            </select>
-            <button className="bg-green-600 text-white rounded px-3 py-2" onClick={submitMealAttendance}>Save Attendance</button>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={mealBulkForm.mark_unlisted_as_ate}
+                onChange={(e) => setMealBulkForm({ ...mealBulkForm, mark_unlisted_as_ate: e.target.checked })}
+              />
+              Mark unlisted students as Ate
+            </label>
+            <button className="bg-green-600 text-white rounded px-3 py-2" onClick={submitMealAttendanceBulk}>Save Bulk Attendance</button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input className="border rounded px-3 py-2" placeholder="Allergies" value={dietaryForm.allergies} onChange={(e) => setDietaryForm({ ...dietaryForm, allergies: e.target.value })} />
-            <input className="border rounded px-3 py-2" placeholder="Special diet" value={dietaryForm.special_diet} onChange={(e) => setDietaryForm({ ...dietaryForm, special_diet: e.target.value })} />
-            <button className="bg-purple-600 text-white rounded px-3 py-2" onClick={updateDietary}>Save Dietary Flag</button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="border rounded-lg p-3 space-y-2">
+              <p className="text-sm font-medium text-gray-700">Absent learners</p>
+              <SearchableStudentTagPicker
+                options={studentOptions}
+                selectedValues={mealBulkForm.absent_student_ids}
+                onValuesChange={updateAbsentStudents}
+                searchValue={mealSearch.absent}
+                onSearchChange={(value) => setMealSearch((prev) => ({ ...prev, absent: value }))}
+                selectPlaceholder="Add absent learner"
+              />
+            </div>
+            <div className="border rounded-lg p-3 space-y-2">
+              <p className="text-sm font-medium text-gray-700">Excused learners</p>
+              <SearchableStudentTagPicker
+                options={studentOptions}
+                selectedValues={mealBulkForm.excused_student_ids}
+                onValuesChange={updateExcusedStudents}
+                searchValue={mealSearch.excused}
+                onSearchChange={(value) => setMealSearch((prev) => ({ ...prev, excused: value }))}
+                selectPlaceholder="Add excused learner"
+              />
+            </div>
           </div>
-          <textarea className="w-full border rounded px-3 py-2" rows={2} placeholder="Diet notes" value={dietaryForm.notes} onChange={(e) => setDietaryForm({ ...dietaryForm, notes: e.target.value })} />
 
-          <p className="text-sm text-gray-500">Menus: {mealMenus.length} | Attendance records for selected menu: {mealAttendance.length}</p>
+          <p className="text-sm text-gray-500">
+            Menus: {mealMenus.length} | Attendance records for selected menu: {mealAttendance.length} | Ate: {mealStatusCounts.ate} | Absent: {mealStatusCounts.absent} | Excused: {mealStatusCounts.excused}
+          </p>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
@@ -317,10 +494,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <select className="border rounded px-3 py-2" value={assignmentForm.student} onChange={(e) => setAssignmentForm({ ...assignmentForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={assignmentForm.student}
+              onChange={(value) => setAssignmentForm({ ...assignmentForm, student: value })}
+              searchValue={studentSearch.assignment}
+              onSearchChange={(value) => setStudentSearchField("assignment", value)}
+              selectPlaceholder="Student"
+            />
             <select className="border rounded px-3 py-2" value={assignmentForm.dormitory} onChange={(e) => setAssignmentForm({ ...assignmentForm, dormitory: e.target.value })}>
               <option value="">Dormitory</option>
               {dormitories.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -332,10 +513,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <select className="border rounded px-3 py-2" value={rollCallForm.student} onChange={(e) => setRollCallForm({ ...rollCallForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={rollCallForm.student}
+              onChange={(value) => setRollCallForm({ ...rollCallForm, student: value })}
+              searchValue={studentSearch.rollCall}
+              onSearchChange={(value) => setStudentSearchField("rollCall", value)}
+              selectPlaceholder="Student"
+            />
             <input type="date" className="border rounded px-3 py-2" value={rollCallForm.call_date} onChange={(e) => setRollCallForm({ ...rollCallForm, call_date: e.target.value })} />
             <select className="border rounded px-3 py-2" value={rollCallForm.call_type} onChange={(e) => setRollCallForm({ ...rollCallForm, call_type: e.target.value })}>
               <option value="morning">Morning</option>
@@ -351,10 +536,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <select className="border rounded px-3 py-2" value={lightsOutForm.student} onChange={(e) => setLightsOutForm({ ...lightsOutForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={lightsOutForm.student}
+              onChange={(value) => setLightsOutForm({ ...lightsOutForm, student: value })}
+              searchValue={studentSearch.lightsOut}
+              onSearchChange={(value) => setStudentSearchField("lightsOut", value)}
+              selectPlaceholder="Student"
+            />
             <input type="date" className="border rounded px-3 py-2" value={lightsOutForm.date} onChange={(e) => setLightsOutForm({ ...lightsOutForm, date: e.target.value })} />
             <input type="time" className="border rounded px-3 py-2" value={lightsOutForm.in_bed_time} onChange={(e) => setLightsOutForm({ ...lightsOutForm, in_bed_time: e.target.value })} />
             <input className="border rounded px-3 py-2" placeholder="Remarks" value={lightsOutForm.remarks} onChange={(e) => setLightsOutForm({ ...lightsOutForm, remarks: e.target.value })} />
@@ -367,10 +556,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-800">Tier 1: Exeat & Movement</h3>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <select className="border rounded px-3 py-2" value={exeatForm.student} onChange={(e) => setExeatForm({ ...exeatForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={exeatForm.student}
+              onChange={(value) => setExeatForm({ ...exeatForm, student: value })}
+              searchValue={studentSearch.exeat}
+              onSearchChange={(value) => setStudentSearchField("exeat", value)}
+              selectPlaceholder="Student"
+            />
             <input type="date" className="border rounded px-3 py-2" value={exeatForm.date_from} onChange={(e) => setExeatForm({ ...exeatForm, date_from: e.target.value })} />
             <input type="date" className="border rounded px-3 py-2" value={exeatForm.date_to} onChange={(e) => setExeatForm({ ...exeatForm, date_to: e.target.value })} />
             <input className="border rounded px-3 py-2" placeholder="Collecting person" value={exeatForm.collecting_person} onChange={(e) => setExeatForm({ ...exeatForm, collecting_person: e.target.value })} />
@@ -410,10 +603,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
               <option value="">Approved Exeat</option>
               {exeatRequests.filter((r) => r.status === "approved").map((r) => <option key={r.id} value={r.id}>#{r.id} {r.student_name}</option>)}
             </select>
-            <select className="border rounded px-3 py-2" value={exeatLogForm.student} onChange={(e) => setExeatLogForm({ ...exeatLogForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={exeatLogForm.student}
+              onChange={(value) => setExeatLogForm({ ...exeatLogForm, student: value })}
+              searchValue={studentSearch.exeatLog}
+              onSearchChange={(value) => setStudentSearchField("exeatLog", value)}
+              selectPlaceholder="Student"
+            />
             <select className="border rounded px-3 py-2" value={exeatLogForm.action} onChange={(e) => setExeatLogForm({ ...exeatLogForm, action: e.target.value })}>
               <option value="sign_out">Sign Out</option>
               <option value="sign_in">Sign In</option>
@@ -428,10 +625,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-800">Tier 2: Sick Bay & Medication</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <select className="border rounded px-3 py-2" value={sickbayForm.student} onChange={(e) => setSickbayForm({ ...sickbayForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={sickbayForm.student}
+              onChange={(value) => setSickbayForm({ ...sickbayForm, student: value })}
+              searchValue={studentSearch.sickbay}
+              onSearchChange={(value) => setStudentSearchField("sickbay", value)}
+              selectPlaceholder="Student"
+            />
             <input className="border rounded px-3 py-2" placeholder="Complaint / symptoms" value={sickbayForm.complaint} onChange={(e) => setSickbayForm({ ...sickbayForm, complaint: e.target.value })} />
             <button className="bg-red-600 text-white rounded px-3 py-2" onClick={() => submitAction(apiService.createSickbayVisit, { ...sickbayForm, student: Number(sickbayForm.student) })}>Record Visit</button>
           </div>
@@ -442,10 +643,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <select className="border rounded px-3 py-2" value={medicationForm.student} onChange={(e) => setMedicationForm({ ...medicationForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={medicationForm.student}
+              onChange={(value) => setMedicationForm({ ...medicationForm, student: value })}
+              searchValue={studentSearch.medication}
+              onSearchChange={(value) => setStudentSearchField("medication", value)}
+              selectPlaceholder="Student"
+            />
             <input className="border rounded px-3 py-2" placeholder="Medication" value={medicationForm.medication_name} onChange={(e) => setMedicationForm({ ...medicationForm, medication_name: e.target.value })} />
             <input className="border rounded px-3 py-2" placeholder="Dosage" value={medicationForm.dosage} onChange={(e) => setMedicationForm({ ...medicationForm, dosage: e.target.value })} />
             <input type="time" className="border rounded px-3 py-2" value={medicationForm.administration_time} onChange={(e) => setMedicationForm({ ...medicationForm, administration_time: e.target.value })} />
@@ -486,10 +691,15 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select className="border rounded px-3 py-2" value={lostItemForm.student} onChange={(e) => setLostItemForm({ ...lostItemForm, student: e.target.value })}>
-              <option value="">Student (optional)</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={lostItemForm.student}
+              onChange={(value) => setLostItemForm({ ...lostItemForm, student: value })}
+              searchValue={studentSearch.lostItem}
+              onSearchChange={(value) => setStudentSearchField("lostItem", value)}
+              selectPlaceholder="Student"
+              optional
+            />
             <input className="border rounded px-3 py-2" placeholder="Item description" value={lostItemForm.item_description} onChange={(e) => setLostItemForm({ ...lostItemForm, item_description: e.target.value })} />
             <select className="border rounded px-3 py-2" value={lostItemForm.status} onChange={(e) => setLostItemForm({ ...lostItemForm, status: e.target.value })}>
               <option value="reported">Reported</option>
@@ -505,10 +715,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-800">Tier 3: Extra Boarding Ops</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select className="border rounded px-3 py-2" value={prepForm.student} onChange={(e) => setPrepForm({ ...prepForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={prepForm.student}
+              onChange={(value) => setPrepForm({ ...prepForm, student: value })}
+              searchValue={studentSearch.prep}
+              onSearchChange={(value) => setStudentSearchField("prep", value)}
+              selectPlaceholder="Student"
+            />
             <input type="date" className="border rounded px-3 py-2" value={prepForm.date} onChange={(e) => setPrepForm({ ...prepForm, date: e.target.value })} />
             <select className="border rounded px-3 py-2" value={prepForm.status} onChange={(e) => setPrepForm({ ...prepForm, status: e.target.value })}>
               <option value="present">Present</option>
@@ -530,10 +744,14 @@ export default function BoardingOperations({ title = "Boarding Operations" }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <select className="border rounded px-3 py-2" value={wellnessForm.student} onChange={(e) => setWellnessForm({ ...wellnessForm, student: e.target.value })}>
-              <option value="">Student</option>
-              {studentOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+            <SearchableStudentSelect
+              options={studentOptions}
+              value={wellnessForm.student}
+              onChange={(value) => setWellnessForm({ ...wellnessForm, student: value })}
+              searchValue={studentSearch.wellness}
+              onSearchChange={(value) => setStudentSearchField("wellness", value)}
+              selectPlaceholder="Student"
+            />
             <input type="date" className="border rounded px-3 py-2" value={wellnessForm.check_date} onChange={(e) => setWellnessForm({ ...wellnessForm, check_date: e.target.value })} />
             <select className="border rounded px-3 py-2" value={wellnessForm.mood_score} onChange={(e) => setWellnessForm({ ...wellnessForm, mood_score: Number(e.target.value) })}>
               <option value={1}>1 - Low</option>

@@ -197,26 +197,64 @@ class ReportCardConfig(models.Model):
         ('decorative', 'Decorative'),
         ('none', 'No Border'),
     ]
-
-    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name='report_config')
-
     LOGO_POSITION_CHOICES = [
         ('left', 'Left of School Name'),
         ('right', 'Right of School Name'),
         ('center', 'Centered Above Name'),
     ]
+    FONT_FAMILY_CHOICES = [
+        ('serif', 'Serif (Classic)'),
+        ('sans', 'Sans-Serif (Modern)'),
+        ('elegant', 'Elegant (Italic Serif)'),
+    ]
+    FONT_SCALE_CHOICES = [
+        ('compact', 'Compact'),
+        ('normal', 'Normal'),
+        ('large', 'Large'),
+    ]
+    HEADER_STYLE_CHOICES = [
+        ('solid', 'Solid Colour'),
+        ('gradient', 'Gradient'),
+        ('banner', 'Banner Image'),
+    ]
+    PAGE_SIZE_CHOICES = [('A4', 'A4'), ('letter', 'Letter')]
+    ORIENTATION_CHOICES = [('portrait', 'Portrait'), ('landscape', 'Landscape')]
+
+    school = models.OneToOneField(School, on_delete=models.CASCADE, related_name='report_config')
 
     # ── Branding ────────────────────────────────────────────────────
     logo = models.ImageField(upload_to='report_logos/', blank=True)
     stamp_image = models.ImageField(upload_to='report_stamps/', blank=True)
+    banner_image = models.ImageField(upload_to='report_banners/', blank=True)
     logo_position = models.CharField(max_length=10, choices=LOGO_POSITION_CHOICES, default='center')
     primary_color = models.CharField(max_length=7, default='#1d4ed8')
     secondary_color = models.CharField(max_length=7, default='#f3f4f6')
+    gradient_start_color = models.CharField(max_length=7, default='#1d4ed8')
+    gradient_end_color = models.CharField(max_length=7, default='#3b82f6')
+    header_style = models.CharField(max_length=10, choices=HEADER_STYLE_CHOICES, default='solid')
+
+    # ── Typography / page ───────────────────────────────────────────
+    font_family = models.CharField(max_length=10, choices=FONT_FAMILY_CHOICES, default='serif')
+    font_size_scale = models.CharField(max_length=10, choices=FONT_SCALE_CHOICES, default='normal')
+    page_size = models.CharField(max_length=10, choices=PAGE_SIZE_CHOICES, default='A4')
+    page_orientation = models.CharField(max_length=10, choices=ORIENTATION_CHOICES, default='portrait')
+    one_page_fit = models.BooleanField(default=False, help_text='Auto-shrink to one page')
+    template_preset = models.CharField(max_length=30, blank=True, help_text='Last applied preset name')
 
     # ── Layout ──────────────────────────────────────────────────────
     show_grading_key = models.BooleanField(default=True)
     show_attendance = models.BooleanField(default=True)
+    show_attendance_breakdown = models.BooleanField(default=False, help_text='Present/absent/late breakdown')
     show_overall_average = models.BooleanField(default=True)
+    show_position = models.BooleanField(default=True, help_text='Position in class')
+    show_class_average = models.BooleanField(default=False, help_text='Class average & highest columns')
+    show_previous_term = models.BooleanField(default=False, help_text='Previous-term trend column')
+    show_effort_grade = models.BooleanField(default=False, help_text='Effort/attitude grade per subject')
+    show_subject_chart = models.BooleanField(default=False, help_text='Bar chart of subject scores')
+    show_promotion_status = models.BooleanField(default=False)
+    show_fees_status = models.BooleanField(default=False, help_text='Show fees balance line')
+    show_qr_code = models.BooleanField(default=False, help_text='QR code linking to online verification')
+    subject_grouping_enabled = models.BooleanField(default=False, help_text='Group by Core/Electives/Languages')
 
     # ── Content ─────────────────────────────────────────────────────
     principal_name = models.CharField(max_length=120, blank=True)
@@ -224,6 +262,7 @@ class ReportCardConfig(models.Model):
     show_class_teacher = models.BooleanField(default=True)
     teacher_comments_default = models.TextField(blank=True, help_text='Default teacher comment on every report')
     principal_comments_default = models.TextField(blank=True, help_text='Default principal comment on every report')
+    comment_char_limit = models.IntegerField(default=250, help_text='Max chars for per-subject teacher comments')
     show_next_term_dates = models.BooleanField(default=True, help_text='Show next term opening/closing (hidden for Term 3)')
     custom_footer_text = models.CharField(max_length=255, blank=True)
 
@@ -240,6 +279,41 @@ class ReportCardConfig(models.Model):
 
     def __str__(self):
         return f"Report Card Config for {self.school.name}"
+
+
+class ReportCardTemplate(models.Model):
+    """Shareable report card templates — global across all tenants."""
+    name = models.CharField(max_length=80, unique=True)
+    description = models.CharField(max_length=255, blank=True)
+    config_json = models.JSONField(default=dict, help_text='Snapshot of ReportCardConfig field values')
+    is_builtin = models.BooleanField(default=False, help_text='System-provided presets cannot be deleted')
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_builtin', 'name']
+
+    def __str__(self):
+        return f"Template: {self.name}"
+
+
+class SubjectGroup(models.Model):
+    """Lets a school group subjects (Core / Electives / Languages) for report card sections."""
+    GROUP_TYPE_CHOICES = [
+        ('core', 'Core'),
+        ('elective', 'Electives'),
+        ('language', 'Languages'),
+        ('other', 'Other'),
+    ]
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name='subject_groups')
+    subject = models.ForeignKey('academics.Subject', on_delete=models.CASCADE, related_name='groups')
+    group_type = models.CharField(max_length=20, choices=GROUP_TYPE_CHOICES, default='core')
+
+    class Meta:
+        unique_together = ('school', 'subject')
+
+    def __str__(self):
+        return f"{self.subject.name} → {self.group_type}"
 
 
 class AuditLog(models.Model):

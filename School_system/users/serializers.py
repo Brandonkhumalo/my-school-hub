@@ -1,8 +1,10 @@
+from datetime import date
+
 from rest_framework import serializers
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser, School, SchoolSettings, ReportCardConfig
+from .models import CustomUser, School, SchoolSettings, ReportCardConfig, ReportCardTemplate, SubjectGroup
 from academics.models import Parent
 import random
 import secrets
@@ -87,6 +89,11 @@ class UserSerializer(serializers.ModelSerializer):
     school_code = serializers.SerializerMethodField()
     school_accommodation_type = serializers.SerializerMethodField()
     student_residence_type = serializers.SerializerMethodField()
+    salary = serializers.SerializerMethodField()
+    staff_position = serializers.SerializerMethodField()
+    employee_id = serializers.SerializerMethodField()
+    staff_department_id = serializers.SerializerMethodField()
+    staff_hire_date = serializers.SerializerMethodField()
     
     class Meta:
         """Represents Meta."""
@@ -95,7 +102,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'phone_number', 'role', 'student_number', 'is_active',
             'date_joined', 'password', 'school_name', 'school_code',
-            'school_accommodation_type', 'student_residence_type'
+            'school_accommodation_type', 'student_residence_type',
+            'salary', 'staff_position', 'employee_id', 'staff_department_id', 'staff_hire_date'
         ]
         read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'full_name', 'school_name', 'school_code']
         extra_kwargs = {
@@ -122,6 +130,261 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.student.residence_type
         except Exception:
             return None
+
+    def get_salary(self, obj):
+        try:
+            return float(obj.staff.salary)
+        except Exception:
+            return None
+
+    def get_staff_position(self, obj):
+        try:
+            return obj.staff.position
+        except Exception:
+            return None
+
+    def get_employee_id(self, obj):
+        try:
+            return obj.staff.employee_id
+        except Exception:
+            return None
+
+    def get_staff_department_id(self, obj):
+        try:
+            return obj.staff.department_id
+        except Exception:
+            return None
+
+    def get_staff_hire_date(self, obj):
+        try:
+            return obj.staff.hire_date
+        except Exception:
+            return None
+
+
+class ManagedUserSerializer(serializers.ModelSerializer):
+    """Admin/HR user management serializer with role-aware requirements."""
+    password = serializers.CharField(write_only=True, required=False, min_length=8)
+    salary = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    hire_date = serializers.DateField(required=False, allow_null=True)
+    department = serializers.IntegerField(required=False, allow_null=True)
+    staff_position = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            'id', 'username', 'email', 'password', 'first_name', 'last_name',
+            'phone_number', 'role', 'student_number', 'is_active',
+            'salary', 'hire_date', 'department', 'staff_position',
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {
+            'username': {'required': False, 'allow_blank': True},
+            'email': {'required': True},
+            'first_name': {'required': True},
+            'last_name': {'required': True},
+            'role': {'required': True},
+        }
+
+    STAFF_ROLES = {'teacher', 'admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian'}
+    POSITION_MAP = {
+        'teacher': {'teacher'},
+        'admin': {'admin', 'principal', 'secretary'},
+        'hr': {'hr', 'maintenance'},
+        'accountant': {'accountant'},
+        'security': {'security'},
+        'cleaner': {'cleaner'},
+        'librarian': {'librarian'},
+    }
+
+    @staticmethod
+    def _generate_student_number():
+        while True:
+            number = str(random.randint(100000, 999999))
+            if not CustomUser.objects.filter(student_number=number).exists():
+                return number
+
+    @staticmethod
+    def _generate_employee_id():
+        from staff.models import Staff
+        while True:
+            eid = 'EMP' + ''.join(secrets.choice(string.digits) for _ in range(5))
+            if not Staff.objects.filter(employee_id=eid).exists():
+                return eid
+
+    @staticmethod
+    def _make_username(first_name, last_name):
+        base = f"{first_name}.{last_name}".strip('.').lower().replace(' ', '')
+        base = base or "user"
+        candidate = base
+        suffix = 1
+        while CustomUser.objects.filter(username=candidate).exists():
+            candidate = f"{base}{suffix}"
+            suffix += 1
+        return candidate
+
+    def _resolve_position(self, role, staff_position):
+        if role not in self.STAFF_ROLES:
+            return None
+        allowed = self.POSITION_MAP.get(role, set())
+        if staff_position:
+            if staff_position not in allowed:
+                raise serializers.ValidationError({'staff_position': f'Invalid position for role {role}.'})
+            return staff_position
+        return sorted(list(allowed))[0] if allowed else role
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        is_create = self.instance is None
+        role = attrs.get('role', self.instance.role if self.instance else None)
+
+        if role == 'superadmin':
+            raise serializers.ValidationError({'role': 'Cannot create or edit superadmin via user management.'})
+
+        if is_create and not request:
+            raise serializers.ValidationError('Request context is required.')
+        if is_create and request and not request.user.school:
+            raise serializers.ValidationError({'school': 'No school associated with the current user.'})
+
+        salary = attrs.get('salary', None)
+        hire_date = attrs.get('hire_date', None)
+        if role in self.STAFF_ROLES:
+            if is_create and salary is None:
+                raise serializers.ValidationError({'salary': 'Salary is required for staff roles.'})
+            if is_create and hire_date is None:
+                raise serializers.ValidationError({'hire_date': 'Hire date is required for staff roles.'})
+        else:
+            attrs['salary'] = None
+            attrs['hire_date'] = None
+            attrs['department'] = None
+            attrs['staff_position'] = ''
+
+        if role == 'student':
+            student_number = attrs.get('student_number')
+            if not student_number and is_create:
+                attrs['student_number'] = self._generate_student_number()
+
+        if attrs.get('phone_number') == '':
+            attrs['phone_number'] = None
+        if attrs.get('student_number') == '':
+            attrs['student_number'] = None
+        if attrs.get('username') == '':
+            attrs['username'] = None
+
+        return attrs
+
+    def _ensure_staff_record(self, user, validated_data):
+        from staff.models import Staff, Department
+
+        role = user.role
+        if role not in self.STAFF_ROLES:
+            return
+
+        salary = validated_data.get('salary', None)
+        hire_date = validated_data.get('hire_date', None)
+        department_id = validated_data.get('department', None)
+        staff_position = validated_data.get('staff_position', '')
+        position = self._resolve_position(role, staff_position)
+
+        department = None
+        if department_id:
+            department = Department.objects.filter(id=department_id).first()
+            if department is None:
+                raise serializers.ValidationError({'department': 'Department not found.'})
+
+        staff = getattr(user, 'staff', None)
+        if staff is None:
+            if salary is None:
+                raise serializers.ValidationError({'salary': 'Salary is required for staff roles.'})
+            if hire_date is None:
+                hire_date = date.today()
+            staff = Staff.objects.create(
+                user=user,
+                employee_id=self._generate_employee_id(),
+                department=department,
+                position=position,
+                hire_date=hire_date,
+                salary=salary,
+                is_active=user.is_active,
+            )
+            return staff
+
+        if salary is not None:
+            staff.salary = salary
+        if hire_date is not None:
+            staff.hire_date = hire_date
+        if department_id is not None:
+            staff.department = department
+        staff.position = position
+        staff.is_active = user.is_active
+        staff.save(update_fields=['salary', 'hire_date', 'department', 'position', 'is_active'])
+        return staff
+
+    def create(self, validated_data):
+        from academics.models import Parent
+
+        request = self.context['request']
+        raw_password = validated_data.pop('password', None)
+        if not raw_password:
+            raise serializers.ValidationError({'password': 'Password is required.'})
+
+        salary = validated_data.pop('salary', None)
+        hire_date = validated_data.pop('hire_date', None)
+        department = validated_data.pop('department', None)
+        staff_position = validated_data.pop('staff_position', '')
+
+        username = validated_data.get('username')
+        if not username:
+            username = self._make_username(validated_data['first_name'], validated_data['last_name'])
+        validated_data['username'] = username
+        validated_data['school'] = request.user.school
+        validated_data['created_by'] = request.user
+
+        user = CustomUser.objects.create_user(**validated_data)
+        user.set_password(raw_password)
+        user.save(update_fields=['password'])
+
+        if user.role == 'parent':
+            Parent.objects.get_or_create(user=user)
+
+        self._ensure_staff_record(user, {
+            'salary': salary,
+            'hire_date': hire_date,
+            'department': department,
+            'staff_position': staff_position,
+        })
+        return user
+
+    def update(self, instance, validated_data):
+        from academics.models import Parent
+
+        raw_password = validated_data.pop('password', None)
+        salary = validated_data.pop('salary', None)
+        hire_date = validated_data.pop('hire_date', None)
+        department = validated_data.pop('department', None) if 'department' in validated_data else None
+        staff_position = validated_data.pop('staff_position', '')
+
+        old_role = instance.role
+        for field in ['email', 'first_name', 'last_name', 'phone_number', 'role', 'student_number', 'is_active']:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        if 'username' in validated_data and validated_data['username']:
+            instance.username = validated_data['username']
+
+        if raw_password:
+            instance.set_password(raw_password)
+        instance.save()
+
+        if instance.role == 'parent' and old_role != 'parent':
+            Parent.objects.get_or_create(user=instance)
+
+        self._ensure_staff_record(instance, {
+            'salary': salary,
+            'hire_date': hire_date,
+            'department': department,
+            'staff_position': staff_position,
+        })
+        return instance
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Represents UserRegistrationSerializer."""
@@ -294,6 +557,7 @@ class ReportCardConfigSerializer(serializers.ModelSerializer):
     """Represents ReportCardConfigSerializer."""
     logo_url = serializers.SerializerMethodField()
     stamp_url = serializers.SerializerMethodField()
+    banner_url = serializers.SerializerMethodField()
 
     class Meta:
         """Represents Meta."""
@@ -301,20 +565,35 @@ class ReportCardConfigSerializer(serializers.ModelSerializer):
         exclude = ['school']
         read_only_fields = ['id']
 
+    def _abs(self, field_file):
+        if not field_file:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(field_file.url)
+        return field_file.url
+
     def get_logo_url(self, obj):
-        """Return logo url."""
-        if obj.logo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.logo.url)
-            return obj.logo.url
-        return None
+        return self._abs(obj.logo)
 
     def get_stamp_url(self, obj):
-        """Return stamp url."""
-        if obj.stamp_image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.stamp_image.url)
-            return obj.stamp_image.url
-        return None
+        return self._abs(obj.stamp_image)
+
+    def get_banner_url(self, obj):
+        return self._abs(obj.banner_image)
+
+
+class ReportCardTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportCardTemplate
+        fields = ['id', 'name', 'description', 'config_json', 'is_builtin', 'created_at']
+        read_only_fields = ['id', 'is_builtin', 'created_at']
+
+
+class SubjectGroupSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+
+    class Meta:
+        model = SubjectGroup
+        fields = ['id', 'subject', 'subject_name', 'group_type']
+        read_only_fields = ['id', 'subject_name']

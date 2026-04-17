@@ -21,6 +21,7 @@ export default function AdminExtras() {
   
   const [schoolFees, setSchoolFees] = useState([]);
   const [schoolType, setSchoolType] = useState('combined');
+  const [schoolAccommodationType, setSchoolAccommodationType] = useState(user?.school_accommodation_type || 'day');
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [editingFee, setEditingFee] = useState(null);
   
@@ -54,6 +55,8 @@ export default function AdminExtras() {
     sports_fee: '0',
     computer_fee: '0',
     other_fees: '0',
+    boarding_fee: '0',
+    transport_fee: '0',
     academic_year: currentAcademicYear,
     academic_term: termMap[currentTerm] || 'term_1',
     currency: currency || 'USD'
@@ -72,6 +75,9 @@ export default function AdminExtras() {
       setTimetableStats(statsData);
       if (dashboardData.school_type) {
         setSchoolType(dashboardData.school_type);
+      }
+      if (dashboardData.school_accommodation_type) {
+        setSchoolAccommodationType(dashboardData.school_accommodation_type);
       }
     } catch (error) {
       console.error("Error loading data:", error);
@@ -131,7 +137,9 @@ export default function AdminExtras() {
         levy_fee: parseFloat(feeForm.levy_fee || 0),
         sports_fee: parseFloat(feeForm.sports_fee || 0),
         computer_fee: parseFloat(feeForm.computer_fee || 0),
-        other_fees: parseFloat(feeForm.other_fees || 0)
+        other_fees: parseFloat(feeForm.other_fees || 0),
+        boarding_fee: showBoardingFeeField ? parseFloat(feeForm.boarding_fee || 0) : 0,
+        transport_fee: parseFloat(feeForm.transport_fee || 0),
       };
       
       if (editingFee) {
@@ -163,6 +171,8 @@ export default function AdminExtras() {
       sports_fee: fee.sports_fee.toString(),
       computer_fee: fee.computer_fee.toString(),
       other_fees: fee.other_fees.toString(),
+      boarding_fee: (fee.boarding_fee ?? 0).toString(),
+      transport_fee: (fee.transport_fee ?? 0).toString(),
       academic_year: fee.academic_year,
       academic_term: fee.academic_term,
       currency: fee.currency
@@ -191,6 +201,8 @@ export default function AdminExtras() {
       sports_fee: '0',
       computer_fee: '0',
       other_fees: '0',
+      boarding_fee: '0',
+      transport_fee: '0',
       academic_year: currentAcademicYear,
       academic_term: termMap[currentTerm] || 'term_1',
       currency: currency || 'USD'
@@ -400,6 +412,7 @@ export default function AdminExtras() {
 
   const showPrimary = schoolType === 'primary' || schoolType === 'combined';
   const showSecondary = schoolType === 'secondary' || schoolType === 'high' || schoolType === 'combined';
+  const showBoardingFeeField = schoolAccommodationType === 'boarding' || schoolAccommodationType === 'both';
 
   return (
     <div>
@@ -728,7 +741,7 @@ export default function AdminExtras() {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Sports Fee</label>
                       <input
@@ -761,6 +774,31 @@ export default function AdminExtras() {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2"
                         placeholder="0.00"
                       />
+                    </div>
+                    {showBoardingFeeField && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Boarding Fee</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={feeForm.boarding_fee}
+                          onChange={(e) => setFeeForm({...feeForm, boarding_fee: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Transport Fee</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={feeForm.transport_fee}
+                        onChange={(e) => setFeeForm({...feeForm, transport_fee: e.target.value})}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                        placeholder="0.00"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Applied only when parent opts in.</p>
                     </div>
                   </div>
                   
@@ -806,6 +844,10 @@ export default function AdminExtras() {
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Sports</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Computer</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Other</th>
+                        {showBoardingFeeField && (
+                          <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Boarding</th>
+                        )}
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Transport</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Total</th>
                         <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                       </tr>
@@ -821,6 +863,10 @@ export default function AdminExtras() {
                           <td className="px-4 py-3 text-right">{parseFloat(fee.sports_fee).toFixed(2)}</td>
                           <td className="px-4 py-3 text-right">{parseFloat(fee.computer_fee).toFixed(2)}</td>
                           <td className="px-4 py-3 text-right">{parseFloat(fee.other_fees).toFixed(2)}</td>
+                          {showBoardingFeeField && (
+                            <td className="px-4 py-3 text-right">{parseFloat(fee.boarding_fee || 0).toFixed(2)}</td>
+                          )}
+                          <td className="px-4 py-3 text-right">{parseFloat(fee.transport_fee || 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold text-green-600">
                             {fee.currency} {parseFloat(fee.total_fee).toFixed(2)}
                           </td>

@@ -3,7 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
-import { formatDate, formatDateLong, formatDateTime } from "../../utils/dateFormat";
+import { formatDate, formatDateTime } from "../../utils/dateFormat";
 
 export default function ParentFees() {
   const { user } = useAuth();
@@ -20,10 +20,22 @@ export default function ParentFees() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [activeTab, setActiveTab] = useState("fees");
+  const [transportSaving, setTransportSaving] = useState(false);
 
   useEffect(() => {
     loadData();
+    // We intentionally load once on mount for initial portal hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadChildFees = async (childId) => {
+    if (!childId) {
+      setFeesData(null);
+      return;
+    }
+    const fees = await apiService.getChildFees(childId);
+    setFeesData(fees);
+  };
 
   const loadData = async () => {
     try {
@@ -38,8 +50,7 @@ export default function ParentFees() {
       
       if (confirmedChildren.length > 0) {
         setSelectedChild(confirmedChildren[0]);
-        const fees = await apiService.getChildFees(confirmedChildren[0].id);
-        setFeesData(fees);
+        await loadChildFees(confirmedChildren[0].id);
       }
     } catch (error) {
       console.error("Error loading fees:", error);
@@ -176,13 +187,35 @@ export default function ParentFees() {
     if (child) {
       try {
         setLoading(true);
-        const fees = await apiService.getChildFees(child.id);
-        setFeesData(fees);
+        await loadChildFees(child.id);
       } catch (error) {
         console.error("Error loading fees:", error);
       } finally {
         setLoading(false);
       }
+    }
+  };
+
+  const updateTransportPreference = async (includeTransportFee) => {
+    if (!selectedChild) return;
+
+    try {
+      setTransportSaving(true);
+      await apiService.updateParentTransportPreference(selectedChild.id, {
+        include_transport_fee: includeTransportFee,
+      });
+      await Promise.all([
+        loadChildFees(selectedChild.id),
+        (async () => {
+          const invoicesData = await apiService.getParentInvoices();
+          setInvoices(invoicesData?.invoices || invoicesData || []);
+        })(),
+      ]);
+    } catch (error) {
+      console.error("Error updating transport preference:", error);
+      alert(error.message || "Failed to update transport fee preference.");
+    } finally {
+      setTransportSaving(false);
     }
   };
 
@@ -275,6 +308,49 @@ export default function ParentFees() {
 
         {activeTab === "fees" && feesData && (
           <>
+            {feesData.transport?.available && (
+              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">Transport Fee Preference</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Transport fee configured: ${Number(feesData.transport.configured_amount || 0).toFixed(2)}
+                    </p>
+                    <p className="text-sm mt-1 font-medium">
+                      Current choice:{" "}
+                      <span className={feesData.transport.include_transport_fee ? "text-green-700" : "text-orange-700"}>
+                        {feesData.transport.include_transport_fee ? "Agreed (fee included)" : "Disagreed (fee excluded)"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => updateTransportPreference(true)}
+                      disabled={transportSaving}
+                      className={`px-4 py-2 rounded-lg border transition ${
+                        feesData.transport.include_transport_fee
+                          ? "bg-green-600 text-white border-green-600"
+                          : "bg-white text-green-700 border-green-500 hover:bg-green-50"
+                      } ${transportSaving ? "opacity-60 cursor-not-allowed" : ""}`}
+                    >
+                      Agree
+                    </button>
+                    <button
+                      onClick={() => updateTransportPreference(false)}
+                      disabled={transportSaving}
+                      className={`px-4 py-2 rounded-lg border transition ${
+                        !feesData.transport.include_transport_fee
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : "bg-white text-orange-700 border-orange-500 hover:bg-orange-50"
+                      } ${transportSaving ? "opacity-60 cursor-not-allowed" : ""}`}
+                    >
+                      Disagree
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-lg shadow-lg">
                 <div className="flex items-center justify-between">

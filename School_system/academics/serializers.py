@@ -1040,6 +1040,43 @@ class DormAssignmentSerializer(serializers.ModelSerializer):
             'room_name', 'bed_name', 'start_date', 'end_date', 'is_active', 'assigned_at'
         ]
 
+    def validate(self, attrs):
+        dormitory = attrs.get('dormitory') or getattr(self.instance, 'dormitory', None)
+        student = attrs.get('student') or getattr(self.instance, 'student', None)
+        room_name = (attrs.get('room_name') or getattr(self.instance, 'room_name', '')).strip()
+        bed_name = (attrs.get('bed_name') or getattr(self.instance, 'bed_name', '')).strip()
+        is_active = attrs.get('is_active', getattr(self.instance, 'is_active', True))
+
+        if not dormitory or not is_active:
+            return attrs
+
+        active_assignments = DormAssignment.objects.filter(
+            dormitory=dormitory,
+            is_active=True,
+        )
+
+        if student:
+            # A reassigned student is moved by deactivating their previous assignment.
+            active_assignments = active_assignments.exclude(student=student)
+
+        if self.instance and self.instance.pk:
+            active_assignments = active_assignments.exclude(pk=self.instance.pk)
+
+        if room_name and bed_name and active_assignments.filter(
+            room_name__iexact=room_name,
+            bed_name__iexact=bed_name,
+        ).exists():
+            raise serializers.ValidationError({
+                'bed_name': 'This bed is already assigned to another active student.'
+            })
+
+        if dormitory.capacity and active_assignments.count() >= dormitory.capacity:
+            raise serializers.ValidationError({
+                'dormitory': f'{dormitory.name} is already at full capacity ({dormitory.capacity}).'
+            })
+
+        return attrs
+
 
 class MealMenuSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1068,7 +1105,66 @@ class MealAttendanceBulkItemSerializer(serializers.Serializer):
 
 class MealAttendanceBulkSerializer(serializers.Serializer):
     meal_menu_id = serializers.IntegerField()
-    attendance = MealAttendanceBulkItemSerializer(many=True)
+    attendance = MealAttendanceBulkItemSerializer(many=True, required=False, default=list)
+    absent_student_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+    excused_student_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+    mark_unlisted_as_ate = serializers.BooleanField(required=False, default=False)
+    target_student_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+    )
+
+    def validate(self, attrs):
+        attendance_rows = attrs.get('attendance') or []
+        absent_student_ids = set(attrs.get('absent_student_ids') or [])
+        excused_student_ids = set(attrs.get('excused_student_ids') or [])
+        mark_unlisted_as_ate = attrs.get('mark_unlisted_as_ate', False)
+
+        if not attendance_rows and not absent_student_ids and not excused_student_ids and not mark_unlisted_as_ate:
+            raise serializers.ValidationError(
+                "Provide attendance rows, absent/excused students, or enable mark_unlisted_as_ate."
+            )
+
+        overlap = absent_student_ids & excused_student_ids
+        if overlap:
+            raise serializers.ValidationError({
+                'excused_student_ids': 'A student cannot be both absent and excused in the same submission.'
+            })
+
+        row_student_status = {}
+        for row in attendance_rows:
+            student_id = row['student_id']
+            status = row['status']
+            if student_id in row_student_status and row_student_status[student_id] != status:
+                raise serializers.ValidationError({
+                    'attendance': f'Conflicting statuses provided for student_id={student_id}.'
+                })
+            row_student_status[student_id] = status
+
+        conflicting_with_absent = [sid for sid, st in row_student_status.items() if sid in absent_student_ids and st != 'absent']
+        if conflicting_with_absent:
+            raise serializers.ValidationError({
+                'attendance': f'Conflicting status for absent students: {conflicting_with_absent}'
+            })
+
+        conflicting_with_excused = [sid for sid, st in row_student_status.items() if sid in excused_student_ids and st != 'excused']
+        if conflicting_with_excused:
+            raise serializers.ValidationError({
+                'attendance': f'Conflicting status for excused students: {conflicting_with_excused}'
+            })
+
+        return attrs
 
 
 class DormRollCallSerializer(serializers.ModelSerializer):

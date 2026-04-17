@@ -231,6 +231,8 @@ class SchoolFees(models.Model):
     sports_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     computer_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     other_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    boarding_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    transport_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     academic_year = models.CharField(max_length=20)
     academic_term = models.CharField(max_length=20, choices=TERM_CHOICES)
     currency = models.CharField(max_length=10, default='USD')
@@ -251,6 +253,24 @@ class SchoolFees(models.Model):
     def __str__(self):
         """Return a human-readable string representation."""
         return f"{self.grade_name} - {self.academic_term} {self.academic_year}: {self.currency}{self.total_fee}"
+
+
+class TransportFeePreference(models.Model):
+    """Per-parent opt-in/out setting for a child's transport fee."""
+    parent = models.ForeignKey('academics.Parent', on_delete=models.CASCADE, related_name='transport_fee_preferences')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='transport_fee_preferences')
+    include_transport_fee = models.BooleanField(default=False)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('parent', 'student')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        status = 'Included' if self.include_transport_fee else 'Excluded'
+        return f"Transport ({status}) - {self.parent.user.full_name} / {self.student.user.full_name}"
 
 
 class AdditionalFee(models.Model):

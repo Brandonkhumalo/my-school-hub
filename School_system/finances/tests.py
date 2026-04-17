@@ -26,6 +26,7 @@ from finances.models import (
     FeeType,
     Invoice,
     Payment,
+    SchoolFees,
     StudentFee,
     StudentPaymentRecord,
 )
@@ -359,6 +360,49 @@ class PaymentRecordAPITest(APITestCase):
         self.student = make_student(self.school, self.cls, username="pr_student", student_number="PR001")
         self.url = "/api/v1/finances/payment-records/"
 
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=self.cls.grade_level,
+            grade_name=self.cls.name,
+            tuition_fee=Decimal("500.00"),
+            levy_fee=Decimal("0.00"),
+            sports_fee=Decimal("0.00"),
+            computer_fee=Decimal("0.00"),
+            other_fees=Decimal("0.00"),
+            academic_year="2026",
+            academic_term="term_1",
+            currency="USD",
+            created_by=self.admin,
+        )
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=self.cls.grade_level,
+            grade_name=self.cls.name,
+            tuition_fee=Decimal("600.00"),
+            levy_fee=Decimal("0.00"),
+            sports_fee=Decimal("0.00"),
+            computer_fee=Decimal("0.00"),
+            other_fees=Decimal("0.00"),
+            academic_year="2026",
+            academic_term="term_2",
+            currency="USD",
+            created_by=self.admin,
+        )
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=self.cls.grade_level,
+            grade_name=self.cls.name,
+            tuition_fee=Decimal("700.00"),
+            levy_fee=Decimal("0.00"),
+            sports_fee=Decimal("0.00"),
+            computer_fee=Decimal("0.00"),
+            other_fees=Decimal("0.00"),
+            academic_year="2026",
+            academic_term="term_3",
+            currency="USD",
+            created_by=self.admin,
+        )
+
     def test_list_payment_records_returns_200(self):
         """Test that list payment records returns 200."""
         StudentPaymentRecord.objects.create(
@@ -389,6 +433,40 @@ class PaymentRecordAPITest(APITestCase):
             "currency": "USD",
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_two_terms_plan_calculates_due_from_selected_terms(self):
+        """Two-term plan should calculate due from selected term + next term."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "student": self.student.pk,
+            "payment_type": "school_fees",
+            "payment_plan": "two_terms",
+            "academic_year": "2026",
+            "academic_term": "term_2",
+            # Intentionally wrong client value; backend should compute 600 + 700 = 1300
+            "total_amount_due": "1.00",
+            "amount_paid": "0.00",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        record = StudentPaymentRecord.objects.get(id=response.data["id"])
+        self.assertEqual(record.total_amount_due, Decimal("1300.00"))
+
+    def test_two_terms_plan_rejects_starting_from_term_three(self):
+        """Two-term plan cannot start at term_3."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "student": self.student.pk,
+            "payment_type": "school_fees",
+            "payment_plan": "two_terms",
+            "academic_year": "2026",
+            "academic_term": "term_3",
+            "total_amount_due": "700.00",
+            "amount_paid": "0.00",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("academic_term", response.data)
 
     def test_list_payment_records_requires_authentication(self):
         """Test that list payment records requires authentication."""

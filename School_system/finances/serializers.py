@@ -3,6 +3,9 @@ from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, Scho
 from academics.models import Student
 import uuid
 from datetime import date
+from decimal import Decimal
+
+from .fee_calculator import get_transport_opt_in
 
 
 class FeeTypeSerializer(serializers.ModelSerializer):
@@ -143,6 +146,8 @@ class StudentFinancialSummarySerializer(serializers.Serializer):
 class SchoolFeesSerializer(serializers.ModelSerializer):
     """Represents SchoolFeesSerializer."""
     total_fee = serializers.ReadOnlyField()
+    day_total_fee = serializers.SerializerMethodField()
+    boarding_total_fee = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     
     class Meta:
@@ -150,11 +155,31 @@ class SchoolFeesSerializer(serializers.ModelSerializer):
         model = SchoolFees
         fields = [
             'id', 'grade_level', 'grade_name', 'tuition_fee', 'levy_fee',
-            'sports_fee', 'computer_fee', 'other_fees', 'total_fee',
+            'sports_fee', 'computer_fee', 'other_fees', 'boarding_fee', 'transport_fee',
+            'total_fee', 'day_total_fee', 'boarding_total_fee',
             'academic_year', 'academic_term', 'currency',
             'date_created', 'date_updated', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['created_by', 'date_created', 'date_updated']
+
+    def get_day_total_fee(self, obj):
+        return float(obj.total_fee)
+
+    def get_boarding_total_fee(self, obj):
+        return float(obj.total_fee + obj.boarding_fee)
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        school = None
+        if request and hasattr(request.user, 'school'):
+            school = request.user.school
+        elif self.instance:
+            school = self.instance.school
+
+        if school and school.accommodation_type == 'day':
+            attrs['boarding_fee'] = 0
+
+        return attrs
 
 
 class AdditionalFeeSerializer(serializers.ModelSerializer):
@@ -251,6 +276,10 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
 
 class CreatePaymentRecordSerializer(serializers.ModelSerializer):
     """Represents CreatePaymentRecordSerializer."""
+    total_amount_due = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+    TERM_SEQUENCE = ['term_1', 'term_2', 'term_3']
+
     class Meta:
         """Represents Meta."""
         model = StudentPaymentRecord
@@ -260,9 +289,104 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
             'total_amount_due', 'amount_paid', 'currency',
             'payment_method', 'due_date', 'next_payment_due', 'notes'
         ]
+
+    def _terms_for_plan(self, payment_plan, academic_term):
+        """Resolve included terms based on selected payment plan."""
+        if payment_plan == 'full_year':
+            return list(self.TERM_SEQUENCE)
+
+        if payment_plan == 'one_term':
+            if not academic_term:
+                raise serializers.ValidationError({'academic_term': 'Academic term is required for one-term payments.'})
+            if academic_term not in self.TERM_SEQUENCE:
+                raise serializers.ValidationError({'academic_term': 'Invalid academic term.'})
+            return [academic_term]
+
+        if payment_plan == 'two_terms':
+            if not academic_term:
+                raise serializers.ValidationError({'academic_term': 'Academic term is required for two-term payments.'})
+            if academic_term not in self.TERM_SEQUENCE:
+                raise serializers.ValidationError({'academic_term': 'Invalid academic term.'})
+            start_index = self.TERM_SEQUENCE.index(academic_term)
+            terms = self.TERM_SEQUENCE[start_index:start_index + 2]
+            if len(terms) < 2:
+                raise serializers.ValidationError({'academic_term': 'Two-term payment must start at Term 1 or Term 2.'})
+            return terms
+
+        return []
+
+    def _calculate_due_for_school_fees(self, attrs):
+        """Calculate amount due from SchoolFees using selected plan/year/term."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        school = getattr(user, 'school', None)
+        student = attrs.get('student')
+        academic_year = attrs.get('academic_year')
+        payment_plan = attrs.get('payment_plan')
+        academic_term = attrs.get('academic_term')
+
+        if not school:
+            raise serializers.ValidationError({'school': 'No school associated with current user.'})
+        if not student:
+            raise serializers.ValidationError({'student': 'Student is required.'})
+        if not getattr(student, 'student_class', None):
+            raise serializers.ValidationError({'student': 'Student must be assigned to a class.'})
+        if not academic_year:
+            raise serializers.ValidationError({'academic_year': 'Academic year is required.'})
+
+        included_terms = self._terms_for_plan(payment_plan, academic_term)
+        if not included_terms:
+            # For "batch" we keep manual amount due.
+            return None
+
+        fee_rows = SchoolFees.objects.filter(
+            school=school,
+            grade_level=student.student_class.grade_level,
+            academic_year=academic_year,
+            academic_term__in=included_terms,
+        )
+        fee_by_term = {fee.academic_term: fee for fee in fee_rows}
+        missing_terms = [term for term in included_terms if term not in fee_by_term]
+        if missing_terms:
+            readable = ', '.join(term.replace('_', ' ').title() for term in missing_terms)
+            raise serializers.ValidationError({
+                'total_amount_due': f'School fees are not configured for {readable} ({academic_year}).'
+            })
+
+        school_supports_boarding = bool(
+            school and getattr(school, 'accommodation_type', 'day') in ('boarding', 'both')
+        )
+        boarding_applies = school_supports_boarding and student.residence_type == 'boarding'
+        transport_opted_in = get_transport_opt_in(student)
+
+        total_due = Decimal('0')
+        for term in included_terms:
+            fee = fee_by_term[term]
+            term_total = (
+                fee.tuition_fee +
+                fee.levy_fee +
+                fee.sports_fee +
+                fee.computer_fee +
+                fee.other_fees
+            )
+            if boarding_applies:
+                term_total += fee.boarding_fee
+            if fee.transport_fee and fee.transport_fee > 0 and transport_opted_in:
+                term_total += fee.transport_fee
+            total_due += term_total
+
+        return total_due
     
     def validate(self, attrs):
         """Validate incoming data."""
+        if attrs.get('payment_type') == 'school_fees':
+            calculated_due = self._calculate_due_for_school_fees(attrs)
+            if calculated_due is not None:
+                attrs['total_amount_due'] = calculated_due
+
+        if 'total_amount_due' not in attrs:
+            raise serializers.ValidationError({'total_amount_due': 'Total amount due is required.'})
+
         amount_paid = attrs.get('amount_paid', 0)
         total_due = attrs['total_amount_due']
         

@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 from .models import CustomUser, School, AuditLog, SchoolSettings, Notification
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
-    ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer
+    ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer,
+    ManagedUserSerializer
 )
 from .token import JWTAuthentication
 
@@ -201,14 +202,19 @@ def set_whatsapp_pin_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserListView(generics.ListAPIView):
+class UserListView(generics.ListCreateAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ManagedUserSerializer
+        return UserSerializer
+
     def get_queryset(self):
         user = self.request.user
-        if user.school:
+        if user.role in ('admin', 'hr', 'superadmin') and user.school:
             queryset = CustomUser.objects.filter(school=user.school)
         else:
             queryset = CustomUser.objects.none()
@@ -216,6 +222,43 @@ class UserListView(generics.ListAPIView):
         if role:
             queryset = queryset.filter(role=role)
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.school:
+            return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class UserDetailView(generics.RetrieveUpdateAPIView):
+    queryset = CustomUser.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role not in ('admin', 'hr', 'superadmin') or not user.school:
+            return CustomUser.objects.none()
+        return CustomUser.objects.filter(school=user.school)
+
+    def get_serializer_class(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return ManagedUserSerializer
+        return UserSerializer
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data)
 
 
 @api_view(['GET'])
@@ -431,16 +474,199 @@ def report_card_upload_image(request):
     from .serializers import ReportCardConfigSerializer
     config, _ = ReportCardConfig.objects.get_or_create(school=school)
 
-    field = request.data.get('field')  # 'logo' or 'stamp_image'
+    field = request.data.get('field')  # 'logo', 'stamp_image', or 'banner_image'
     file = request.FILES.get('file')
 
-    if field not in ('logo', 'stamp_image') or not file:
-        return Response({'error': 'field must be "logo" or "stamp_image" and file is required'},
+    if field not in ('logo', 'stamp_image', 'banner_image') or not file:
+        return Response({'error': 'field must be logo/stamp_image/banner_image and file is required'},
                         status=status.HTTP_400_BAD_REQUEST)
 
     setattr(config, field, file)
     config.save(update_fields=[field])
     return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
+
+
+# ---------------------------------------------------------------
+# Report Card Templates (shareable across tenants)
+# ---------------------------------------------------------------
+
+REPORT_CARD_CONFIG_FIELDS = [
+    'logo_position', 'primary_color', 'secondary_color',
+    'gradient_start_color', 'gradient_end_color', 'header_style',
+    'font_family', 'font_size_scale', 'page_size', 'page_orientation',
+    'one_page_fit', 'template_preset',
+    'show_grading_key', 'show_attendance', 'show_attendance_breakdown',
+    'show_overall_average', 'show_position', 'show_class_average',
+    'show_previous_term', 'show_effort_grade', 'show_subject_chart',
+    'show_promotion_status', 'show_fees_status', 'show_qr_code',
+    'subject_grouping_enabled', 'principal_title', 'show_class_teacher',
+    'teacher_comments_default', 'principal_comments_default', 'comment_char_limit',
+    'show_next_term_dates', 'custom_footer_text', 'show_grade_remark',
+    'show_exam_types', 'highlight_pass_fail', 'watermark_text',
+    'border_style', 'show_conduct_section', 'show_activities_section',
+]
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_templates_view(request):
+    """List all shareable templates, or save current school config as a new template."""
+    from .models import ReportCardTemplate, ReportCardConfig
+    from .serializers import ReportCardTemplateSerializer
+
+    if request.method == 'GET':
+        templates = ReportCardTemplate.objects.all()
+        return Response(ReportCardTemplateSerializer(templates, many=True).data)
+
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    name = (request.data.get('name') or '').strip()
+    description = (request.data.get('description') or '').strip()
+    if not name:
+        return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if ReportCardTemplate.objects.filter(name=name).exists():
+        return Response({'error': 'A template with that name already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+    snapshot = {f: getattr(config, f) for f in REPORT_CARD_CONFIG_FIELDS}
+
+    template = ReportCardTemplate.objects.create(
+        name=name, description=description, config_json=snapshot,
+        is_builtin=False, created_by=request.user,
+    )
+    return Response(ReportCardTemplateSerializer(template).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def report_card_template_detail_view(request, template_id):
+    """POST = apply template to current school; DELETE = remove (non-builtin only)."""
+    from .models import ReportCardTemplate, ReportCardConfig
+    from .serializers import ReportCardConfigSerializer
+
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        template = ReportCardTemplate.objects.get(id=template_id)
+    except ReportCardTemplate.DoesNotExist:
+        return Response({'error': 'Template not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        if template.is_builtin:
+            return Response({'error': 'Built-in templates cannot be deleted'}, status=status.HTTP_403_FORBIDDEN)
+        template.delete()
+        return Response({'message': 'Template deleted'}, status=status.HTTP_204_NO_CONTENT)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+    config, _ = ReportCardConfig.objects.get_or_create(school=school)
+
+    for field, value in (template.config_json or {}).items():
+        if field in REPORT_CARD_CONFIG_FIELDS and hasattr(config, field):
+            setattr(config, field, value)
+    config.template_preset = template.name
+    config.save()
+    return Response(ReportCardConfigSerializer(config, context={'request': request}).data)
+
+
+# ---------------------------------------------------------------
+# Subject groups (for report card grouping by Core / Electives / Languages)
+# ---------------------------------------------------------------
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_groups_view(request):
+    from .models import SubjectGroup
+    from .serializers import SubjectGroupSerializer
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'GET':
+        groups = SubjectGroup.objects.filter(school=school).select_related('subject')
+        return Response(SubjectGroupSerializer(groups, many=True).data)
+
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    subject_id = request.data.get('subject')
+    group_type = request.data.get('group_type', 'core')
+    if not subject_id:
+        return Response({'error': 'subject required'}, status=status.HTTP_400_BAD_REQUEST)
+    group, _ = SubjectGroup.objects.update_or_create(
+        school=school, subject_id=subject_id,
+        defaults={'group_type': group_type},
+    )
+    return Response(SubjectGroupSerializer(group).data)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_group_detail_view(request, group_id):
+    from .models import SubjectGroup
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    SubjectGroup.objects.filter(id=group_id, school=request.user.school).delete()
+    return Response({'message': 'Deleted'}, status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------
+# Report card QR verification (public)
+# ---------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def verify_report_card(request, token):
+    """Public endpoint — decodes a signed token from a QR code and returns basic
+    authenticity info (school, student, term, overall grade). Used to verify
+    printed report cards are genuine."""
+    from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
+    from academics.models import Student, Result
+    from .models import School
+
+    signer = TimestampSigner(salt='report-card')
+    try:
+        data = signer.unsign(token, max_age=60 * 60 * 24 * 365 * 5)  # 5-year validity
+    except SignatureExpired:
+        return Response({'valid': False, 'error': 'Token expired'}, status=status.HTTP_200_OK)
+    except BadSignature:
+        return Response({'valid': False, 'error': 'Invalid token'}, status=status.HTTP_200_OK)
+
+    try:
+        sid, year, term = data.split('|', 2)
+        student = Student.objects.select_related('user', 'student_class', 'user__school').get(id=int(sid))
+    except Exception:
+        return Response({'valid': False, 'error': 'Malformed token'}, status=status.HTTP_200_OK)
+
+    results = Result.objects.filter(
+        student=student, academic_year=year, academic_term=term, include_in_report=True,
+    )
+    total_pct = 0.0
+    count = 0
+    for r in results:
+        if r.max_score:
+            total_pct += (r.score / r.max_score) * 100
+            count += 1
+    avg = round(total_pct / count, 1) if count else 0.0
+
+    return Response({
+        'valid': True,
+        'student_name': student.user.full_name,
+        'student_number': student.user.student_number,
+        'school_name': student.user.school.name if student.user.school else '',
+        'class_name': student.student_class.name if student.student_class else '',
+        'academic_year': year,
+        'academic_term': term,
+        'overall_average': avg,
+        'subject_count': count,
+    })
 
 
 # ---------------------------------------------------------------

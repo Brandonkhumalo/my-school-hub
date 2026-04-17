@@ -14,8 +14,23 @@ from email_service import (
     send_grade_fee_notice_email,
     get_parents_of_student,
 )
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
-from academics.models import Student, Class
+from .models import (
+    FeeType,
+    StudentFee,
+    Payment,
+    Invoice,
+    FinancialReport,
+    SchoolFees,
+    StudentPaymentRecord,
+    PaymentTransaction,
+    AdditionalFee,
+    TransportFeePreference,
+)
+from academics.models import Student, Class, ParentChildLink
+from .fee_calculator import (
+    build_school_fee_breakdown,
+    get_additional_fees_for_student,
+)
 from .serializers import (
     FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
     InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
@@ -486,28 +501,39 @@ class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
 def get_my_school_fees(request):
     """Get school fees for a student or parent's children based on their grade/form"""
     user = request.user
+    school = user.school
     
     if user.role == 'student':
         try:
             student = user.student
             student_class = student.student_class
-            grade_level = student_class.grade_level
-            
-            fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
-            
-            additional_fees = AdditionalFee.objects.filter(
-                school=user.school,
-                is_paid=False
-            ).filter(Q(student=student) | Q(student_class=student_class))
-            additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency} for f in additional_fees]
+            grade_level = student_class.grade_level if student_class else None
+
+            fee_breakdown = build_school_fee_breakdown(student, school)
+            school_fee_row = fee_breakdown['school_fee']
+
+            fees = []
+            if school_fee_row:
+                fees = SchoolFeesSerializer([school_fee_row], many=True).data
+
+            additional_fees = get_additional_fees_for_student(student, school)
+            additional_fees_list = [
+                {'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency}
+                for f in additional_fees
+            ]
             additional_fees_total = sum(float(f.amount) for f in additional_fees)
             
             return Response({
                 'student_name': user.full_name,
                 'student_number': user.student_number,
-                'class_name': student_class.name,
+                'class_name': student_class.name if student_class else None,
                 'grade_level': grade_level,
-                'fees': SchoolFeesSerializer(fees, many=True).data,
+                'residence_type': student.residence_type,
+                'fees': fees,
+                'applied_school_fee_total': float(fee_breakdown['total_school_fee']),
+                'boarding_fee_applied': float(fee_breakdown['boarding']),
+                'transport_fee_applied': float(fee_breakdown['transport']),
+                'transport_fee_opted_in': fee_breakdown['transport_opted_in'],
                 'additional_fees': additional_fees_list,
                 'additional_fees_total': additional_fees_total
             })
@@ -516,8 +542,6 @@ def get_my_school_fees(request):
     
     elif user.role == 'parent':
         try:
-            from academics.models import ParentChildLink
-            
             confirmed_links = ParentChildLink.objects.filter(
                 parent=user.parent,
                 is_confirmed=True
@@ -527,24 +551,33 @@ def get_my_school_fees(request):
             for link in confirmed_links:
                 student = link.student
                 student_class = student.student_class
-                grade_level = student_class.grade_level
-                
-                fees = SchoolFees.objects.filter(grade_level=grade_level).order_by('-academic_year', 'academic_term')
-                
-                additional_fees = AdditionalFee.objects.filter(
-                    school=user.school,
-                    is_paid=False
-                ).filter(Q(student=student) | Q(student_class=student_class))
-                additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency} for f in additional_fees]
+                grade_level = student_class.grade_level if student_class else None
+
+                fee_breakdown = build_school_fee_breakdown(student, school, parent=user.parent)
+                school_fee_row = fee_breakdown['school_fee']
+                fees = []
+                if school_fee_row:
+                    fees = SchoolFeesSerializer([school_fee_row], many=True).data
+
+                additional_fees = get_additional_fees_for_student(student, school)
+                additional_fees_list = [
+                    {'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason, 'currency': f.currency}
+                    for f in additional_fees
+                ]
                 additional_fees_total = sum(float(f.amount) for f in additional_fees)
                 
                 children_fees.append({
                     'student_id': student.id,
                     'student_name': student.user.full_name,
                     'student_number': student.user.student_number,
-                    'class_name': student_class.name,
+                    'class_name': student_class.name if student_class else None,
                     'grade_level': grade_level,
-                    'fees': SchoolFeesSerializer(fees, many=True).data,
+                    'residence_type': student.residence_type,
+                    'fees': fees,
+                    'applied_school_fee_total': float(fee_breakdown['total_school_fee']),
+                    'boarding_fee_applied': float(fee_breakdown['boarding']),
+                    'transport_fee_applied': float(fee_breakdown['transport']),
+                    'transport_fee_opted_in': fee_breakdown['transport_opted_in'],
                     'additional_fees': additional_fees_list,
                     'additional_fees_total': additional_fees_total
                 })
@@ -734,11 +767,8 @@ def class_fees_report(request):
     student_data = []
     
     for student in students:
-        # Get additional fees for this student
-        additional_fees = AdditionalFee.objects.filter(
-            school=request.user.school,
-            is_paid=False
-        ).filter(Q(student=student) | Q(student_class=cls))
+        fee_breakdown = build_school_fee_breakdown(student, request.user.school)
+        additional_fees = get_additional_fees_for_student(student, request.user.school)
         additional_fees_total = sum(float(f.amount) for f in additional_fees)
         
         records = StudentPaymentRecord.objects.filter(
@@ -765,15 +795,7 @@ def class_fees_report(request):
                 unpaid_count += 1
                 status_text = 'Unpaid'
         else:
-            school_fee = SchoolFees.objects.filter(
-                school=request.user.school,
-                grade_level=cls.grade_level
-            ).order_by('-academic_year', '-academic_term').first()
-            
-            if school_fee:
-                base_due = float(school_fee.total_fee)
-            else:
-                base_due = 0
+            base_due = float(fee_breakdown['total_school_fee'])
             
             student_due = base_due + additional_fees_total
             student_paid = 0
@@ -840,10 +862,12 @@ def parent_invoices(request):
         return Response({'error': 'Parent access required'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        from academics.models import ParentChildLink
         from datetime import date, timedelta
         
-        links = ParentChildLink.objects.filter(parent=request.user.parent, is_confirmed=True)
+        links = ParentChildLink.objects.filter(
+            parent=request.user.parent,
+            is_confirmed=True,
+        ).select_related('student__user', 'student__student_class')
         
         invoices_data = []
         
@@ -852,7 +876,10 @@ def parent_invoices(request):
             grade_level = student.student_class.grade_level if student.student_class else None
             
             # Get existing invoices for this student
-            existing_invoices = Invoice.objects.filter(student=student).order_by('-issue_date')
+            existing_invoices = Invoice.objects.filter(
+                student=student,
+                school=request.user.school,
+            ).order_by('-issue_date')
             
             for inv in existing_invoices:
                 invoices_data.append({
@@ -869,76 +896,147 @@ def parent_invoices(request):
                     'balance': float(inv.balance),
                     'status': 'paid' if inv.is_paid else ('partial' if inv.amount_paid > 0 else 'unpaid'),
                     'is_auto_generated': False,
-                    'currency': 'USD'
+                    'currency': inv.payment_record.currency if inv.payment_record else 'USD'
                 })
             
             # If no invoices exist, auto-generate from school fees
             if not existing_invoices.exists() and grade_level:
-                school_fee = SchoolFees.objects.filter(
-                    school=request.user.school,
-                    grade_level=grade_level
-                ).order_by('-academic_year', '-academic_term').first()
-                
+                fee_breakdown = build_school_fee_breakdown(
+                    student,
+                    request.user.school,
+                    parent=request.user.parent,
+                )
+                school_fee = fee_breakdown['school_fee']
+
+                additional_fees = get_additional_fees_for_student(student, request.user.school)
+                additional_fees_total = sum(float(f.amount) for f in additional_fees)
+                additional_fees_list = [
+                    {'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason}
+                    for f in additional_fees
+                ]
+
+                total_amount = float(fee_breakdown['total_school_fee']) + additional_fees_total
+                if school_fee is None and total_amount <= 0:
+                    continue
+
+                payment_record = StudentPaymentRecord.objects.filter(
+                    student=student,
+                    school=request.user.school
+                ).order_by('-date_created').first()
+
+                amount_paid = float(payment_record.amount_paid) if payment_record else 0
+                balance = total_amount - amount_paid
+
+                if balance <= 0:
+                    invoice_status = 'paid'
+                elif amount_paid > 0:
+                    invoice_status = 'partial'
+                else:
+                    invoice_status = 'unpaid'
+
                 if school_fee:
-                    # Check if there's a payment record
-                    payment_record = StudentPaymentRecord.objects.filter(
-                        student=student,
-                        school=request.user.school
-                    ).order_by('-created_at').first()
-                    
-                    # Get additional fees for this student
-                    additional_fees = AdditionalFee.objects.filter(
-                        school=request.user.school,
-                        is_paid=False
-                    ).filter(Q(student=student) | Q(student_class=student.student_class))
-                    additional_fees_total = sum(float(f.amount) for f in additional_fees)
-                    
-                    total_amount = float(school_fee.total_fee) + additional_fees_total
-                    amount_paid = float(payment_record.amount_paid) if payment_record else 0
-                    balance = total_amount - amount_paid
-                    
-                    if balance <= 0:
-                        invoice_status = 'paid'
-                    elif amount_paid > 0:
-                        invoice_status = 'partial'
-                    else:
-                        invoice_status = 'unpaid'
-                    
-                    invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
-                    
-                    # Build additional fees list for breakdown
-                    additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
-                    
-                    invoices_data.append({
-                        'id': f"auto-{student.id}",
-                        'invoice_number': invoice_number,
-                        'student_id': student.id,
-                        'student_name': student.user.full_name,
-                        'student_number': student.user.student_number,
-                        'class_name': student.student_class.name if student.student_class else 'N/A',
-                        'issue_date': date.today().strftime('%Y-%m-%d'),
-                        'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                        'total_amount': total_amount,
-                        'amount_paid': amount_paid,
-                        'balance': balance,
-                        'status': invoice_status,
-                        'is_auto_generated': True,
-                        'currency': school_fee.currency,
-                        'fee_breakdown': {
-                            'tuition': float(school_fee.tuition_fee),
-                            'levy': float(school_fee.levy_fee),
-                            'sports': float(school_fee.sports_fee),
-                            'computer': float(school_fee.computer_fee),
-                            'other': float(school_fee.other_fees),
-                            'additional_fees': additional_fees_list
-                        },
-                        'academic_year': school_fee.academic_year,
-                        'academic_term': school_fee.academic_term
-                    })
+                    year_key = school_fee.academic_year.replace('/', '')
+                    term_key = school_fee.academic_term.upper()
+                    invoice_number = f"INV-{student.id}-{year_key}-{term_key}"
+                else:
+                    invoice_number = f"INV-{student.id}-ADHOC-{date.today().strftime('%Y%m%d')}"
+
+                currency = fee_breakdown['currency']
+                if school_fee is None and additional_fees:
+                    currency = additional_fees[0].currency
+
+                invoices_data.append({
+                    'id': f"auto-{student.id}",
+                    'invoice_number': invoice_number,
+                    'student_id': student.id,
+                    'student_name': student.user.full_name,
+                    'student_number': student.user.student_number,
+                    'class_name': student.student_class.name if student.student_class else 'N/A',
+                    'issue_date': date.today().strftime('%Y-%m-%d'),
+                    'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                    'total_amount': total_amount,
+                    'amount_paid': amount_paid,
+                    'balance': balance,
+                    'status': invoice_status,
+                    'is_auto_generated': True,
+                    'currency': currency,
+                    'fee_breakdown': {
+                        'tuition': float(fee_breakdown['tuition']),
+                        'levy': float(fee_breakdown['levy']),
+                        'sports': float(fee_breakdown['sports']),
+                        'computer': float(fee_breakdown['computer']),
+                        'other': float(fee_breakdown['other']),
+                        'boarding': float(fee_breakdown['boarding']),
+                        'transport': float(fee_breakdown['transport']),
+                        'transport_opted_in': bool(fee_breakdown['transport_opted_in']),
+                        'additional_fees': additional_fees_list
+                    },
+                    'academic_year': fee_breakdown['academic_year'],
+                    'academic_term': fee_breakdown['academic_term']
+                })
         
         return Response({'invoices': invoices_data})
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def parent_transport_preference(request, child_id):
+    """Get or update a parent's transport fee preference for a specific child."""
+    if request.user.role != 'parent':
+        return Response({'error': 'Parent access required'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        link = ParentChildLink.objects.select_related('student__student_class').get(
+            parent=request.user.parent,
+            student_id=child_id,
+            is_confirmed=True,
+        )
+    except ParentChildLink.DoesNotExist:
+        return Response({'error': 'Child not found or not confirmed for this parent.'}, status=status.HTTP_404_NOT_FOUND)
+
+    student = link.student
+    preference, _ = TransportFeePreference.objects.get_or_create(
+        parent=request.user.parent,
+        student=student,
+        defaults={'updated_by': request.user},
+    )
+
+    if request.method == 'PUT':
+        raw_value = request.data.get('include_transport_fee')
+        if isinstance(raw_value, bool):
+            include_transport_fee = raw_value
+        elif isinstance(raw_value, int):
+            include_transport_fee = bool(raw_value)
+        elif isinstance(raw_value, str):
+            if raw_value.strip().lower() in ('true', '1', 'yes', 'on'):
+                include_transport_fee = True
+            elif raw_value.strip().lower() in ('false', '0', 'no', 'off'):
+                include_transport_fee = False
+            else:
+                return Response({'error': 'include_transport_fee must be true or false.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({'error': 'include_transport_fee is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        preference.include_transport_fee = include_transport_fee
+        preference.updated_by = request.user
+        preference.save(update_fields=['include_transport_fee', 'updated_by', 'updated_at'])
+
+    fee_breakdown = build_school_fee_breakdown(
+        student,
+        request.user.school,
+        parent=request.user.parent,
+    )
+
+    return Response({
+        'student_id': student.id,
+        'include_transport_fee': preference.include_transport_fee,
+        'transport_fee_available': bool(fee_breakdown['transport_available']),
+        'configured_transport_fee': float(fee_breakdown['transport_configured']),
+        'applied_transport_fee': float(fee_breakdown['transport']),
+        'updated_at': preference.updated_at,
+    })
 
 
 @api_view(['GET'])
@@ -957,42 +1055,32 @@ def get_students_for_payment(request):
     student_list = []
     for student in students:
         grade_level = student.student_class.grade_level if student.student_class else None
-        
-        # Get additional fees for this student
-        additional_fees = AdditionalFee.objects.filter(
-            school=request.user.school,
-            is_paid=False
-        ).filter(Q(student=student) | Q(student_class=student.student_class))
+
+        fee_breakdown = build_school_fee_breakdown(student, request.user.school)
+        additional_fees = get_additional_fees_for_student(student, request.user.school)
         additional_fees_total = sum(float(f.amount) for f in additional_fees)
         
         school_fee = None
-        if grade_level:
-            fee = SchoolFees.objects.filter(
-                school=request.user.school,
-                grade_level=grade_level
-            ).order_by('-academic_year', '-academic_term').first()
-            if fee:
-                school_fee = {
-                    'total_fee': float(fee.total_fee) + additional_fees_total,
-                    'base_fee': float(fee.total_fee),
-                    'additional_fees_total': additional_fees_total,
-                    'currency': fee.currency,
-                    'academic_year': fee.academic_year,
-                    'academic_term': fee.academic_term
-                }
-            elif additional_fees_total > 0:
-                school_fee = {
-                    'total_fee': additional_fees_total,
-                    'base_fee': 0,
-                    'additional_fees_total': additional_fees_total,
-                    'currency': 'USD',
-                    'academic_year': str(timezone.now().year),
-                    'academic_term': 'term_1'
-                }
+        fee_row = fee_breakdown['school_fee']
+        if fee_row:
+            school_fee = {
+                'total_fee': float(fee_breakdown['total_school_fee']) + additional_fees_total,
+                'base_fee': float(fee_breakdown['tuition'] + fee_breakdown['levy'] + fee_breakdown['sports'] + fee_breakdown['computer'] + fee_breakdown['other']),
+                'boarding_fee': float(fee_breakdown['boarding']),
+                'transport_fee': float(fee_breakdown['transport']),
+                'transport_opted_in': bool(fee_breakdown['transport_opted_in']),
+                'additional_fees_total': additional_fees_total,
+                'currency': fee_row.currency,
+                'academic_year': fee_row.academic_year,
+                'academic_term': fee_row.academic_term
+            }
         elif additional_fees_total > 0:
             school_fee = {
                 'total_fee': additional_fees_total,
                 'base_fee': 0,
+                'boarding_fee': 0,
+                'transport_fee': 0,
+                'transport_opted_in': False,
                 'additional_fees_total': additional_fees_total,
                 'currency': 'USD',
                 'academic_year': str(timezone.now().year),
@@ -1063,74 +1151,78 @@ def student_invoices_by_class(request):
                 'balance': float(existing_invoice.balance),
                 'status': 'paid' if existing_invoice.is_paid else ('partial' if existing_invoice.amount_paid > 0 else 'unpaid'),
                 'is_auto_generated': False,
-                'currency': 'USD'
+                'currency': existing_invoice.payment_record.currency if existing_invoice.payment_record else 'USD'
             })
         else:
             # Auto-generate invoice from school fees
             if grade_level:
-                school_fee = SchoolFees.objects.filter(
-                    school=user.school,
-                    grade_level=grade_level
-                ).order_by('-academic_year', '-academic_term').first()
-                
+                fee_breakdown = build_school_fee_breakdown(student, user.school)
+                school_fee = fee_breakdown['school_fee']
+
+                additional_fees = get_additional_fees_for_student(student, user.school)
+                additional_fees_total = sum(float(f.amount) for f in additional_fees)
+                additional_fees_list = [
+                    {'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason}
+                    for f in additional_fees
+                ]
+
+                total_amount = float(fee_breakdown['total_school_fee']) + additional_fees_total
+                if school_fee is None and total_amount <= 0:
+                    continue
+
+                payment_record = StudentPaymentRecord.objects.filter(
+                    student=student,
+                    school=user.school
+                ).order_by('-date_created').first()
+
+                amount_paid = float(payment_record.amount_paid) if payment_record else 0
+                balance = total_amount - amount_paid
+
+                if balance <= 0:
+                    invoice_status = 'paid'
+                elif amount_paid > 0:
+                    invoice_status = 'partial'
+                else:
+                    invoice_status = 'unpaid'
+
                 if school_fee:
-                    # Check if there's a payment record for this student
-                    payment_record = StudentPaymentRecord.objects.filter(
-                        student=student,
-                        school=user.school
-                    ).order_by('-created_at').first()
-                    
-                    # Get additional fees for this student
-                    additional_fees = AdditionalFee.objects.filter(
-                        school=user.school,
-                        is_paid=False
-                    ).filter(Q(student=student) | Q(student_class=student.student_class))
-                    additional_fees_total = sum(float(f.amount) for f in additional_fees)
-                    
-                    total_amount = float(school_fee.total_fee) + additional_fees_total
-                    amount_paid = float(payment_record.amount_paid) if payment_record else 0
-                    balance = total_amount - amount_paid
-                    
-                    # Determine status
-                    if balance <= 0:
-                        invoice_status = 'paid'
-                    elif amount_paid > 0:
-                        invoice_status = 'partial'
-                    else:
-                        invoice_status = 'unpaid'
-                    
-                    # Generate invoice number
                     invoice_number = f"INV-{student.id}-{school_fee.academic_year.replace('/', '')}-{school_fee.academic_term.upper()}"
-                    
-                    # Build additional fees list for breakdown
-                    additional_fees_list = [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
-                    
-                    invoices_data.append({
-                        'id': f"auto-{student.id}",
-                        'invoice_number': invoice_number,
-                        'student_id': student.id,
-                        'student_name': student.user.full_name,
-                        'student_number': student.user.student_number,
-                        'class_name': student.student_class.name if student.student_class else 'N/A',
-                        'issue_date': date.today().strftime('%Y-%m-%d'),
-                        'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                        'total_amount': total_amount,
-                        'amount_paid': amount_paid,
-                        'balance': balance,
-                        'status': invoice_status,
-                        'is_auto_generated': True,
-                        'currency': school_fee.currency,
-                        'fee_breakdown': {
-                            'tuition': float(school_fee.tuition_fee),
-                            'levy': float(school_fee.levy_fee),
-                            'sports': float(school_fee.sports_fee),
-                            'computer': float(school_fee.computer_fee),
-                            'other': float(school_fee.other_fees),
-                            'additional_fees': additional_fees_list
-                        },
-                        'academic_year': school_fee.academic_year,
-                        'academic_term': school_fee.academic_term
-                    })
+                else:
+                    invoice_number = f"INV-{student.id}-ADHOC-{date.today().strftime('%Y%m%d')}"
+
+                currency = fee_breakdown['currency']
+                if school_fee is None and additional_fees:
+                    currency = additional_fees[0].currency
+
+                invoices_data.append({
+                    'id': f"auto-{student.id}",
+                    'invoice_number': invoice_number,
+                    'student_id': student.id,
+                    'student_name': student.user.full_name,
+                    'student_number': student.user.student_number,
+                    'class_name': student.student_class.name if student.student_class else 'N/A',
+                    'issue_date': date.today().strftime('%Y-%m-%d'),
+                    'due_date': (date.today() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                    'total_amount': total_amount,
+                    'amount_paid': amount_paid,
+                    'balance': balance,
+                    'status': invoice_status,
+                    'is_auto_generated': True,
+                    'currency': currency,
+                    'fee_breakdown': {
+                        'tuition': float(fee_breakdown['tuition']),
+                        'levy': float(fee_breakdown['levy']),
+                        'sports': float(fee_breakdown['sports']),
+                        'computer': float(fee_breakdown['computer']),
+                        'other': float(fee_breakdown['other']),
+                        'boarding': float(fee_breakdown['boarding']),
+                        'transport': float(fee_breakdown['transport']),
+                        'transport_opted_in': bool(fee_breakdown['transport_opted_in']),
+                        'additional_fees': additional_fees_list
+                    },
+                    'academic_year': fee_breakdown['academic_year'],
+                    'academic_term': fee_breakdown['academic_term']
+                })
     
     return Response({'invoices': invoices_data})
 

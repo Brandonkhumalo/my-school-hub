@@ -57,6 +57,7 @@ def bulk_assign_fees_task(self, school_id: int, academic_year: str, academic_ter
         from academics.models import Student
         from datetime import date
         from .models import SchoolFees, StudentFee, FeeType
+        from .fee_calculator import build_school_fee_breakdown
 
         school = School.objects.get(id=school_id)
         fee_structures = SchoolFees.objects.filter(
@@ -78,11 +79,13 @@ def bulk_assign_fees_task(self, school_id: int, academic_year: str, academic_ter
                 fee_structure = fee_structures.filter(grade_level=grade_level).first()
                 if not fee_structure:
                     continue
+                fee_breakdown = build_school_fee_breakdown(student, school)
+                student_amount_due = fee_breakdown['total_school_fee']
                 fee_type, _ = FeeType.objects.get_or_create(
                     name=fee_structure.grade_name,
                     school=school,
                     academic_year=academic_year,
-                    defaults={'amount': fee_structure.total_fee},
+                    defaults={'amount': student_amount_due},
                 )
                 _, created = StudentFee.objects.get_or_create(
                     student=student,
@@ -90,7 +93,7 @@ def bulk_assign_fees_task(self, school_id: int, academic_year: str, academic_ter
                     academic_year=academic_year,
                     academic_term=academic_term,
                     defaults={
-                        'amount_due': fee_structure.total_fee,
+                        'amount_due': student_amount_due,
                         'due_date': fee_structure.date_updated.date() if hasattr(fee_structure, 'date_updated') else date.today(),
                     },
                 )

@@ -241,19 +241,38 @@ def meal_attendance_view(request):
     except MealMenu.DoesNotExist:
         return Response({'error': 'Meal menu not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    upserted = []
     boarding_student_ids = set(_boarding_students_qs(school).values_list('id', flat=True))
-    for row in payload['attendance']:
+    status_by_student = {}
+
+    for row in payload.get('attendance', []):
         student_id = row['student_id']
-        if student_id not in boarding_student_ids:
-            continue
+        if student_id in boarding_student_ids:
+            status_by_student[student_id] = row['status']
+
+    for student_id in payload.get('absent_student_ids', []):
+        if student_id in boarding_student_ids:
+            status_by_student[student_id] = 'absent'
+
+    for student_id in payload.get('excused_student_ids', []):
+        if student_id in boarding_student_ids:
+            status_by_student[student_id] = 'excused'
+
+    if payload.get('mark_unlisted_as_ate', False):
+        target_student_ids = payload.get('target_student_ids')
+        eligible_student_ids = set(target_student_ids) if target_student_ids is not None else set(boarding_student_ids)
+        eligible_student_ids &= boarding_student_ids
+        for student_id in eligible_student_ids:
+            status_by_student.setdefault(student_id, 'ate')
+
+    if not status_by_student:
+        return Response({'error': 'No valid boarding students provided for attendance update.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    upserted = []
+    for student_id, status_value in status_by_student.items():
         obj, _ = MealAttendance.objects.update_or_create(
             meal_menu=meal_menu,
             student_id=student_id,
-            defaults={
-                'status': row['status'],
-                'marked_by': request.user,
-            },
+            defaults={'status': status_value, 'marked_by': request.user},
         )
         upserted.append(obj)
 

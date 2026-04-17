@@ -19,6 +19,7 @@ export default function AdminPayments() {
   const [classReport, setClassReport] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [students, setStudents] = useState([]);
+  const [selectedStudentFee, setSelectedStudentFee] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -219,17 +220,36 @@ export default function AdminPayments() {
   const handleStudentSelect = (studentId) => {
     const student = students.find(s => s.id === parseInt(studentId));
     if (student && student.school_fee) {
+      const baseDue = Number(student.school_fee.total_fee || 0);
+      const multiplier = formData.payment_plan === "full_year"
+        ? 3
+        : formData.payment_plan === "two_terms"
+        ? 2
+        : 1;
+      const calculatedDue = (baseDue * multiplier).toFixed(2);
+      setSelectedStudentFee(student.school_fee);
       setFormData({
         ...formData,
         student: studentId,
-        total_amount_due: student.school_fee.total_fee,
+        total_amount_due: calculatedDue,
         currency: student.school_fee.currency,
         academic_year: student.school_fee.academic_year,
         academic_term: student.school_fee.academic_term
       });
     } else {
+      setSelectedStudentFee(null);
       setFormData({ ...formData, student: studentId });
     }
+  };
+
+  const handlePaymentPlanChange = (paymentPlan) => {
+    const nextData = { ...formData, payment_plan: paymentPlan };
+    if (selectedStudentFee && formData.payment_type === "school_fees") {
+      const baseDue = Number(selectedStudentFee.total_fee || 0);
+      const multiplier = paymentPlan === "full_year" ? 3 : paymentPlan === "two_terms" ? 2 : 1;
+      nextData.total_amount_due = (baseDue * multiplier).toFixed(2);
+    }
+    setFormData(nextData);
   };
 
   const printReceipt = (invoice) => {
@@ -809,7 +829,24 @@ export default function AdminPayments() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type *</label>
                   <select
                     value={formData.payment_type}
-                    onChange={(e) => setFormData({ ...formData, payment_type: e.target.value })}
+                    onChange={(e) => {
+                      const paymentType = e.target.value;
+                      if (paymentType !== "school_fees") {
+                        setFormData({ ...formData, payment_type: paymentType });
+                        return;
+                      }
+                      const nextData = { ...formData, payment_type: paymentType };
+                      if (selectedStudentFee) {
+                        const baseDue = Number(selectedStudentFee.total_fee || 0);
+                        const multiplier = formData.payment_plan === "full_year"
+                          ? 3
+                          : formData.payment_plan === "two_terms"
+                          ? 2
+                          : 1;
+                        nextData.total_amount_due = (baseDue * multiplier).toFixed(2);
+                      }
+                      setFormData(nextData);
+                    }}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     required
                   >
@@ -822,7 +859,7 @@ export default function AdminPayments() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment Plan *</label>
                   <select
                     value={formData.payment_plan}
-                    onChange={(e) => setFormData({ ...formData, payment_plan: e.target.value })}
+                    onChange={(e) => handlePaymentPlanChange(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                     required
                   >
@@ -886,6 +923,11 @@ export default function AdminPayments() {
                     placeholder="Enter total amount"
                     required
                   />
+                  {formData.payment_type === "school_fees" && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Amount is calculated from selected payment plan. Final value is validated on save.
+                    </p>
+                  )}
                 </div>
 
                 <div>
