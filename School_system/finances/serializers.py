@@ -5,20 +5,12 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from .fee_calculator import get_transport_opt_in, get_unpaid_additional_fees_for_record, get_additional_fees_total_for_record
-
-
-def _settle_additional_fees(payment_record):
-    base_due = Decimal(payment_record.total_amount_due)
-    additional_paid_budget = max(Decimal('0'), Decimal(payment_record.amount_paid) - base_due)
-    for fee in get_unpaid_additional_fees_for_record(payment_record):
-        fee_amount = Decimal(fee.amount)
-        if additional_paid_budget >= fee_amount:
-            fee.is_paid = True
-            fee.save(update_fields=['is_paid'])
-            additional_paid_budget -= fee_amount
-        else:
-            break
+from .fee_calculator import get_transport_opt_in, get_unpaid_additional_fees_for_record
+from .billing_service import (
+    compute_record_totals,
+    settle_additional_fees_for_record,
+    to_decimal,
+)
 
 
 class FeeTypeSerializer(serializers.ModelSerializer):
@@ -242,16 +234,15 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
     
     def get_additional_fees_total(self, obj):
         """Return additional fees total."""
-        return float(get_additional_fees_total_for_record(obj))
+        return float(compute_record_totals(obj)['additional_due'])
     
     def get_total_amount_due(self, obj):
         """Return total amount due."""
-        return float(Decimal(obj.total_amount_due) + get_additional_fees_total_for_record(obj))
+        return float(compute_record_totals(obj)['total_due'])
     
     def get_balance(self, obj):
         """Return balance."""
-        total = Decimal(obj.total_amount_due) + get_additional_fees_total_for_record(obj)
-        return float(total - Decimal(obj.amount_paid))
+        return float(compute_record_totals(obj)['balance'])
     
     def get_is_fully_paid(self, obj):
         """Return is fully paid."""
@@ -428,7 +419,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
                 processed_by=user,
                 notes='Initial payment'
             )
-            _settle_additional_fees(payment_record)
+            settle_additional_fees_for_record(payment_record)
             
             self._create_invoice(payment_record, amount_paid, user)
         
@@ -437,7 +428,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
     def _create_invoice(self, payment_record, amount, user):
         """Execute create invoice."""
         invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
-        snapshot_total_due = payment_record.total_amount_due + get_additional_fees_total_for_record(payment_record)
+        snapshot_total_due = compute_record_totals(payment_record)['total_due']
         Invoice.objects.create(
             student=payment_record.student,
             school=payment_record.school,
@@ -473,7 +464,7 @@ class AddPaymentSerializer(serializers.Serializer):
         if amount <= 0:
             raise serializers.ValidationError("Payment amount must be greater than zero.")
         
-        dynamic_balance = payment_record.total_amount_due + get_additional_fees_total_for_record(payment_record) - payment_record.amount_paid
+        dynamic_balance = compute_record_totals(payment_record)['balance']
         if amount > dynamic_balance:
             raise serializers.ValidationError("Payment amount cannot exceed remaining balance.")
         
@@ -499,14 +490,12 @@ class AddPaymentSerializer(serializers.Serializer):
         if validated_data.get('next_payment_due'):
             payment_record.next_payment_due = validated_data['next_payment_due']
         
-        dynamic_total_due = payment_record.total_amount_due + get_additional_fees_total_for_record(payment_record)
-        if payment_record.amount_paid >= dynamic_total_due:
-            payment_record.payment_status = 'paid'
-        else:
-            payment_record.payment_status = 'partial'
+        dynamic_totals = compute_record_totals(payment_record)
+        dynamic_total_due = dynamic_totals['total_due']
+        payment_record.payment_status = dynamic_totals['status']
         
         payment_record.save()
-        _settle_additional_fees(payment_record)
+        settle_additional_fees_for_record(payment_record)
         
         invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
         Invoice.objects.create(

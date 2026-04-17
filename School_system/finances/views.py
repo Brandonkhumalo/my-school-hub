@@ -35,8 +35,14 @@ from .fee_calculator import (
     build_school_fee_breakdown,
     get_additional_fees_for_student,
     get_unpaid_additional_fees_for_record,
-    get_additional_fees_total_for_record,
 )
+from .billing_service import (
+    to_decimal,
+    compute_record_totals,
+    settle_additional_fees_for_record,
+    recalculate_student_additional_fees,
+)
+from .paynow_security import verify_paynow_callback_signature
 from .serializers import (
     FeeTypeSerializer, StudentFeeSerializer, PaymentSerializer,
     InvoiceSerializer, FinancialReportSerializer, CreatePaymentSerializer,
@@ -1323,33 +1329,25 @@ class AdditionalFeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         return AdditionalFee.objects.none()
 
 
-def _to_decimal(value):
-    if isinstance(value, Decimal):
-        return value
-    if value is None:
-        return Decimal('0')
-    return Decimal(str(value))
-
-
 def _record_total_due(record):
-    return _to_decimal(record.total_amount_due) + get_additional_fees_total_for_record(record)
+    return compute_record_totals(record)['total_due']
 
 
 def _record_balance(record):
-    return _record_total_due(record) - _to_decimal(record.amount_paid)
+    return compute_record_totals(record)['balance']
 
 
 def _sync_invoice_with_record(invoice, record):
     if not invoice:
         return
-    invoice.amount_paid = _to_decimal(record.amount_paid)
+    invoice.amount_paid = to_decimal(record.amount_paid)
     invoice.is_paid = _record_balance(record) <= 0
     invoice.save(update_fields=['amount_paid', 'is_paid'])
 
 
 def _apply_payment_to_record(record, amount, method='other', actor=None, reference='', notes=''):
     """Apply payment atomically to record, transactions, invoice and additional-fee flags."""
-    amount = _to_decimal(amount)
+    amount = to_decimal(amount)
     if amount <= 0:
         raise ValueError('Amount must be greater than zero.')
 
@@ -1366,68 +1364,20 @@ def _apply_payment_to_record(record, amount, method='other', actor=None, referen
         notes=notes or '',
     )
 
-    record.amount_paid = _to_decimal(record.amount_paid) + amount
-    new_balance = _record_balance(record)
-    if new_balance <= 0:
-        record.payment_status = 'paid'
-    elif record.amount_paid > 0:
-        record.payment_status = 'partial'
-    else:
-        record.payment_status = 'unpaid'
+    record.amount_paid = to_decimal(record.amount_paid) + amount
+    record.payment_status = compute_record_totals(record)['status']
     record.save(update_fields=['amount_paid', 'payment_status', 'date_updated'])
 
     invoice = Invoice.objects.filter(payment_record=record, school=record.school).order_by('-issue_date', '-id').first()
     _sync_invoice_with_record(invoice, record)
 
-    base_due = _to_decimal(record.total_amount_due)
-    additional_paid_budget = max(Decimal('0'), _to_decimal(record.amount_paid) - base_due)
-    for fee in get_unpaid_additional_fees_for_record(record):
-        fee_amount = _to_decimal(fee.amount)
-        if additional_paid_budget >= fee_amount:
-            fee.is_paid = True
-            fee.save(update_fields=['is_paid'])
-            additional_paid_budget -= fee_amount
-        else:
-            break
+    settle_additional_fees_for_record(record)
 
     return record
 
 
 def _recalculate_additional_fees_for_student(student, school, academic_year, academic_term=''):
-    """Recompute paid/unpaid flags for additional fees from remaining payment records."""
-    if not student or not school or not academic_year:
-        return
-
-    records = StudentPaymentRecord.objects.filter(
-        student=student,
-        school=school,
-        academic_year=academic_year,
-    )
-    if academic_term:
-        records = records.filter(Q(academic_term=academic_term) | Q(academic_term=''))
-
-    fees = AdditionalFee.objects.filter(
-        school=school,
-        academic_year=academic_year,
-    ).filter(
-        Q(student=student) | Q(student_class=student.student_class)
-    )
-    if academic_term:
-        fees = fees.filter(academic_term=academic_term)
-    fees = fees.order_by('created_at', 'id')
-
-    total_base_due = records.aggregate(total=Sum('total_amount_due'))['total'] or Decimal('0')
-    total_base_paid = records.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
-    available_for_additional = max(Decimal('0'), Decimal(total_base_paid) - Decimal(total_base_due))
-
-    for fee in fees:
-        fee_amount = _to_decimal(fee.amount)
-        should_be_paid = available_for_additional >= fee_amount
-        if fee.is_paid != should_be_paid:
-            fee.is_paid = should_be_paid
-            fee.save(update_fields=['is_paid'])
-        if should_be_paid:
-            available_for_additional -= fee_amount
+    recalculate_student_additional_fees(student, school, academic_year, academic_term)
 
 
 # ---------------------------------------------------------------

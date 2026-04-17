@@ -316,7 +316,6 @@ export default function AdminSubjects() {
             ) : (
               <div className="bg-white rounded-lg shadow-sm p-6 text-center text-gray-500">
                 <i className="fas fa-hand-pointer text-4xl mb-3 text-gray-300"></i>
-                <p className="text-sm">Click "Teachers" on a subject to manage teacher assignments</p>
               </div>
             )}
           </div>
