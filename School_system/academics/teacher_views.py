@@ -1060,7 +1060,9 @@ def subject_students_risk(request, subject_id):
             return Response({'error': 'You do not teach this subject'}, status=status.HTTP_403_FORBIDDEN)
         
         # Get authorized classes
-        authorized_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject_id)
+        authorized_class_ids = _teacher_authorized_class_ids(
+            teacher, subject_id=subject_id, fallback_to_school=False
+        )
         
         # Get students in authorized classes
         students = Student.objects.filter(

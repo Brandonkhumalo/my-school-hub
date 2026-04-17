@@ -13,6 +13,7 @@ export default function ParentDashboard() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [children, setChildren] = useState([]);
   const [recentMessages, setRecentMessages] = useState([]);
+  const [recentAnnouncements, setRecentAnnouncements] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [complaintForm, setComplaintForm] = useState({
     student: "",
@@ -29,15 +30,17 @@ export default function ParentDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [childrenData, messagesData, complaintsData] = await Promise.all([
+      const [childrenData, messagesData, complaintsData, announcementsData] = await Promise.all([
         apiService.getParentChildren(),
         apiService.getParentWeeklyMessages(),
-        apiService.fetchComplaints()
+        apiService.fetchComplaints(),
+        apiService.fetchAnnouncements(),
       ]);
       
       setChildren(childrenData);
       setRecentMessages(messagesData.slice(0, 3));
       setComplaints(Array.isArray(complaintsData) ? complaintsData.slice(0, 5) : []);
+      setRecentAnnouncements(Array.isArray(announcementsData) ? announcementsData.slice(0, 3) : []);
       
       if (childrenData.length > 0) {
         const defaultChild = childrenData.find(c => c.is_confirmed) || childrenData[0];
@@ -301,6 +304,30 @@ export default function ParentDashboard() {
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow mb-8">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                <i className="fas fa-bullhorn mr-2 text-blue-600"></i>
+                Recent Announcements
+              </h3>
+              {recentAnnouncements.length > 0 ? (
+                <div className="space-y-3">
+                  {recentAnnouncements.map((announcement) => (
+                    <div key={announcement.id} className="p-3 bg-gray-50 rounded hover:bg-gray-100 transition">
+                      <div className="flex justify-between items-start gap-3">
+                        <p className="font-semibold text-gray-800">{announcement.title}</p>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {formatDate(announcement.date_posted)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">{announcement.content}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No announcements available.</p>
+              )}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow">

@@ -1,10 +1,25 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
+import apiService from "../../services/apiService";
+import { formatDateShort } from "../../utils/dateFormat";
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
+  const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => {
+    const loadAnnouncements = async () => {
+      try {
+        const data = await apiService.fetchAnnouncements();
+        setAnnouncements(Array.isArray(data) ? data.slice(0, 3) : []);
+      } catch (error) {
+        console.error("Error loading announcements:", error);
+      }
+    };
+    loadAnnouncements();
+  }, []);
 
   const features = [
     {
@@ -114,6 +129,28 @@ export default function TeacherDashboard() {
               </li>
             </ul>
           </div>
+        </div>
+
+        <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">
+              <i className="fas fa-bullhorn mr-2 text-blue-600"></i>
+              Recent Announcements
+            </h3>
+          </div>
+          {announcements.length > 0 ? (
+            <div className="space-y-3">
+              {announcements.map((announcement) => (
+                <div key={announcement.id} className="border rounded-lg p-3 bg-gray-50">
+                  <p className="font-semibold text-gray-800">{announcement.title}</p>
+                  <p className="text-sm text-gray-600 mt-1 line-clamp-2">{announcement.content}</p>
+                  <p className="text-xs text-gray-500 mt-1">{formatDateShort(announcement.date_posted)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">No announcements available.</p>
+          )}
         </div>
       </div>
     </div>

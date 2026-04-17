@@ -192,6 +192,67 @@ def change_password_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def parent_forgot_password_view(request):
+    """
+    Reset password for a parent account after verifying:
+    - parent login identifier (username or email)
+    - parent's phone number
+    - linked child's student number
+    """
+    if _check_rate_limit(request, group='parent_forgot_password', rate='5/m'):
+        return Response(
+            {'error': 'Too many attempts. Please wait a minute and try again.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    identifier = (request.data.get('identifier') or '').strip()
+    phone_number = (request.data.get('phone_number') or '').strip()
+    student_number = (request.data.get('student_number') or '').strip()
+    new_password = request.data.get('new_password') or ''
+    confirm_password = request.data.get('confirm_password') or ''
+
+    if not all([identifier, phone_number, student_number, new_password, confirm_password]):
+        return Response({'error': 'All fields are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if new_password != confirm_password:
+        return Response({'error': "Passwords don't match."}, status=status.HTTP_400_BAD_REQUEST)
+    if len(new_password) < 8:
+        return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_phone = ''.join(ch for ch in phone_number if ch.isdigit() or ch == '+')
+
+    try:
+        parent_user = CustomUser.objects.filter(
+            role='parent'
+        ).filter(
+            Q(username__iexact=identifier) | Q(email__iexact=identifier)
+        ).first()
+        if not parent_user:
+            return Response({'error': 'Unable to verify parent credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user_phone = (parent_user.phone_number or '').strip()
+        normalized_user_phone = ''.join(ch for ch in user_phone if ch.isdigit() or ch == '+')
+        if not normalized_user_phone or normalized_user_phone != normalized_phone:
+            return Response({'error': 'Unable to verify parent credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from academics.models import ParentChildLink
+        is_linked = ParentChildLink.objects.filter(
+            parent=parent_user.parent,
+            is_confirmed=True,
+            student__user__student_number__iexact=student_number,
+        ).exists()
+        if not is_linked:
+            return Response({'error': 'Unable to verify parent credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parent_user.set_password(new_password)
+        parent_user.save(update_fields=['password'])
+        return Response({'message': 'Password reset successful. You can now log in.'})
+    except Exception:
+        logger.warning("Parent forgot-password verification failed", exc_info=True)
+        return Response({'error': 'Unable to verify parent credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def set_whatsapp_pin_view(request):
     serializer = SetWhatsAppPinSerializer(data=request.data)
@@ -273,8 +334,12 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
-            # Keep this aligned with Admin Parents page queryset (Parent.user.school).
-            'total_parents': Parent.objects.filter(user__school=school).count(),
+            # Include parents created by admin and self-registered parents linked to this school.
+            'total_parents': Parent.objects.filter(
+                Q(user__school=school) |
+                Q(schools=school) |
+                Q(children__user__school=school)
+            ).distinct().count(),
             'total_staff': CustomUser.objects.filter(
                 role__in=['admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian'],
                 is_active=True,
@@ -894,7 +959,7 @@ def admin_analytics(request):
 
     school = request.user.school
     from academics.models import Student, Teacher, Class, Result, Attendance, Subject
-    from finances.models import StudentFee
+    from finances.models import StudentPaymentRecord
     from django.db.models import Sum
     from datetime import timedelta
 
@@ -926,9 +991,10 @@ def admin_analytics(request):
             'rate': round((present / total * 100), 1) if total > 0 else 0,
         })
 
-    # Fee collection
-    total_fees_due = StudentFee.objects.filter(student__user__school=school).aggregate(total=Sum('amount_due'))['total'] or 0
-    total_fees_paid = StudentFee.objects.filter(student__user__school=school).aggregate(total=Sum('amount_paid'))['total'] or 0
+    # Fee collection (same data source as dashboard card to keep values aligned)
+    record_qs = StudentPaymentRecord.objects.filter(school=school)
+    total_fees_due = record_qs.aggregate(total=Sum('total_amount_due'))['total'] or 0
+    total_fees_paid = record_qs.aggregate(total=Sum('amount_paid'))['total'] or 0
     collection_rate = round((float(total_fees_paid) / float(total_fees_due) * 100), 1) if total_fees_due > 0 else 0
 
     # Subject performance

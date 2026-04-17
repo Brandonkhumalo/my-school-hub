@@ -280,8 +280,10 @@ class ParentListView(generics.ListCreateAPIView):
         user = self.request.user
         if user.school:
             return Parent.objects.filter(
-                user__school=user.school
-            ).select_related('user').prefetch_related('children__user', 'children__student_class')
+                Q(user__school=user.school) |
+                Q(schools=user.school) |
+                Q(children__user__school=user.school)
+            ).distinct().select_related('user').prefetch_related('children__user', 'children__student_class')
         return Parent.objects.none()
 
 
@@ -298,8 +300,10 @@ class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         if user.school:
             return Parent.objects.filter(
-                user__school=user.school
-            ).select_related('user').prefetch_related('children__user', 'children__student_class')
+                Q(user__school=user.school) |
+                Q(schools=user.school) |
+                Q(children__user__school=user.school)
+            ).distinct().select_related('user').prefetch_related('children__user', 'children__student_class')
         return Parent.objects.none()
 
     def perform_update(self, serializer):
@@ -792,6 +796,9 @@ def approve_parent_link_request(request, link_id):
         child_school = link.student.user.school
         if child_school:
             link.parent.schools.add(child_school)
+            if not link.parent.user.school_id:
+                link.parent.user.school = child_school
+                link.parent.user.save(update_fields=['school'])
 
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}".strip()
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}".strip()

@@ -227,6 +227,7 @@ const apiService = {
     };
     return request("/auth/login/", "POST", loginData, false);
   },
+  parentForgotPassword: (data) => request("/auth/forgot-password/parent/", "POST", data, false),
   register: (userData) => request("/auth/register/", "POST", userData, false),
   registerUser: (userData) => request("/auth/register/", "POST", userData, false),
   logout: () => request("/auth/logout/", "POST"),
@@ -244,11 +245,15 @@ const apiService = {
   getDashboardStats: () => request("/auth/dashboard/stats/", "GET"),
 
   fetchSubjects: () => request("/academics/subjects/", "GET"),
+  // Backward-compatible aliases used by older admin pages
+  getSubjects: () => request("/academics/subjects/", "GET"),
   createSubject: (data) => request("/academics/subjects/", "POST", data),
   updateSubject: (id, data) => request(`/academics/subjects/${id}/`, "PATCH", data),
   deleteSubject: (id) => request(`/academics/subjects/${id}/`, "DELETE"),
 
   fetchClasses: () => request("/academics/classes/", "GET"),
+  // Backward-compatible aliases used by older admin pages
+  getClasses: () => request("/academics/classes/", "GET"),
   createClass: (data) => request("/academics/classes/", "POST", data),
   updateClass: (id, data) => request(`/academics/classes/${id}/`, "PATCH", data),
   deleteClass: (id) => request(`/academics/classes/${id}/`, "DELETE"),
@@ -281,6 +286,8 @@ const apiService = {
 
   fetchComplaints: () => request("/academics/complaints/", "GET"),
   createComplaint: (data) => request("/academics/complaints/", "POST", data),
+  getComplaintDetail: (id) => request(`/academics/complaints/${id}/`, "GET"),
+  updateComplaint: (id, data) => request(`/academics/complaints/${id}/`, "PATCH", data),
 
   fetchSuspensions: () => request("/academics/suspensions/", "GET"),
   createSuspension: (data) => request("/academics/suspensions/", "POST", data),

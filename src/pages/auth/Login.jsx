@@ -12,6 +12,17 @@ function Login() {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
   const [suspendedModal, setSuspendedModal] = useState(null);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
+  const [forgotForm, setForgotForm] = useState({
+    identifier: "",
+    phone_number: "",
+    student_number: "",
+    new_password: "",
+    confirm_password: "",
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,6 +95,114 @@ function Login() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {showForgotModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="rounded-2xl shadow-2xl max-w-lg w-full p-7 bg-white">
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Parent Forgot Password</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Verify your details and your child&apos;s student number to reset your password.
+            </p>
+
+            {forgotError && (
+              <div className="mb-3 px-3 py-2 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
+                {forgotError}
+              </div>
+            )}
+            {forgotSuccess && (
+              <div className="mb-3 px-3 py-2 rounded bg-green-50 border border-green-200 text-green-700 text-sm">
+                {forgotSuccess}
+              </div>
+            )}
+
+            <form
+              className="space-y-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setForgotError("");
+                setForgotSuccess("");
+                try {
+                  setForgotLoading(true);
+                  const response = await apiService.parentForgotPassword(forgotForm);
+                  setForgotSuccess(response?.message || "Password reset successful.");
+                  setForgotForm({
+                    identifier: "",
+                    phone_number: "",
+                    student_number: "",
+                    new_password: "",
+                    confirm_password: "",
+                  });
+                } catch (err) {
+                  setForgotError(err.message || "Unable to reset password.");
+                } finally {
+                  setForgotLoading(false);
+                }
+              }}
+            >
+              <input
+                required
+                type="text"
+                placeholder="Username or email"
+                value={forgotForm.identifier}
+                onChange={(e) => setForgotForm({ ...forgotForm, identifier: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="text"
+                placeholder="Phone number"
+                value={forgotForm.phone_number}
+                onChange={(e) => setForgotForm({ ...forgotForm, phone_number: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="text"
+                placeholder="Child's student number"
+                value={forgotForm.student_number}
+                onChange={(e) => setForgotForm({ ...forgotForm, student_number: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="password"
+                placeholder="New password"
+                value={forgotForm.new_password}
+                onChange={(e) => setForgotForm({ ...forgotForm, new_password: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="password"
+                placeholder="Confirm new password"
+                value={forgotForm.confirm_password}
+                onChange={(e) => setForgotForm({ ...forgotForm, confirm_password: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotModal(false);
+                    setForgotError("");
+                    setForgotSuccess("");
+                  }}
+                  className="flex-1 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="flex-1 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {forgotLoading ? "Resetting..." : "Reset Password"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -250,6 +369,15 @@ function Login() {
                   style={{ color: "#94a3b8", background: "none", border: "none", cursor: "pointer" }}
                 >
                   <i className={`fas ${showPw ? "fa-eye-slash" : "fa-eye"} text-sm`} />
+                </button>
+              </div>
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Parent forgot password?
                 </button>
               </div>
             </div>
