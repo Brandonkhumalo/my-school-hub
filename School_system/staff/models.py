@@ -35,7 +35,10 @@ class Staff(models.Model):
     hire_date = models.DateField()
     salary = models.DecimalField(max_digits=10, decimal_places=2)
     is_active = models.BooleanField(default=True)
-    
+
+    class Meta:
+        ordering = ['employee_id']
+
     def __str__(self):
         """Return a human-readable string representation."""
         return f"{self.user.full_name} - {self.position}"
@@ -204,6 +207,7 @@ class Payroll(models.Model):
     class Meta:
         """Represents Meta."""
         unique_together = ['staff', 'month', 'year']
+        ordering = ['-year', '-id']
     
     def __str__(self):
         """Return a human-readable string representation."""

@@ -3,6 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import PaginationControls from "../../components/PaginationControls";
+import { toInputDate } from "../../utils/dateFormat";
 
 const PAGE_SIZE = 20;
 const STAFF_ROLES = new Set(["teacher", "admin", "hr", "accountant", "security", "cleaner", "librarian"]);
@@ -106,7 +107,7 @@ export default function AdminUsers() {
       phone_number: user.phone_number || "",
       student_number: user.student_number || "",
       salary: isStaff && user.salary != null ? String(user.salary) : "",
-      hire_date: isStaff && user.staff_hire_date ? user.staff_hire_date : new Date().toISOString().split("T")[0],
+      hire_date: isStaff && user.staff_hire_date ? toInputDate(user.staff_hire_date) : new Date().toISOString().split("T")[0],
       department: isStaff && user.staff_department_id ? String(user.staff_department_id) : "",
       staff_position: isStaff ? (user.staff_position || getDefaultPositionForRole(user.role)) : "",
       is_active: user.is_active !== false,

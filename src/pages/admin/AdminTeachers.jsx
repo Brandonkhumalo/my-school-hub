@@ -3,7 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import PaginationControls from "../../components/PaginationControls";
-import { formatDate } from "../../utils/dateFormat";
+import { formatDate, toInputDate } from "../../utils/dateFormat";
 
 export default function AdminTeachers() {
   const PAGE_SIZE = 20;
@@ -251,7 +251,7 @@ export default function AdminTeachers() {
       email: teacher.user?.email || '',
       phone_number: teacher.user?.phone_number || '',
       gender: teacher.user?.gender || '',
-      hire_date: teacher.hire_date || new Date().toISOString().split('T')[0],
+      hire_date: teacher.hire_date ? toInputDate(teacher.hire_date) : new Date().toISOString().split('T')[0],
       qualification: teacher.qualification || '',
       salary: teacher.user?.salary != null ? String(teacher.user.salary) : '',
       password: '',

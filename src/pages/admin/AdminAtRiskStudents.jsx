@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 
 export default function AdminAtRiskStudents() {
   const { user } = useAuth();
@@ -17,14 +18,39 @@ export default function AdminAtRiskStudents() {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedClass, setSelectedClass] = useState("");
   const [expandedStudent, setExpandedStudent] = useState(null);
+  const [marks, setMarks] = useState([]);
+  const [loadingMarks, setLoadingMarks] = useState(false);
 
   useEffect(() => {
     loadInitialData();
   }, []);
 
   useEffect(() => {
-    loadStudents();
+    if (activeTab === "marks") {
+      loadMarks();
+    } else {
+      loadStudents();
+    }
   }, [activeTab, search, sortBy, selectedSubject, selectedClass]);
+
+  const loadMarks = async () => {
+    try {
+      setLoadingMarks(true);
+      const params = {};
+      if (selectedSubject) params.subject = selectedSubject;
+      const data = await apiService.fetchResults(params);
+      const rows = Array.isArray(data) ? data : (data?.results || []);
+      const filtered = search
+        ? rows.filter((r) => (r.student_name || "").toLowerCase().includes(search.toLowerCase()) || (r.student_number || "").toString().includes(search))
+        : rows;
+      setMarks(filtered);
+    } catch (err) {
+      console.error("Error loading marks:", err);
+      setMarks([]);
+    } finally {
+      setLoadingMarks(false);
+    }
+  };
 
   const loadInitialData = async () => {
     try {
@@ -141,6 +167,16 @@ export default function AdminAtRiskStudents() {
             >
               <i className="fas fa-book mr-2"></i>By Subject
             </button>
+            <button
+              onClick={() => setActiveTab("marks")}
+              className={`px-6 py-4 font-medium transition ${
+                activeTab === "marks"
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <i className="fas fa-clipboard-list mr-2"></i>Student Marks
+            </button>
           </div>
         </div>
 
@@ -159,7 +195,7 @@ export default function AdminAtRiskStudents() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            {activeTab === "by_subject" && (
+            {(activeTab === "by_subject" || activeTab === "marks") && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <i className="fas fa-book mr-2"></i>Subject
@@ -213,7 +249,7 @@ export default function AdminAtRiskStudents() {
         </div>
 
         {/* Summary Stats */}
-        {students && (
+        {activeTab !== "marks" && students && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
               <div className="flex items-center justify-between">
@@ -260,8 +296,53 @@ export default function AdminAtRiskStudents() {
           </div>
         )}
 
+        {/* Student Marks view */}
+        {activeTab === "marks" && (
+          loadingMarks ? <LoadingSpinner /> : (
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-100 border-b">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
+                      <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Subject</th>
+                      <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Assessment</th>
+                      <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Term / Year</th>
+                      <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Score</th>
+                      <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Out of</th>
+                      <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">%</th>
+                      <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marks.length === 0 ? (
+                      <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-500">No marks recorded.</td></tr>
+                    ) : marks.map((r) => (
+                      <tr key={r.id} className="border-b hover:bg-gray-50">
+                        <td className="px-6 py-3">
+                          <div className="font-medium text-gray-800">{r.student_name}</div>
+                          <div className="text-xs text-gray-500">#{r.student_number}</div>
+                        </td>
+                        <td className="px-6 py-3 text-sm text-gray-700">{r.subject_name}</td>
+                        <td className="px-6 py-3 text-sm text-gray-700">{r.exam_type}</td>
+                        <td className="px-6 py-3 text-sm text-gray-600">{r.academic_term} / {r.academic_year}</td>
+                        <td className="px-6 py-3 text-right">{r.score}</td>
+                        <td className="px-6 py-3 text-right">{r.max_score}</td>
+                        <td className="px-6 py-3 text-right font-medium">{r.percentage}%</td>
+                        <td className="px-6 py-3 text-center">
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((r.grade || '').charAt(0))}`}>{r.grade}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
+
         {/* Students List */}
-        {loadingStudents ? (
+        {activeTab !== "marks" && (loadingStudents ? (
           <LoadingSpinner />
         ) : students && students.students.length > 0 ? (
           <div className="space-y-4">
@@ -368,7 +449,7 @@ export default function AdminAtRiskStudents() {
                                 </div>
                                 <p className="text-xs text-gray-500">
                                   <i className="fas fa-clock mr-1"></i>
-                                  {new Date(alert.created_at).toLocaleDateString()}
+                                  {formatDate(alert.created_at)}
                                 </p>
                               </div>
                             ))}
@@ -387,7 +468,7 @@ export default function AdminAtRiskStudents() {
             <p className="text-gray-600 text-lg">No at-risk students found!</p>
             <p className="text-gray-500 mt-2">All students in your selection are performing well.</p>
           </div>
-        ) : null}
+        ) : null)}
       </div>
     </div>
   );

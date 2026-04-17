@@ -177,8 +177,8 @@ export default function TeacherMarks() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const scoreNum = parseFloat(score);
-    const maxScoreNum = parseFloat(maxScore);
+    const scoreNum = Math.round(parseFloat(score) * 100) / 100;
+    const maxScoreNum = Math.round(parseFloat(maxScore) * 100) / 100;
     if (!selectedSubject || !selectedStudent || Number.isNaN(scoreNum) || Number.isNaN(maxScoreNum)) {
       alert("Please fill in all required fields.");
       return;

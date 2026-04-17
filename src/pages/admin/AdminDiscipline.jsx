@@ -13,6 +13,7 @@ export default function AdminDiscipline() {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState({ severity: "", resolved: "" });
   const [search, setSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState({
     student_id: "",
@@ -127,15 +128,47 @@ export default function AdminDiscipline() {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
-                <select value={formData.student_id} onChange={(e) => setFormData({ ...formData, student_id: e.target.value })} required
-                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500">
-                  <option value="">Select student...</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.first_name || s.name} {s.last_name || s.surname} ({s.student_number})
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Search by name or student number..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500"
+                  />
+                  <select
+                    value={formData.student_id}
+                    onChange={(e) => {
+                      setFormData({ ...formData, student_id: e.target.value });
+                      setStudentSearch("");
+                    }}
+                    required
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500"
+                  >
+                    <option value="">Select student...</option>
+                    {students
+                      .filter((s) => {
+                        if (!studentSearch) return true;
+                        const name = `${s.user?.first_name || ''} ${s.user?.last_name || ''}`.toLowerCase();
+                        const number = (s.user?.student_number || '').toLowerCase();
+                        const searchLower = studentSearch.toLowerCase();
+                        return name.includes(searchLower) || number.includes(searchLower);
+                      })
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.user?.first_name} {s.user?.last_name} ({s.user?.student_number})
+                        </option>
+                      ))}
+                  </select>
+                  {studentSearch && students.filter((s) => {
+                    const name = `${s.user?.first_name || ''} ${s.user?.last_name || ''}`.toLowerCase();
+                    const number = (s.user?.student_number || '').toLowerCase();
+                    const searchLower = studentSearch.toLowerCase();
+                    return name.includes(searchLower) || number.includes(searchLower);
+                  }).length === 0 && (
+                    <p className="text-sm text-gray-500 italic">No students found matching "{studentSearch}"</p>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Incident Type *</label>

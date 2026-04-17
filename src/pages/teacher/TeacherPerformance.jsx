@@ -14,6 +14,9 @@ export default function TeacherPerformance() {
   const [search, setSearch] = useState("");
   const [filterAtRisk, setFilterAtRisk] = useState("all");
   const [sortBy, setSortBy] = useState("risk_score");
+  const [viewMode, setViewMode] = useState("risk"); // "risk" | "marks"
+  const [marks, setMarks] = useState([]);
+  const [loadingMarks, setLoadingMarks] = useState(false);
 
   const normalizeStudentsPayload = (payload) => {
     if (Array.isArray(payload)) {
@@ -48,10 +51,27 @@ export default function TeacherPerformance() {
   }, []);
 
   useEffect(() => {
-    if (selectedSubject) {
+    if (!selectedSubject) return;
+    if (viewMode === "risk") {
       loadStudents();
+    } else {
+      loadMarks();
     }
-  }, [selectedSubject, search, filterAtRisk, sortBy]);
+  }, [selectedSubject, search, filterAtRisk, sortBy, viewMode]);
+
+  const loadMarks = async () => {
+    try {
+      setLoadingMarks(true);
+      const data = await apiService.fetchResults({ subject: selectedSubject });
+      const rows = Array.isArray(data) ? data : (data?.results || []);
+      setMarks(rows);
+    } catch (err) {
+      console.error("Error loading marks:", err);
+      setMarks([]);
+    } finally {
+      setLoadingMarks(false);
+    }
+  };
 
   const loadSubjects = async () => {
     try {
@@ -147,6 +167,20 @@ export default function TeacherPerformance() {
           </div>
         ) : (
           <div>
+            <div className="mb-6 flex gap-2">
+              <button
+                onClick={() => setViewMode("risk")}
+                className={`px-4 py-2 rounded-lg font-medium transition ${viewMode === "risk" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"}`}
+              >
+                <i className="fas fa-chart-line mr-2"></i>AI Risk Predictor
+              </button>
+              <button
+                onClick={() => setViewMode("marks")}
+                className={`px-4 py-2 rounded-lg font-medium transition ${viewMode === "marks" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"}`}
+              >
+                <i className="fas fa-clipboard-list mr-2"></i>Student Marks Overview
+              </button>
+            </div>
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-3">
                 <i className="fas fa-book mr-2 text-blue-600"></i>Select Subject
@@ -164,6 +198,7 @@ export default function TeacherPerformance() {
               </select>
             </div>
 
+            {viewMode === "risk" && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
@@ -216,8 +251,9 @@ export default function TeacherPerformance() {
                 </div>
               </div>
             </div>
+            )}
 
-            {students && (
+            {viewMode === "risk" && students && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <div className="flex items-center justify-between">
@@ -251,7 +287,7 @@ export default function TeacherPerformance() {
               </div>
             )}
 
-            {loadingStudents ? (
+            {viewMode === "risk" && (loadingStudents ? (
               <LoadingSpinner />
             ) : students && students.results.length > 0 ? (
               <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -322,7 +358,49 @@ export default function TeacherPerformance() {
                 <i className="fas fa-inbox text-4xl text-gray-300 mb-4"></i>
                 <p className="text-gray-600">No students found matching your criteria.</p>
               </div>
-            ) : null}
+            ) : null)}
+
+            {viewMode === "marks" && (
+              loadingMarks ? <LoadingSpinner /> : (
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-100 border-b">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
+                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Assessment</th>
+                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Term / Year</th>
+                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Score</th>
+                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Out of</th>
+                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">%</th>
+                          <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {marks.length === 0 ? (
+                          <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No marks recorded for this subject yet.</td></tr>
+                        ) : marks.map((r) => (
+                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                            <td className="px-6 py-3">
+                              <div className="font-medium text-gray-800">{r.student_name}</div>
+                              <div className="text-xs text-gray-500">#{r.student_number}</div>
+                            </td>
+                            <td className="px-6 py-3 text-sm text-gray-700">{r.exam_type}</td>
+                            <td className="px-6 py-3 text-sm text-gray-600">{r.academic_term} / {r.academic_year}</td>
+                            <td className="px-6 py-3 text-right">{r.score}</td>
+                            <td className="px-6 py-3 text-right">{r.max_score}</td>
+                            <td className="px-6 py-3 text-right font-medium">{r.percentage}%</td>
+                            <td className="px-6 py-3 text-center">
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((r.grade || '').charAt(0))}`}>{r.grade}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            )}
           </div>
         )}
       </div>

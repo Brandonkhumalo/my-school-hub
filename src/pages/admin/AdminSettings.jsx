@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
+import { parseDate, toInputDate } from "../../utils/dateFormat";
 
 const GRADING_SYSTEMS = [
   { value: "zimsec", label: "ZIMSEC (A-U)" },
@@ -32,9 +33,29 @@ export default function AdminSettings() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const normalizeDateForInput = (value) => {
+    if (!value) return "";
+    return toInputDate(value) || "";
+  };
+
+  const normalizeSettingsDates = (data) => {
+    if (!data) return data;
+    return {
+      ...data,
+      term_start_date: normalizeDateForInput(data.term_start_date),
+      term_end_date: normalizeDateForInput(data.term_end_date),
+      term_1_start: normalizeDateForInput(data.term_1_start),
+      term_1_end: normalizeDateForInput(data.term_1_end),
+      term_2_start: normalizeDateForInput(data.term_2_start),
+      term_2_end: normalizeDateForInput(data.term_2_end),
+      term_3_start: normalizeDateForInput(data.term_3_start),
+      term_3_end: normalizeDateForInput(data.term_3_end),
+    };
+  };
+
   useEffect(() => {
     apiService.getSchoolSettings()
-      .then(setSettings)
+      .then((data) => setSettings(normalizeSettingsDates(data)))
       .catch(() => setError("Failed to load school settings"))
       .finally(() => setLoading(false));
   }, []);
@@ -147,7 +168,7 @@ export default function AdminSettings() {
                   </div>
                   {settings?.[startKey] && settings?.[endKey] && (
                     <p className="text-xs text-gray-500 mt-2">
-                      Duration: {Math.ceil((new Date(settings[endKey]) - new Date(settings[startKey])) / (1000 * 60 * 60 * 24))} days
+                      Duration: {Math.ceil((parseDate(settings[endKey]) - parseDate(settings[startKey])) / (1000 * 60 * 60 * 24))} days
                     </p>
                   )}
                 </div>

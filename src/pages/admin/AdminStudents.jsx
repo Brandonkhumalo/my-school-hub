@@ -3,7 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import PaginationControls from "../../components/PaginationControls";
-import { formatDate } from "../../utils/dateFormat";
+import { formatDate, toInputDate } from "../../utils/dateFormat";
 import { useAuth } from "../../context/AuthContext";
 import { isSchoolBoardingOnly, isSchoolDayOnly, studentResidenceLabel } from "../../utils/boardingAccess";
 
@@ -191,11 +191,11 @@ export default function AdminStudents() {
       last_name: student.user?.last_name || "",
       student_class: student.student_class || "",
       residence_type: student.residence_type || "",
-      admission_date: student.admission_date || new Date().toISOString().split("T")[0],
+      admission_date: student.admission_date ? toInputDate(student.admission_date) : new Date().toISOString().split("T")[0],
       student_email: student.user?.email || "",
       student_contact: student.user?.phone_number || student.parent_contact || "",
       student_address: student.address || "",
-      date_of_birth: student.date_of_birth || "",
+      date_of_birth: toInputDate(student.date_of_birth),
       gender: student.gender || "",
       emergency_contact: student.emergency_contact || "",
       password: "",

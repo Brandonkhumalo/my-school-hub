@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDateTime } from "../../utils/dateFormat";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -192,7 +193,7 @@ export default function ParentBoarding() {
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-3">Sick Bay Visits</h3>
             {sickbayVisits.length === 0 ? <p className="text-gray-500">No sick bay visits.</p> : sickbayVisits.slice(0, 8).map((v) => (
-              <p key={v.id} className="text-sm text-gray-700">{new Date(v.visit_date).toLocaleString()}: {v.complaint}</p>
+              <p key={v.id} className="text-sm text-gray-700">{formatDateTime(v.visit_date)}: {v.complaint}</p>
             ))}
           </div>
         </div>
@@ -209,7 +210,7 @@ export default function ParentBoarding() {
             <div>
               <p className="font-medium text-gray-700 mb-2">Sign In/Out Logs</p>
               {exeatLogs.length === 0 ? <p className="text-gray-500">No movement logs yet.</p> : exeatLogs.map((l) => (
-                <p key={l.id} className="text-sm text-gray-700">{new Date(l.action_time).toLocaleString()}: {l.action}</p>
+                <p key={l.id} className="text-sm text-gray-700">{formatDateTime(l.action_time)}: {l.action}</p>
               ))}
             </div>
           </div>
@@ -218,7 +219,7 @@ export default function ParentBoarding() {
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">Tuck Wallet Transactions</h3>
           {walletTxs.length === 0 ? <p className="text-gray-500">No tuck transactions.</p> : walletTxs.slice(0, 10).map((tx) => (
-            <p key={tx.id} className="text-sm text-gray-700">{new Date(tx.created_at).toLocaleString()}: {tx.transaction_type} ${tx.amount} ({tx.description || "-"})</p>
+            <p key={tx.id} className="text-sm text-gray-700">{formatDateTime(tx.created_at)}: {tx.transaction_type} ${tx.amount} ({tx.description || "-"})</p>
           ))}
         </div>
       </div>

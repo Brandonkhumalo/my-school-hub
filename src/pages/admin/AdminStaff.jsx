@@ -3,6 +3,7 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import PaginationControls from "../../components/PaginationControls";
+import { toInputDate } from "../../utils/dateFormat";
 
 const POSITIONS = [
   "teacher",
@@ -126,7 +127,7 @@ export default function AdminStaff() {
       phone_number: member.user?.phone_number || "",
       position: member.position || "teacher",
       department: member.department ? String(member.department) : "",
-      hire_date: member.hire_date || new Date().toISOString().split("T")[0],
+      hire_date: member.hire_date ? toInputDate(member.hire_date) : new Date().toISOString().split("T")[0],
       salary: member.salary ? String(member.salary) : "",
       is_active: member.is_active !== false,
     });

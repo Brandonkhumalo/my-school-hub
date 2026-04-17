@@ -276,7 +276,10 @@ const apiService = {
   createParent: (data) => request("/academics/parents/", "POST", data),
   updateParent: (id, data) => request(`/academics/parents/${id}/`, "PATCH", data),
 
-  fetchResults: () => request("/academics/results/", "GET"),
+  fetchResults: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/academics/results/${qs ? `?${qs}` : ""}`, "GET");
+  },
   fetchClassAverages: () => request("/academics/results/class-averages/", "GET"),
   createResult: (data) => request("/academics/results/", "POST", data),
 
@@ -657,6 +660,7 @@ const apiService = {
     const q = new URLSearchParams(params).toString();
     return request(`/staff/payroll/${q ? '?' + q : ''}`, "GET");
   },
+  generatePayroll: (data) => request("/staff/payroll/generate/", "POST", data),
   createPayrollEntry: (data) => request("/staff/payroll/", "POST", data),
   getPayrollSummary: (params = {}) => {
     const q = new URLSearchParams(params).toString();

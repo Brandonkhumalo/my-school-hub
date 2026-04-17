@@ -94,9 +94,3 @@ docker compose -f docker-compose.prod.yml logs --since 1h --no-color > prod-logs
 # Save one service logs
 docker compose -f docker-compose.prod.yml logs --since 1h --no-color web > web-logs-1h.txt
 ```
-
-
-Next steps
-
-Create a few fresh plan-tagged marks in a term and generate report cards to confirm weighted percentages on live data.
-Add a short admin note: old free-text marks are treated as ad-hoc/equal-weight fallback unless re-entered with plan tags.

@@ -4,6 +4,7 @@ import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDate } from "../../utils/dateFormat";
 
 /* ── Option lists ─────────────────────────────────────────────────── */
 
@@ -1145,7 +1146,7 @@ function ReportPreview({ config, previewStudent, term, year }) {
 
       <div className="text-center text-gray-400 mt-3 pt-2 border-t border-gray-100 relative z-10"
         style={{ fontSize: `${7.5 * fontScale}px` }}>
-        Generated on {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })} | Sample Academy
+        Generated on {formatDate(new Date().toISOString())} | Sample Academy
         {c.custom_footer_text && ` | ${c.custom_footer_text}`}
       </div>
     </div>

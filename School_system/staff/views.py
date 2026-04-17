@@ -551,6 +551,59 @@ def payroll_summary_view(request):
     return Response(summary)
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def payroll_generate_view(request):
+    """Bulk-create Payroll entries for the given month/year from Staff.salary.
+
+    Skips staff that already have an entry for the period. Staff without a
+    salary recorded on their profile are skipped with a warning in the response.
+    """
+    if not _is_hr_or_admin(request.user):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    month = request.data.get('month')
+    year = request.data.get('year')
+    if not month or not year:
+        return Response({'error': 'month and year are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        year = int(year)
+    except (TypeError, ValueError):
+        return Response({'error': 'year must be a number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    existing = set(
+        Payroll.objects.filter(
+            staff__user__school=request.user.school, month=month, year=year,
+        ).values_list('staff_id', flat=True)
+    )
+
+    created = 0
+    skipped_no_salary = 0
+    for staff in Staff.objects.filter(user__school=request.user.school, is_active=True):
+        if staff.id in existing:
+            continue
+        if not staff.salary or staff.salary <= 0:
+            skipped_no_salary += 1
+            continue
+        Payroll.objects.create(
+            staff=staff,
+            month=month,
+            year=year,
+            basic_salary=staff.salary,
+            allowances=0,
+            deductions=0,
+            net_salary=staff.salary,
+            is_paid=False,
+        )
+        created += 1
+
+    return Response({
+        'created': created,
+        'skipped_existing': len(existing),
+        'skipped_no_salary': skipped_no_salary,
+    })
+
+
 # ---------------------------------------------------------------
 # Meetings
 # ---------------------------------------------------------------

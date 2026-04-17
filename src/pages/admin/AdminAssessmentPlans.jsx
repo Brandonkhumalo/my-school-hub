@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import { useAuth } from "../../context/AuthContext";
+import { canWritePage, isForbiddenError } from "../../utils/hrPermissions";
 
 const DEFAULT_TERMS = ["Term 1", "Term 2", "Term 3"];
 const emptyForm = {
@@ -20,9 +22,13 @@ const emptyForm = {
 };
 
 export default function AdminAssessmentPlans() {
+  const { user } = useAuth();
+  const canWrite = canWritePage(user, "results");
   const [plans, setPlans] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -35,6 +41,8 @@ export default function AdminAssessmentPlans() {
 
   const loadPlans = async () => {
     setLoading(true);
+    setForbidden(false);
+    setLoadError("");
     try {
       const params = {};
       if (filter.year) params.year = filter.year;
@@ -42,7 +50,11 @@ export default function AdminAssessmentPlans() {
       const data = await apiService.listAssessmentPlans(params);
       setPlans(Array.isArray(data) ? data : []);
     } catch (err) {
-      alert("Failed to load plans: " + (err.message || "Unknown error"));
+      if (isForbiddenError(err)) {
+        setForbidden(true);
+      } else {
+        setLoadError(err.message || "Unknown error");
+      }
     } finally {
       setLoading(false);
     }
@@ -175,10 +187,30 @@ export default function AdminAssessmentPlans() {
     return [y - 1, y, y + 1].map(String);
   }, []);
 
+  if (forbidden) {
+    return (
+      <div>
+        <Header title="Assessment Plans" />
+        <div className="p-6">
+          <div className="bg-white rounded-lg shadow p-8 text-center border border-red-200">
+            <i className="fas fa-lock text-4xl text-red-500 mb-3"></i>
+            <h3 className="text-lg font-semibold text-gray-800 mb-1">Forbidden</h3>
+            <p className="text-gray-600">You don't have permission to view this page. Contact your administrator to request access.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Header title="Assessment Plans" />
       <div className="p-6">
+        {loadError && (
+          <div className="mb-4 p-3 rounded border border-red-200 bg-red-50 text-sm text-red-700">
+            Failed to load plans: {loadError}
+          </div>
+        )}
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-600">Year</label>
@@ -211,7 +243,9 @@ export default function AdminAssessmentPlans() {
           </button>
           <button
             onClick={openCreate}
-            className="ml-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            disabled={!canWrite}
+            title={canWrite ? "" : "You don't have write permission"}
+            className={`ml-auto px-4 py-2 rounded text-white ${canWrite ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"}`}
           >
             <i className="fas fa-plus mr-2"></i>New Plan
           </button>
@@ -264,13 +298,17 @@ export default function AdminAssessmentPlans() {
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => openEdit(p)}
-                        className="text-blue-600 hover:underline mr-3"
+                        disabled={!canWrite}
+                        title={canWrite ? "" : "You don't have write permission"}
+                        className={`mr-3 ${canWrite ? "text-blue-600 hover:underline" : "text-gray-400 cursor-not-allowed"}`}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => removePlan(p)}
-                        className="text-red-600 hover:underline"
+                        disabled={!canWrite}
+                        title={canWrite ? "" : "You don't have write permission"}
+                        className={canWrite ? "text-red-600 hover:underline" : "text-gray-400 cursor-not-allowed"}
                       >
                         Delete
                       </button>

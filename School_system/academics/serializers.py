@@ -151,6 +151,13 @@ class ResultSerializer(serializers.ModelSerializer):
             'assessment_plan', 'component_kind', 'component_index'
         ]
 
+    def validate_score(self, value):
+        # Snap to 2dp to avoid float drift (e.g. 76 being stored as 75.9999...).
+        return round(float(value), 2)
+
+    def validate_max_score(self, value):
+        return round(float(value), 2)
+
     def get_effective_term(self, obj):
         return obj.report_term if obj.report_term else obj.academic_term
 

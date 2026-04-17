@@ -26,6 +26,7 @@ urlpatterns = [
     path('payroll/', views.PayrollListCreateView.as_view(), name='payroll-list-create'),
     path('payroll/<int:pk>/', views.PayrollDetailView.as_view(), name='payroll-detail'),
     path('payroll/summary/', views.payroll_summary_view, name='payroll-summary'),
+    path('payroll/generate/', views.payroll_generate_view, name='payroll-generate'),
 
     # Meetings
     path('meetings/', views.MeetingListCreateView.as_view(), name='meeting-list-create'),

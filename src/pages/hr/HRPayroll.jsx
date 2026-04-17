@@ -62,6 +62,32 @@ export default function HRPayroll() {
     }
   };
 
+  const handleStaffSelect = (id) => {
+    const match = staffList.find((s) => String(s.id) === String(id));
+    setForm((f) => ({
+      ...f,
+      staff: id,
+      basic_salary: match?.salary != null ? String(match.salary) : f.basic_salary,
+    }));
+  };
+
+  const handleGenerate = async () => {
+    const { monthName, year } = parseMonthInput(month);
+    if (!monthName || !year) {
+      setError("Pick a valid month first.");
+      return;
+    }
+    if (!confirm(`Generate payroll entries for all active staff for ${monthName} ${year}? Staff with existing entries will be skipped.`)) return;
+    try {
+      const result = await apiService.generatePayroll({ month: monthName, year });
+      setError("");
+      alert(`Created ${result.created} entries. Skipped ${result.skipped_existing} existing and ${result.skipped_no_salary} with no salary set.`);
+      load();
+    } catch (err) {
+      setError(err.message || "Failed to generate payroll.");
+    }
+  };
+
   const statusBadge = (s) => {
     const c = s === "paid" ? "green" : s === "pending" ? "yellow" : "gray";
     return `px-2 py-1 rounded-full text-xs font-medium bg-${c}-100 text-${c}-700`;
@@ -71,10 +97,16 @@ export default function HRPayroll() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Payroll</h1>
-        <button onClick={() => setShowForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-          + Add Entry
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleGenerate}
+            className="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
+            <i className="fas fa-bolt mr-2"></i>Generate for Month
+          </button>
+          <button onClick={() => setShowForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+            + Add Entry
+          </button>
+        </div>
       </div>
 
       {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
@@ -148,7 +180,7 @@ export default function HRPayroll() {
               <div>
                 <label className="text-xs text-gray-600 mb-1 block">Staff Member</label>
                 <select required className="border rounded w-full p-2 text-sm"
-                  value={form.staff} onChange={(e) => setForm({ ...form, staff: e.target.value })}>
+                  value={form.staff} onChange={(e) => handleStaffSelect(e.target.value)}>
                   <option value="">Select staff...</option>
                   {staffList.map((s) => (
                     <option key={s.id} value={s.id}>{s.user?.first_name} {s.user?.last_name}</option>

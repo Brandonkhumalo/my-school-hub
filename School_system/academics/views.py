@@ -1969,8 +1969,8 @@ def bulk_import_results(request):
             student_number = row.get('student_number', '').strip()
             subject_code = row.get('subject_code', '').strip()
             exam_type = row.get('exam_type', '').strip()
-            score = float(row.get('score', 0))
-            max_score = float(row.get('max_score', 100))
+            score = round(float(row.get('score', 0)), 2)
+            max_score = round(float(row.get('max_score', 100)), 2)
             term = row.get('term', '').strip()
             year = row.get('year', '').strip()
 

@@ -1,8 +1,10 @@
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from django.utils import timezone
 
-from .models import DisciplinaryRecord, Student
+from .models import DisciplinaryRecord, Student, Announcement
+from users.models import CustomUser
 
 
 @api_view(['GET', 'POST'])
@@ -80,6 +82,38 @@ def discipline_list_create(request):
         follow_up_notes=request.data.get('follow_up_notes', ''),
         school=school,
     )
+
+    # Create announcements targeting student, parents, and teachers
+    try:
+        severity_label = dict(DisciplinaryRecord.SEVERITY_CHOICES).get(record.severity, record.severity)
+        announcement_title = f"{severity_label.title()} Disciplinary Record - {student.user.full_name}"
+        announcement_content = f"""
+A disciplinary record has been created:
+
+Student: {student.user.full_name}
+Incident Type: {record.incident_type}
+Severity: {severity_label}
+Description: {record.description}
+Date of Incident: {record.date_of_incident}
+Action Taken: {record.action_taken if record.action_taken else "To be determined"}
+Reported by: {request.user.full_name}
+
+Please review this record and take appropriate action if needed.
+        """.strip()
+
+        # Create announcement
+        Announcement.objects.create(
+            title=announcement_title,
+            content=announcement_content,
+            author=request.user,
+            target_audience='mixed',
+            target_audiences=['student', 'parent', 'teacher'],
+            target_class=student.student_class,
+            is_active=True,
+        )
+    except Exception as e:
+        # Log the error but don't fail the record creation
+        print(f"Warning: Failed to create announcement for discipline record {record.id}: {str(e)}")
 
     return Response({
         'message': 'Disciplinary record created',

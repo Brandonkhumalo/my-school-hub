@@ -173,6 +173,7 @@ const HRVisitorLogs = lazy(() => import("./pages/hr/HRVisitorLogs"));
 const HRIncidents = lazy(() => import("./pages/hr/HRIncidents"));
 const HRCleaningSchedules = lazy(() => import("./pages/hr/HRCleaningSchedules"));
 const HRBoarding = lazy(() => import("./pages/hr/HRBoarding"));
+const MyLeaves = lazy(() => import("./pages/shared/MyLeaves"));
 
 // Accountant pages
 const AccountantDashboard = lazy(() => import("./pages/accountant/AccountantDashboard"));
@@ -279,6 +280,7 @@ function App() {
         <Route path="/teacher/report-feedback" element={<RequireAuth allowedRoles={['teacher']}><TeacherSubjectFeedback /></RequireAuth>} />
         <Route path="/teacher/attendance" element={<RequireAuth allowedRoles={['teacher']}><TeacherAttendance /></RequireAuth>} />
         <Route path="/teacher/performance" element={<RequireAuth allowedRoles={['teacher']}><TeacherPerformance /></RequireAuth>} />
+        <Route path="/my/leaves" element={<RequireAuth allowedRoles={['teacher','accountant','librarian','security','cleaner']}><MyLeaves /></RequireAuth>} />
         <Route path="/teacher/homework" element={<RequireAuth allowedRoles={['teacher']}><TeacherHomework /></RequireAuth>} />
         <Route path="/teacher/messages" element={<RequireAuth allowedRoles={['teacher']}><TeacherMessages /></RequireAuth>} />
         <Route path="/teacher/results" element={<RequireAuth allowedRoles={['teacher']}><TeacherResults /></RequireAuth>} />

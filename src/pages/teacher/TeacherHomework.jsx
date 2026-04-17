@@ -3,7 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
-import { formatDate, formatDateTime } from "../../utils/dateFormat";
+import { formatDate, formatDateTime, toInputDate } from "../../utils/dateFormat";
 
 export default function TeacherHomework() {
   const { user } = useAuth();
@@ -147,7 +147,7 @@ export default function TeacherHomework() {
       subject_id: hw.subject?.id ? String(hw.subject.id) : "",
       class_id: hw.assigned_class?.id ? String(hw.assigned_class.id) : "",
       description: hw.description || "",
-      due_date: hw.due_date || "",
+      due_date: toInputDate(hw.due_date),
       file: null
     });
     setRemoveExistingFile(false);

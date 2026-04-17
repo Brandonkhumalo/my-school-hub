@@ -67,6 +67,7 @@ const ALL_MENU_ITEMS = {
       { path: "/teacher/conferences",  icon: "fa-calendar-check",   title: "Conferences" },
       { path: "/teacher/messages",     icon: "fa-comments",         title: "Messages" },
       { path: "/teacher/complaints",   icon: "fa-exclamation-circle",title: "Complaints" },
+      { path: "/my/leaves",            icon: "fa-calendar-minus",   title: "My Leave" },
     ]},
   ],
   student: [
@@ -105,6 +106,7 @@ const ALL_MENU_ITEMS = {
       { path: "/accountant/payments", icon: "fa-credit-card",  title: "Payments" },
       { path: "/accountant/invoices", icon: "fa-file-invoice", title: "Invoices" },
       { path: "/accountant/reports",  icon: "fa-chart-bar",    title: "Reports" },
+      { path: "/my/leaves",           icon: "fa-calendar-minus", title: "My Leave" },
     ]},
   ],
   librarian: [
@@ -112,6 +114,7 @@ const ALL_MENU_ITEMS = {
       { path: "/librarian",        icon: "fa-home",          title: "Dashboard" },
       { path: "/librarian/books",  icon: "fa-book",          title: "Books" },
       { path: "/librarian/loans",  icon: "fa-exchange-alt",  title: "Loans" },
+      { path: "/my/leaves",        icon: "fa-calendar-minus", title: "My Leave" },
     ]},
   ],
   security: [
@@ -120,6 +123,7 @@ const ALL_MENU_ITEMS = {
       { path: "/security/visitors",   icon: "fa-id-card",           title: "Visitor Log" },
       { path: "/security/incidents",  icon: "fa-exclamation-triangle", title: "Incidents" },
       { path: "/security/attendance", icon: "fa-clipboard-check",   title: "Attendance" },
+      { path: "/my/leaves",           icon: "fa-calendar-minus",    title: "My Leave" },
     ]},
   ],
   cleaner: [
@@ -127,6 +131,7 @@ const ALL_MENU_ITEMS = {
       { path: "/cleaner",            icon: "fa-home",           title: "Dashboard" },
       { path: "/cleaner/tasks",      icon: "fa-broom",          title: "Tasks" },
       { path: "/cleaner/attendance", icon: "fa-clipboard-check",title: "Attendance" },
+      { path: "/my/leaves",          icon: "fa-calendar-minus", title: "My Leave" },
     ]},
   ],
   hr: [

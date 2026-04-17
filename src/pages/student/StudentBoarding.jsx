@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import apiService from "../../services/apiService";
+import { formatDateTime } from "../../utils/dateFormat";
 
 export default function StudentBoarding() {
   const [loading, setLoading] = useState(true);
@@ -122,7 +123,7 @@ export default function StudentBoarding() {
             <div className="mt-4">
               <p className="font-medium text-gray-700">Sign In/Out Logs</p>
               {exeatLogs.length === 0 ? <p className="text-gray-500 text-sm">No movement logs yet.</p> : exeatLogs.map((l) => (
-                <p key={l.id} className="text-sm text-gray-700">{new Date(l.action_time).toLocaleString()}: {l.action}</p>
+                <p key={l.id} className="text-sm text-gray-700">{formatDateTime(l.action_time)}: {l.action}</p>
               ))}
             </div>
           </div>
@@ -131,11 +132,11 @@ export default function StudentBoarding() {
             <h3 className="text-lg font-semibold text-gray-800 mb-3">Health & Tuck</h3>
             <p className="font-medium text-gray-700">Sick Bay</p>
             {sickbayVisits.length === 0 ? <p className="text-gray-500 text-sm">No sick bay records.</p> : sickbayVisits.slice(0, 5).map((v) => (
-              <p key={v.id} className="text-sm text-gray-700">{new Date(v.visit_date).toLocaleString()}: {v.complaint}</p>
+              <p key={v.id} className="text-sm text-gray-700">{formatDateTime(v.visit_date)}: {v.complaint}</p>
             ))}
             <p className="font-medium text-gray-700 mt-4">Tuck Transactions</p>
             {walletTxs.length === 0 ? <p className="text-gray-500 text-sm">No tuck activity.</p> : walletTxs.slice(0, 6).map((tx) => (
-              <p key={tx.id} className="text-sm text-gray-700">{new Date(tx.created_at).toLocaleString()}: {tx.transaction_type} ${tx.amount}</p>
+              <p key={tx.id} className="text-sm text-gray-700">{formatDateTime(tx.created_at)}: {tx.transaction_type} ${tx.amount}</p>
             ))}
           </div>
         </div>
