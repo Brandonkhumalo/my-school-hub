@@ -37,6 +37,27 @@ def get_additional_fees_for_student(student, school):
     )
 
 
+def get_unpaid_additional_fees_for_record(payment_record):
+    """Return unpaid additional fees applicable to a specific payment record scope."""
+    if not payment_record or not payment_record.school:
+        return []
+
+    queryset = AdditionalFee.objects.filter(
+        school=payment_record.school,
+        is_paid=False,
+        academic_year=payment_record.academic_year,
+    ).filter(
+        Q(student=payment_record.student) | Q(student_class=payment_record.student.student_class)
+    )
+    if payment_record.academic_term:
+        queryset = queryset.filter(academic_term=payment_record.academic_term)
+    return list(queryset.order_by('created_at', 'id'))
+
+
+def get_additional_fees_total_for_record(payment_record):
+    return sum((_to_decimal(fee.amount) for fee in get_unpaid_additional_fees_for_record(payment_record)), Decimal('0'))
+
+
 def get_transport_opt_in(student, parent=None):
     if parent is not None:
         pref = TransportFeePreference.objects.filter(parent=parent, student=student).first()

@@ -196,6 +196,58 @@ class PaymentTransaction(models.Model):
         return f"{self.payment_record.student.user.full_name} - {self.amount}"
 
 
+class PaymentIntent(models.Model):
+    """Tracks a single online payment attempt and callback lifecycle."""
+
+    STATUS_CHOICES = [
+        ('initiated', 'Initiated'),
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    objects = TenantAwareManager()
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='payment_intents')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='payment_intents')
+    payment_record = models.ForeignKey(
+        StudentPaymentRecord,
+        on_delete=models.CASCADE,
+        related_name='payment_intents',
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_intents',
+    )
+    expected_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    currency = models.CharField(max_length=10, default='USD')
+    provider = models.CharField(max_length=20, default='paynow')
+    payment_method = models.CharField(max_length=20, default='web')
+    provider_reference = models.CharField(max_length=120, unique=True)
+    poll_url = models.URLField(max_length=500, blank=True)
+    idempotency_key = models.CharField(max_length=120, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='initiated', db_index=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    raw_callback_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['school', 'student']),
+        ]
+
+    def __str__(self):
+        return f"{self.provider_reference} ({self.status})"
+
+
 class FinancialReport(models.Model):
     """Represents FinancialReport."""
     title = models.CharField(max_length=200)

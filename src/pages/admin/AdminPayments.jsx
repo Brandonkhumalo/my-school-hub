@@ -194,6 +194,27 @@ export default function AdminPayments() {
     }
   };
 
+  const handleDeletePaymentRecord = async (record) => {
+    if (user?.role !== "admin") {
+      alert("Only admins can delete payment records.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete payment record for ${record.student_name} (${record.currency}${parseFloat(record.total_amount_due || 0).toFixed(2)})?\n\n` +
+      "This will remove linked manual payments/invoice snapshots and recalculate balances."
+    );
+    if (!confirmed) return;
+
+    try {
+      await apiService.deletePaymentRecord(record.id);
+      await Promise.all([loadPaymentRecords(), loadClassReport(), loadInvoices()]);
+      alert("Payment record deleted and balances recalculated.");
+    } catch (error) {
+      console.error("Error deleting payment record:", error);
+      alert("Failed to delete payment record: " + error.message);
+    }
+  };
+
   const openAddPaymentModal = (record) => {
     setSelectedRecord(record);
     setAddPaymentData({
@@ -616,13 +637,24 @@ export default function AdminPayments() {
                                 <i className="fas fa-plus-circle"></i>
                               </button>
                             )}
-                            <button
-                              onClick={() => handleUpdateStatus(record.id, record.payment_status === 'paid' ? 'unpaid' : 'paid')}
-                              className="text-blue-600 hover:text-blue-800"
-                              title={record.payment_status === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
-                            >
-                              <i className={`fas ${record.payment_status === 'paid' ? 'fa-times-circle' : 'fa-check-circle'}`}></i>
-                            </button>
+                            {record.payment_status !== 'paid' && (
+                              <button
+                                onClick={() => handleUpdateStatus(record.id, 'paid')}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Mark Paid"
+                              >
+                                <i className="fas fa-check-circle"></i>
+                              </button>
+                            )}
+                            {user?.role === 'admin' && (
+                              <button
+                                onClick={() => handleDeletePaymentRecord(record)}
+                                className="text-red-600 hover:text-red-800"
+                                title="Delete Payment Record"
+                              >
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1014,7 +1046,7 @@ export default function AdminPayments() {
 
       {showPaymentModal && selectedRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
             <div className="bg-blue-600 text-white px-6 py-4 rounded-t-xl">
               <h3 className="text-xl font-bold">Add Payment</h3>
               <p className="text-blue-100 text-sm">{selectedRecord.student_name}</p>
@@ -1031,7 +1063,7 @@ export default function AdminPayments() {
                 </div>
               </div>
             </div>
-            <form onSubmit={handleAddPayment} className="p-6 space-y-4">
+            <form onSubmit={handleAddPayment} className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
                 <input
@@ -1094,7 +1126,7 @@ export default function AdminPayments() {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
+              <div className="flex justify-end gap-3 pt-4 border-t sticky bottom-0 bg-white">
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}

@@ -597,13 +597,16 @@ export default function ParentFees() {
                 onClick={async () => {
                   setPaynowLoading(true); setPaynowError("");
                   try {
+                    const childOpenInvoice = invoices.find(
+                      (inv) => inv.student_id === selectedChild?.id && Number(inv.balance || 0) > 0
+                    );
                     const payload = {
                       amount: feesData?.outstanding || 0,
-                      email: user?.email || "parent@school.com",
-                      reference: `FEES-${selectedChild?.id}-${Date.now()}`,
+                      student_id: selectedChild?.id,
+                      invoice_id: childOpenInvoice?.id,
                       method: paynowMethod,
                     };
-                    if (paynowMethod !== "web") payload.phone = paynowPhone;
+                    if (paynowMethod !== "web") payload.mobile_number = paynowPhone;
                     const res = await apiService.initiatePaynowPayment(payload);
                     if (res.redirect_url) {
                       window.location.href = res.redirect_url;

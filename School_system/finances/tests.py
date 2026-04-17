@@ -23,9 +23,11 @@ from rest_framework.test import APITestCase, APIClient
 from users.models import CustomUser, School, SchoolSettings
 from academics.models import Class, Student, Teacher
 from finances.models import (
+    AdditionalFee,
     FeeType,
     Invoice,
     Payment,
+    PaymentIntent,
     SchoolFees,
     StudentFee,
     StudentPaymentRecord,
@@ -449,6 +451,7 @@ class PaymentRecordAPITest(APITestCase):
             "currency": "USD",
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
         record = StudentPaymentRecord.objects.get(id=response.data["id"])
         self.assertEqual(record.total_amount_due, Decimal("1300.00"))
 
@@ -473,6 +476,84 @@ class PaymentRecordAPITest(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_delete_payment_record_admin_only_and_recalculates_additional_fees(self):
+        """Admin delete should recalculate additional-fee paid flags from remaining records."""
+        fee = AdditionalFee.objects.create(
+            school=self.school,
+            student=self.student,
+            fee_name="Trip Fee",
+            amount=Decimal("50.00"),
+            reason="Trip",
+            currency="USD",
+            academic_year="2026",
+            academic_term="term_1",
+            is_paid=True,
+            created_by=self.admin,
+        )
+        keep_record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("500.00"),
+            amount_paid=Decimal("500.00"),
+            currency="USD",
+            payment_status="paid",
+            recorded_by=self.admin,
+        )
+        delete_record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("200.00"),
+            amount_paid=Decimal("300.00"),
+            currency="USD",
+            payment_status="paid",
+            recorded_by=self.admin,
+        )
+        Invoice.objects.create(
+            student=self.student,
+            school=self.school,
+            invoice_number="INV-DEL-001",
+            total_amount=Decimal("200.00"),
+            amount_paid=Decimal("300.00"),
+            due_date=datetime.date(2026, 3, 31),
+            is_paid=True,
+            payment_record=delete_record,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.delete(f"{self.url}{delete_record.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        fee.refresh_from_db()
+        # Remaining records have no extra overpayment, so additional fee should be outstanding.
+        self.assertFalse(fee.is_paid)
+        self.assertFalse(Invoice.objects.filter(payment_record=delete_record).exists())
+
+        accountant = make_user(self.school, "pr_acc", role="accountant")
+        # Create a fresh record for role restriction check.
+        restricted_record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("100.00"),
+            amount_paid=Decimal("0.00"),
+            currency="USD",
+            payment_status="unpaid",
+            recorded_by=self.admin,
+        )
+        self.client.force_authenticate(user=accountant)
+        response_forbidden = self.client.delete(f"{self.url}{restricted_record.id}/")
+        self.assertEqual(response_forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
 
 # ---------------------------------------------------------------------------
 # API tests — PayNow initiate (mocked external service)
@@ -495,6 +576,21 @@ class PayNowInitiateAPITest(APITestCase):
             paynow_integration_id="TEST_ID_12345",
             paynow_integration_key="TEST_KEY_ABCDEF",
         )
+        self.cls = make_class(self.school, name="Form 2B", grade_level=2)
+        self.student = make_student(self.school, self.cls, username="paynow_student", student_number="PAY001")
+        self.payment_record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("300.00"),
+            amount_paid=Decimal("0.00"),
+            currency="USD",
+            payment_status="unpaid",
+            recorded_by=self.admin,
+        )
         self.url = "/api/v1/finances/payments/paynow/initiate/"
 
     @patch("finances.paynow_service.initiate_web_payment")
@@ -508,6 +604,7 @@ class PayNowInitiateAPITest(APITestCase):
         }
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "250.00",
             "description": "School Fees Term 1",
             "method": "web",
@@ -515,6 +612,8 @@ class PayNowInitiateAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["success"])
         self.assertIn("redirect_url", response.data)
+        self.assertIn("intent_id", response.data)
+        self.assertTrue(PaymentIntent.objects.filter(id=response.data["intent_id"]).exists())
         mock_web.assert_called_once()
 
     @patch("finances.paynow_service.initiate_mobile_payment")
@@ -529,6 +628,7 @@ class PayNowInitiateAPITest(APITestCase):
         }
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "150.00",
             "description": "Term 1 Fees",
             "method": "ecocash",
@@ -543,6 +643,7 @@ class PayNowInitiateAPITest(APITestCase):
         """Test that paynow mobile requires mobile number."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "100.00",
             "method": "ecocash",
             # mobile_number intentionally omitted
@@ -556,6 +657,7 @@ class PayNowInitiateAPITest(APITestCase):
         """Test that paynow rejects zero amount."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "0",
             "method": "web",
         }, format="json")
@@ -573,6 +675,7 @@ class PayNowInitiateAPITest(APITestCase):
         }
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "100.00",
             "method": "web",
         }, format="json")
@@ -583,6 +686,7 @@ class PayNowInitiateAPITest(APITestCase):
         hr = make_user(self.school, "paynow_hr", role="hr")
         self.client.force_authenticate(user=hr)
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "100.00",
             "method": "web",
         }, format="json")
@@ -591,11 +695,72 @@ class PayNowInitiateAPITest(APITestCase):
     def test_paynow_requires_authentication(self):
         """Test that paynow requires authentication."""
         response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
             "amount": "100.00",
             "method": "web",
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @patch("finances.paynow_service.initiate_web_payment")
+    def test_paynow_rejects_overpayment_amount(self, mock_web):
+        """Requested amount cannot exceed current payment-record balance."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "payment_record_id": self.payment_record.id,
+            "amount": "999.00",
+            "method": "web",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_web.assert_not_called()
+
+
+class PayNowCallbackAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Callback School")
+        self.admin = make_user(self.school, "callback_admin", role="admin")
+        self.cls = make_class(self.school, name="Form 4A", grade_level=4)
+        self.student = make_student(self.school, self.cls, username="callback_student", student_number="CB001")
+        self.record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("400.00"),
+            amount_paid=Decimal("0.00"),
+            currency="USD",
+            payment_status="unpaid",
+            recorded_by=self.admin,
+        )
+        self.intent = PaymentIntent.objects.create(
+            school=self.school,
+            student=self.student,
+            payment_record=self.record,
+            expected_amount=Decimal("150.00"),
+            currency="USD",
+            provider_reference="MSH-CALLBACK-REF-001",
+            idempotency_key="idem-callback-1",
+            status="pending",
+            created_by=self.admin,
+        )
+        self.url = "/api/v1/finances/payments/paynow/result/"
+
+    def test_callback_marks_intent_paid_and_updates_record_amount(self):
+        response = self.client.post(self.url, {
+            "reference": self.intent.provider_reference,
+            "paynowreference": "PAYNOW-REF-ABC",
+            "status": "Paid",
+            "amount": "150.00",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.intent.refresh_from_db()
+        self.record.refresh_from_db()
+        self.assertEqual(self.intent.status, "paid")
+        self.assertEqual(self.record.amount_paid, Decimal("150.00"))
+        self.assertEqual(self.record.payment_status, "partial")
 
 # ---------------------------------------------------------------------------
 # API tests — Bulk fee CSV import
