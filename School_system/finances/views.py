@@ -1480,7 +1480,7 @@ def paynow_initiate_payment(request):
         return Response({'error': 'This payment record is already fully settled.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        amount = _to_decimal(requested_amount if requested_amount not in (None, '') else outstanding)
+        amount = to_decimal(requested_amount if requested_amount not in (None, '') else outstanding)
     except (TypeError, ValueError, InvalidOperation):
         return Response({'error': 'Invalid amount value.'}, status=status.HTTP_400_BAD_REQUEST)
     if amount <= 0:
@@ -1564,7 +1564,7 @@ def paynow_result_callback(request):
                 return Response({'status': 'received'})
 
             if status_value in ('paid', 'awaiting delivery'):
-                callback_amount = _to_decimal(amount)
+                callback_amount = to_decimal(amount)
                 if callback_amount <= 0:
                     callback_amount = intent.expected_amount
                 if callback_amount != intent.expected_amount:
