@@ -5,8 +5,7 @@ import apiService from "../../services/apiService";
 import { formatDate } from "../../utils/dateFormat";
 
 export default function HRVisitorLogs() {
-  const today = new Date().toISOString().split("T")[0];
-  const [dateFilter, setDateFilter] = useState(today);
+  const [dateFilter, setDateFilter] = useState("");
   const [nameFilter, setNameFilter] = useState("");
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -14,7 +13,10 @@ export default function HRVisitorLogs() {
   const loadLogs = async () => {
     setLoading(true);
     try {
-      const data = await apiService.getVisitorLogs({ date: dateFilter, visitor_name: nameFilter });
+      const params = {};
+      if (dateFilter) params.date = dateFilter;
+      if (nameFilter) params.visitor_name = nameFilter;
+      const data = await apiService.getVisitorLogs(params);
       setLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to load visitor logs", error);

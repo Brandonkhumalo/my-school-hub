@@ -14,6 +14,21 @@ from .models import Homework, Teacher, Student, Subject, Class, Parent, ParentCh
 from email_service import send_homework_uploaded_email, get_parents_of_student
 
 
+ALLOWED_HOMEWORK_FILE_EXTENSIONS = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp']
+MAX_HOMEWORK_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def _validate_homework_file(file):
+    if not file:
+        return None
+    ext = os.path.splitext(file.name)[1].lower()
+    if ext not in ALLOWED_HOMEWORK_FILE_EXTENSIONS:
+        return 'Invalid file type. Allowed: PDF, Word documents, and images (JPG, PNG, GIF, WebP).'
+    if file.size > MAX_HOMEWORK_FILE_SIZE:
+        return 'File too large. Maximum size is 10MB.'
+    return None
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def teacher_homework_list(request):
@@ -86,18 +101,9 @@ def teacher_create_homework(request):
             return Response({'error': 'You do not teach this subject'}, 
                            status=status.HTTP_403_FORBIDDEN)
         
-        if file:
-            ext = os.path.splitext(file.name)[1].lower()
-            allowed_extensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp']
-            if ext not in allowed_extensions:
-                return Response({
-                    'error': f'Invalid file type. Allowed: PDF, Word documents, and images (JPG, PNG, GIF, WebP).'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            if file.size > 10 * 1024 * 1024:
-                return Response({
-                    'error': 'File too large. Maximum size is 10MB.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+        file_error = _validate_homework_file(file)
+        if file_error:
+            return Response({'error': file_error}, status=status.HTTP_400_BAD_REQUEST)
         
         homework = Homework.objects.create(
             title=title,
@@ -149,6 +155,83 @@ def teacher_create_homework(request):
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def teacher_update_homework(request, homework_id):
+    """Update homework created by the teacher."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        teacher = request.user.teacher
+        homework = get_object_or_404(Homework, id=homework_id, teacher=teacher)
+
+        subject_id = request.data.get('subject_id')
+        class_id = request.data.get('class_id')
+        title = request.data.get('title')
+        description = request.data.get('description')
+        due_date = request.data.get('due_date')
+        remove_file = str(request.data.get('remove_file', '')).strip().lower() in ('1', 'true', 'yes', 'on')
+        new_file = request.FILES.get('file')
+
+        if subject_id:
+            subject = get_object_or_404(Subject, id=subject_id)
+            if not teacher.subjects_taught.filter(id=subject.id).exists():
+                return Response({'error': 'You do not teach this subject'},
+                                status=status.HTTP_403_FORBIDDEN)
+            homework.subject = subject
+
+        if class_id:
+            assigned_class = get_object_or_404(Class, id=class_id)
+            homework.assigned_class = assigned_class
+
+        if title is not None:
+            title = title.strip()
+            if not title:
+                return Response({'error': 'Title cannot be empty'}, status=status.HTTP_400_BAD_REQUEST)
+            homework.title = title
+
+        if description is not None:
+            homework.description = description
+
+        if due_date is not None:
+            if not due_date:
+                return Response({'error': 'Due date cannot be empty'}, status=status.HTTP_400_BAD_REQUEST)
+            homework.due_date = due_date
+
+        file_error = _validate_homework_file(new_file)
+        if file_error:
+            return Response({'error': file_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        if remove_file and homework.file and not new_file:
+            homework.file.delete(save=False)
+            homework.file = None
+
+        if new_file:
+            if homework.file:
+                homework.file.delete(save=False)
+            homework.file = new_file
+
+        if not homework.description and not homework.file:
+            return Response({
+                'error': 'Please provide homework description or upload a file'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        homework.save()
+        return Response({
+            'message': 'Homework updated successfully',
+            'id': homework.id,
+            'title': f'{homework.subject.name} Homework - {homework.title}'
+        })
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'},
+                        status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -63,14 +63,16 @@ def student_dashboard_stats(request):
     try:
         student = request.user.student
         
-        # Calculate overall average from results using DB aggregation (no Python loop)
-        from django.db.models import Avg
-        agg = Result.objects.filter(student=student).aggregate(
-            avg_score=Avg('score'), avg_max=Avg('max_score')
+        # Composite per-subject percentages via the admin-defined AssessmentPlan
+        # weights, then mean across subjects. Falls back to equal weighting when
+        # no plan is attached to the results.
+        from .grading_calc import compute_from_queryset
+        per_subject = compute_from_queryset(
+            Result.objects.filter(student=student).select_related('assessment_plan')
         )
-        avg_percentage = 0
-        if agg['avg_score'] is not None and agg['avg_max'] and agg['avg_max'] > 0:
-            avg_percentage = round((agg['avg_score'] / agg['avg_max']) * 100, 1)
+        avg_percentage = round(
+            sum(per_subject.values()) / len(per_subject), 1
+        ) if per_subject else 0
         
         # Get total subjects
         total_subjects = student.student_class.timetable.filter(

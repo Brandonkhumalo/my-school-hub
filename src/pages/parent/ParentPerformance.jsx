@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import AssessmentPlanCard from "../../components/AssessmentPlanCard";
 import apiService from "../../services/apiService";
 
 export default function ParentPerformance() {
@@ -11,7 +12,10 @@ export default function ParentPerformance() {
   const [marks, setMarks] = useState([]);
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
+  const [assessmentPlans, setAssessmentPlans] = useState([]);
+  const [childDetailedPerformance, setChildDetailedPerformance] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingPlans, setLoadingPlans] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [reportYear, setReportYear] = useState(currentAcademicYear);
   const [reportTerm, setReportTerm] = useState(currentTerm);
@@ -29,8 +33,12 @@ export default function ParentPerformance() {
       
       if (confirmedChildren.length > 0) {
         setSelectedChild(confirmedChildren[0]);
-        const marksData = await apiService.getChildPerformance(confirmedChildren[0].id);
+        const [marksData, detailed] = await Promise.all([
+          apiService.getChildPerformance(confirmedChildren[0].id),
+          apiService.fetchStudentPerformance(confirmedChildren[0].id),
+        ]);
         setMarks(marksData);
+        setChildDetailedPerformance(detailed || null);
       }
     } catch (error) {
       console.error("Error loading performance:", error);
@@ -46,8 +54,12 @@ export default function ParentPerformance() {
     if (child) {
       try {
         setLoading(true);
-        const marksData = await apiService.getChildPerformance(child.id);
+        const [marksData, detailed] = await Promise.all([
+          apiService.getChildPerformance(child.id),
+          apiService.fetchStudentPerformance(child.id),
+        ]);
         setMarks(marksData);
+        setChildDetailedPerformance(detailed || null);
       } catch (error) {
         console.error("Error loading child performance:", error);
       } finally {
@@ -55,6 +67,25 @@ export default function ParentPerformance() {
       }
     }
   };
+
+  // Fetch assessment plans when child or year/term changes
+  useEffect(() => {
+    if (!selectedChild) return;
+    
+    const fetchPlans = async () => {
+      setLoadingPlans(true);
+      try {
+        const plans = await apiService.getAssessmentPlansForParent(selectedChild.id, reportYear, reportTerm);
+        setAssessmentPlans(plans || []);
+      } catch (error) {
+        console.error("Error fetching assessment plans:", error);
+        setAssessmentPlans([]);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+    fetchPlans();
+  }, [selectedChild, reportYear, reportTerm]);
 
   const handleDownloadReport = async () => {
     if (!selectedChild) return;
@@ -143,6 +174,19 @@ export default function ParentPerformance() {
                 ))}
               </select>
             </div>
+          </div>
+        )}
+
+        {/* Assessment Plan Card */}
+        {selectedChild && (
+          <div className="mb-6">
+            <AssessmentPlanCard
+              plans={assessmentPlans}
+              existingResults={childDetailedPerformance?.results || []}
+              isLoading={loadingPlans}
+              year={reportYear}
+              term={reportTerm}
+            />
           </div>
         )}
 

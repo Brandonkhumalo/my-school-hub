@@ -1,5 +1,6 @@
 import secrets
 import string
+from django.utils import timezone
 
 from rest_framework import serializers
 from django.db import transaction
@@ -176,6 +177,20 @@ class CreateStaffSerializer(serializers.Serializer):
             salary=validated_data['salary'],
         )
 
+        # Ensure new salary-based staff records are visible in payroll immediately.
+        Payroll.objects.get_or_create(
+            staff=staff,
+            month=timezone.now().strftime('%B'),
+            year=timezone.now().year,
+            defaults={
+                'basic_salary': staff.salary,
+                'allowances': 0,
+                'deductions': 0,
+                'net_salary': staff.salary,
+                'is_paid': False,
+            }
+        )
+
         # Attach generated password for display (not stored)
         staff._generated_password = password
         return staff
@@ -301,6 +316,12 @@ class PayrollSerializer(serializers.ModelSerializer):
         if 'net_salary' not in attrs or attrs['net_salary'] != net:
             attrs['net_salary'] = net
         return attrs
+
+    def validate_staff(self, value):
+        request = self.context.get('request')
+        if request and request.user and request.user.school and value.user.school_id != request.user.school_id:
+            raise serializers.ValidationError('Selected staff member is outside your school.')
+        return value
 
 
 class MeetingSerializer(serializers.ModelSerializer):

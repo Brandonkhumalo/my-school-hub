@@ -22,12 +22,6 @@ const EVENT_TYPES = [
   { value: "meeting", label: "Meeting" },
 ];
 
-const ROLE_CHOICES = [
-  { value: "member", label: "Member" },
-  { value: "captain", label: "Captain" },
-  { value: "vice_captain", label: "Vice Captain" },
-];
-
 const ACCOLADE_CATEGORIES = [
   { value: "academic", label: "Academic" },
   { value: "sports", label: "Sports" },
@@ -65,8 +59,6 @@ export default function AdminActivities() {
   // Enrollment state
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [enrollments, setEnrollments] = useState([]);
-  const [showEnrollForm, setShowEnrollForm] = useState(false);
-  const [enrollForm, setEnrollForm] = useState({ student_id: "", role: "member" });
 
   // Events state
   const [eventsActivity, setEventsActivity] = useState(null);
@@ -204,18 +196,15 @@ export default function AdminActivities() {
     }
   };
 
-  const handleEnroll = async (e) => {
-    e.preventDefault();
+  const handleReviewEnrollment = async (enrollmentId, decision) => {
     clearMessages();
     try {
-      await apiService.enrollStudent(selectedActivity.id, enrollForm);
-      setSuccess("Student enrolled successfully");
-      setShowEnrollForm(false);
-      setEnrollForm({ student_id: "", role: "member" });
+      await apiService.reviewActivityEnrollment(selectedActivity.id, enrollmentId, { decision });
+      setSuccess(`Enrollment ${decision}d successfully`);
       loadEnrollments(selectedActivity);
       loadData();
     } catch (err) {
-      setError(err.message || "Failed to enrol student");
+      setError(err.message || `Failed to ${decision} enrollment`);
     }
   };
 
@@ -319,30 +308,6 @@ export default function AdminActivities() {
                     <button onClick={() => setSelectedActivity(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
                   </div>
 
-                  <button onClick={() => setShowEnrollForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded text-sm mb-4 hover:bg-blue-700">
-                    <i className="fas fa-plus mr-1"></i> Enrol Student
-                  </button>
-
-                  {showEnrollForm && (
-                    <form onSubmit={handleEnroll} className="bg-gray-50 p-4 rounded mb-4 space-y-3">
-                      <select required value={enrollForm.student_id} onChange={(e) => setEnrollForm({ ...enrollForm, student_id: e.target.value })}
-                        className="w-full border rounded px-3 py-2 text-sm">
-                        <option value="">Select Student</option>
-                        {students.map((s) => (
-                          <option key={s.id} value={s.id}>{s.user?.full_name || `${s.user?.first_name} ${s.user?.last_name}`} ({s.user?.student_number})</option>
-                        ))}
-                      </select>
-                      <select value={enrollForm.role} onChange={(e) => setEnrollForm({ ...enrollForm, role: e.target.value })}
-                        className="w-full border rounded px-3 py-2 text-sm">
-                        {ROLE_CHOICES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                      </select>
-                      <div className="flex gap-2">
-                        <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">Enrol</button>
-                        <button type="button" onClick={() => setShowEnrollForm(false)} className="bg-gray-300 px-4 py-2 rounded text-sm hover:bg-gray-400">Cancel</button>
-                      </div>
-                    </form>
-                  )}
-
                   {enrollments.length === 0 ? (
                     <p className="text-gray-500 text-sm">No students enrolled yet.</p>
                   ) : (
@@ -352,6 +317,7 @@ export default function AdminActivities() {
                           <th className="px-3 py-2 text-left">Student</th>
                           <th className="px-3 py-2 text-left">Class</th>
                           <th className="px-3 py-2 text-left">Role</th>
+                          <th className="px-3 py-2 text-left">Status</th>
                           <th className="px-3 py-2 text-left">Joined</th>
                           <th className="px-3 py-2 text-left">Actions</th>
                         </tr>
@@ -366,11 +332,36 @@ export default function AdminActivities() {
                                 {e.role_display}
                               </span>
                             </td>
+                            <td className="px-3 py-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                e.status === "approved"
+                                  ? "bg-green-100 text-green-700"
+                                  : e.status === "declined"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-yellow-100 text-yellow-700"
+                              }`}>
+                                {e.status_display || e.status}
+                              </span>
+                            </td>
                             <td className="px-3 py-2">{formatDate(e.date_joined)}</td>
                             <td className="px-3 py-2">
-                              <button onClick={() => handleUnenroll(e.student_id)} className="text-red-600 hover:text-red-800 text-xs">
-                                <i className="fas fa-times mr-1"></i>Remove
-                              </button>
+                              <div className="flex gap-2">
+                                {e.status === "pending" && (user?.role === "hr" || user?.role === "admin") && (
+                                  <>
+                                    <button onClick={() => handleReviewEnrollment(e.id, "approve")} className="text-green-600 hover:text-green-800 text-xs">
+                                      <i className="fas fa-check mr-1"></i>Approve
+                                    </button>
+                                    <button onClick={() => handleReviewEnrollment(e.id, "decline")} className="text-orange-600 hover:text-orange-800 text-xs">
+                                      <i className="fas fa-times mr-1"></i>Decline
+                                    </button>
+                                  </>
+                                )}
+                                {e.status === "approved" && (
+                                  <button onClick={() => handleUnenroll(e.student_id)} className="text-red-600 hover:text-red-800 text-xs">
+                                    <i className="fas fa-trash mr-1"></i>Remove
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}

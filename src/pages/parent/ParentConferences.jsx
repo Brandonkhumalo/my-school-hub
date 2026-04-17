@@ -23,24 +23,16 @@ function ParentConferences() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [childrenData, bookingsData] = await Promise.all([
+        const [childrenData, bookingsData, teachersData] = await Promise.all([
           apiService.getParentChildren(),
           apiService.getParentConferences(),
+          apiService.searchTeachers(""),
         ]);
         setChildren(Array.isArray(childrenData) ? childrenData : childrenData.results || []);
         setBookings(Array.isArray(bookingsData) ? bookingsData : bookingsData.results || []);
 
-        // Get unique teachers from children's classes
-        const teacherSet = new Map();
-        const childArr = Array.isArray(childrenData) ? childrenData : childrenData.results || [];
-        for (const child of childArr) {
-          if (child.teachers) {
-            for (const t of child.teachers) {
-              teacherSet.set(t.id, t);
-            }
-          }
-        }
-        setTeachers(Array.from(teacherSet.values()));
+        const teacherArr = Array.isArray(teachersData) ? teachersData : teachersData.results || [];
+        setTeachers(teacherArr);
       } catch (err) {
         setError(err.message);
       } finally {

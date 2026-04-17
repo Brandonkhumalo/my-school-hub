@@ -12,6 +12,7 @@ export default function AdminTeachers() {
     last_name: '',
     email: '',
     phone_number: '',
+    gender: '',
     hire_date: new Date().toISOString().split('T')[0],
     qualification: '',
     salary: '',
@@ -249,6 +250,7 @@ export default function AdminTeachers() {
       last_name: teacher.user?.last_name || '',
       email: teacher.user?.email || '',
       phone_number: teacher.user?.phone_number || '',
+      gender: teacher.user?.gender || '',
       hire_date: teacher.hire_date || new Date().toISOString().split('T')[0],
       qualification: teacher.qualification || '',
       salary: teacher.user?.salary != null ? String(teacher.user.salary) : '',
@@ -360,6 +362,22 @@ export default function AdminTeachers() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <input type="tel" name="phone_number" value={formData.phone_number} onChange={handleInputChange} placeholder="+263..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Gender {editingTeacher && '(Read-only)'}</label>
+                <select 
+                  name="gender" 
+                  value={formData.gender} 
+                  onChange={handleInputChange} 
+                  disabled={!!editingTeacher}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${editingTeacher ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                >
+                  <option value="">Select gender...</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="O">Other</option>
+                  <option value="P">Prefer not to say</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Hire Date *</label>
@@ -490,6 +508,14 @@ export default function AdminTeachers() {
                   <p><i className="fas fa-id-badge text-blue-500 mr-2 w-5"></i><strong>Staff Number:</strong> {selectedTeacher.user?.student_number || '-'}</p>
                   <p><i className="fas fa-envelope text-blue-500 mr-2 w-5"></i><strong>Email:</strong> {selectedTeacher.user?.email}</p>
                   <p><i className="fas fa-phone text-blue-500 mr-2 w-5"></i><strong>Phone:</strong> {selectedTeacher.user?.phone_number || '-'}</p>
+                  <p><i className="fas fa-venus-mars text-blue-500 mr-2 w-5"></i><strong>Gender:</strong> {
+                    selectedTeacher.user?.gender ? {
+                      'M': 'Male',
+                      'F': 'Female',
+                      'O': 'Other',
+                      'P': 'Prefer not to say'
+                    }[selectedTeacher.user.gender] : '-'
+                  }</p>
                   <p><i className="fas fa-money-bill-wave text-blue-500 mr-2 w-5"></i><strong>Salary:</strong> {selectedTeacher.user?.salary != null ? Number(selectedTeacher.user.salary).toFixed(2) : '-'}</p>
                   <p><i className="fas fa-graduation-cap text-blue-500 mr-2 w-5"></i><strong>Qualification:</strong> {selectedTeacher.qualification || '-'}</p>
                   <p><i className="fas fa-calendar text-blue-500 mr-2 w-5"></i><strong>Hire Date:</strong> {formatDate(selectedTeacher.hire_date)}</p>

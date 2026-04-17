@@ -19,13 +19,14 @@ from email_service import send_teacher_message_email
 def get_messages(request):
     """Get all messages for the logged-in user (parent or teacher)"""
     user = request.user
-    
+
     if user.role not in ['parent', 'teacher']:
-        return Response({'error': 'Only parents and teachers can access messages'}, 
+        return Response({'error': 'Only parents and teachers can access messages'},
                        status=status.HTTP_403_FORBIDDEN)
-    
+
     messages = ParentTeacherMessage.objects.filter(
-        Q(sender=user) | Q(recipient=user)
+        (Q(sender=user) | Q(recipient=user)) &
+        Q(sender__school=user.school) & Q(recipient__school=user.school)
     ).select_related('sender', 'recipient', 'student__user').order_by('-date_sent')
     
     serializer = ParentTeacherMessageSerializer(messages, many=True)
@@ -43,8 +44,9 @@ def get_conversation(request, user_id):
                        status=status.HTTP_403_FORBIDDEN)
     
     messages = ParentTeacherMessage.objects.filter(
-        (Q(sender=user) & Q(recipient_id=user_id)) | 
-        (Q(sender_id=user_id) & Q(recipient=user))
+        ((Q(sender=user) & Q(recipient_id=user_id)) |
+         (Q(sender_id=user_id) & Q(recipient=user))) &
+        Q(sender__school=user.school) & Q(recipient__school=user.school)
     ).select_related('sender', 'recipient', 'student__user').order_by('date_sent')
     
     for msg in messages:
@@ -78,50 +80,67 @@ def send_message(request):
     
     try:
         from users.models import CustomUser
-        from .models import Timetable
+        from .models import Timetable, Class, ParentChildLink
         recipient = CustomUser.objects.get(id=recipient_id)
-        
+
         if recipient.role not in ['parent', 'teacher']:
-            return Response({'error': 'Can only send messages to parents or teachers'}, 
+            return Response({'error': 'Can only send messages to parents or teachers'},
                            status=status.HTTP_400_BAD_REQUEST)
-        
+
         if user.role == recipient.role:
-            return Response({'error': 'Cannot send message to same role'}, 
+            return Response({'error': 'Cannot send message to same role'},
                            status=status.HTTP_400_BAD_REQUEST)
-        
+
+        if recipient.school_id != user.school_id:
+            return Response({'error': 'Cannot message users outside your school'},
+                           status=status.HTTP_403_FORBIDDEN)
+
         if user.role == 'teacher':
             teacher = Teacher.objects.get(user=user)
-            # Find all students taught by this teacher through the Timetable
-            class_ids = Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True)
-            student_ids = Student.objects.filter(student_class_id__in=class_ids).values_list('id', flat=True)
-            
+            # Classes taught via Timetable OR where teacher is the class teacher
+            timetable_class_ids = set(Timetable.objects.filter(
+                teacher=teacher
+            ).values_list('class_assigned_id', flat=True))
+            class_teacher_class_ids = set(Class.objects.filter(
+                class_teacher=user
+            ).values_list('id', flat=True))
+            all_class_ids = timetable_class_ids | class_teacher_class_ids
+            student_ids = set(Student.objects.filter(
+                student_class_id__in=all_class_ids
+            ).values_list('id', flat=True))
+
             parent = Parent.objects.get(user=recipient)
-            # Check if any of the parent's CONFIRMED children are in the teacher's students
-            from .models import ParentChildLink
-            confirmed_child_ids = ParentChildLink.objects.filter(
+            confirmed_child_ids = set(ParentChildLink.objects.filter(
                 parent=parent, is_confirmed=True
-            ).values_list('student_id', flat=True)
-            if not set(confirmed_child_ids) & set(student_ids):
+            ).values_list('student_id', flat=True))
+            shared_student_ids = confirmed_child_ids & student_ids
+            if not shared_student_ids:
                 return Response({'error': 'You can only message parents of students you teach'},
                                status=status.HTTP_403_FORBIDDEN)
+            # Auto-derive student_id for email context if not provided
+            if not student_id:
+                student_id = next(iter(shared_student_ids))
         else:
             parent = Parent.objects.get(user=user)
-            # Get classes of all CONFIRMED children linked to this parent
-            from .models import ParentChildLink
             confirmed_child_ids = ParentChildLink.objects.filter(
                 parent=parent, is_confirmed=True
             ).values_list('student_id', flat=True)
-            child_class_ids = Student.objects.filter(
+            child_class_ids = list(Student.objects.filter(
                 id__in=confirmed_child_ids
-            ).values_list('student_class_id', flat=True)
-            # Get all teachers who have entries in Timetable for these classes
-            teacher_ids = Timetable.objects.filter(class_assigned_id__in=child_class_ids).values_list('teacher_id', flat=True)
-            
+            ).values_list('student_class_id', flat=True))
+            # Teachers via Timetable OR as class teacher of the child's class
+            timetable_teacher_ids = set(Timetable.objects.filter(
+                class_assigned_id__in=child_class_ids
+            ).values_list('teacher_id', flat=True))
+            class_teacher_user_ids = set(Class.objects.filter(
+                id__in=child_class_ids
+            ).exclude(class_teacher__isnull=True).values_list('class_teacher_id', flat=True))
+
             teacher = Teacher.objects.get(user=recipient)
-            if teacher.id not in teacher_ids:
-                return Response({'error': 'You can only message teachers who teach your children'}, 
+            if teacher.id not in timetable_teacher_ids and teacher.user_id not in class_teacher_user_ids:
+                return Response({'error': 'You can only message teachers who teach your children'},
                                status=status.HTTP_403_FORBIDDEN)
-        
+
         message = ParentTeacherMessage.objects.create(
             sender=user,
             recipient=recipient,
@@ -208,10 +227,10 @@ def search_teachers(request):
             id__in=child_class_ids
         ).exclude(class_teacher__isnull=True).values_list('class_teacher_id', flat=True)
         
-        # Filter Teacher objects by the discovered IDs
+        # Filter Teacher objects by the discovered IDs (same-school only)
         teachers = Teacher.objects.filter(
             Q(id__in=teacher_ids) | Q(user_id__in=class_teacher_user_ids)
-        ).select_related('user').prefetch_related('subjects_taught').distinct()
+        ).filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught').distinct()
         
         if query:
             teachers = teachers.filter(
@@ -266,7 +285,7 @@ def search_parents(request):
             student_id__in=student_ids, is_confirmed=True
         ).values_list('parent_id', flat=True).distinct()
         parents = Parent.objects.filter(
-            id__in=parent_ids
+            id__in=parent_ids, user__school=user.school
         ).select_related('user')
         
         if query:
@@ -307,8 +326,8 @@ def get_student_parents(request, student_id):
                        status=status.HTTP_403_FORBIDDEN)
     
     try:
-        student = Student.objects.get(id=student_id)
-        parents = student.parents.all().select_related('user')
+        student = Student.objects.get(id=student_id, user__school=user.school)
+        parents = student.parents.filter(user__school=user.school).select_related('user')
         
         parent_data = [{
             'id': parent.id,
@@ -354,6 +373,9 @@ def get_unread_count(request):
         return Response({'error': 'Only parents and teachers can access messages'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
-    count = ParentTeacherMessage.objects.filter(recipient=user, is_read=False).count()
+    count = ParentTeacherMessage.objects.filter(
+        recipient=user, is_read=False,
+        sender__school=user.school
+    ).count()
     
     return Response({'unread_count': count})

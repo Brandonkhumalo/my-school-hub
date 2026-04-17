@@ -100,7 +100,7 @@ export default function HRStaff() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.department_name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">
-                    {s.date_joined ? formatDate(s.date_joined) : '—'}
+                    {s.hire_date ? formatDate(s.hire_date) : (s.user?.date_joined ? formatDate(s.user.date_joined) : '—')}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => setSelected(s)}

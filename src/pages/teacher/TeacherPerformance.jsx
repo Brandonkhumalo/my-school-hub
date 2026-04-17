@@ -15,6 +15,34 @@ export default function TeacherPerformance() {
   const [filterAtRisk, setFilterAtRisk] = useState("all");
   const [sortBy, setSortBy] = useState("risk_score");
 
+  const normalizeStudentsPayload = (payload) => {
+    if (Array.isArray(payload)) {
+      return {
+        results: payload,
+        total_students: payload.length,
+        at_risk_count: payload.filter((s) => Boolean(s?.at_risk)).length,
+      };
+    }
+    if (payload && typeof payload === "object") {
+      const results = Array.isArray(payload.results) ? payload.results : [];
+      const totalStudents = Number.isFinite(payload.total_students) ? payload.total_students : results.length;
+      const atRiskCount = Number.isFinite(payload.at_risk_count)
+        ? payload.at_risk_count
+        : results.filter((s) => Boolean(s?.at_risk)).length;
+      return {
+        ...payload,
+        results,
+        total_students: totalStudents,
+        at_risk_count: atRiskCount,
+      };
+    }
+    return {
+      results: [],
+      total_students: 0,
+      at_risk_count: 0,
+    };
+  };
+
   useEffect(() => {
     loadSubjects();
   }, []);
@@ -29,9 +57,10 @@ export default function TeacherPerformance() {
     try {
       setLoading(true);
       const data = await apiService.getTeacherSubjects();
-      setSubjects(data);
-      if (data.length > 0) {
-        setSelectedSubject(data[0].id);
+      const safeSubjects = Array.isArray(data) ? data : [];
+      setSubjects(safeSubjects);
+      if (safeSubjects.length > 0) {
+        setSelectedSubject(safeSubjects[0].id);
       }
     } catch (error) {
       console.error("Error loading subjects:", error);
@@ -51,10 +80,10 @@ export default function TeacherPerformance() {
         filterAtRisk,
         sortBy
       );
-      setStudents(data);
+      setStudents(normalizeStudentsPayload(data));
     } catch (error) {
       console.error("Error loading students:", error);
-      setStudents(null);
+      setStudents(normalizeStudentsPayload(null));
     } finally {
       setLoadingStudents(false);
     }

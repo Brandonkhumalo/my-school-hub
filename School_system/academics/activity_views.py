@@ -1,6 +1,7 @@
 import logging
 
 from django.db.models import Sum, Count
+from django.utils import timezone
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -39,12 +40,20 @@ def serialize_enrollment(enrollment):
     """Execute serialize enrollment."""
     return {
         'id': enrollment.id,
+        'activity_id': enrollment.activity_id,
+        'activity_name': enrollment.activity.name,
         'student_id': enrollment.student.id,
         'student_name': enrollment.student.user.full_name,
         'student_number': enrollment.student.user.student_number or '',
         'class_name': enrollment.student.student_class.name if enrollment.student.student_class else '',
         'role': enrollment.role,
         'role_display': enrollment.get_role_display(),
+        'status': enrollment.status,
+        'status_display': enrollment.get_status_display(),
+        'requested_by_name': enrollment.requested_by.full_name if enrollment.requested_by else None,
+        'reviewed_by_name': enrollment.reviewed_by.full_name if enrollment.reviewed_by else None,
+        'reviewed_at': enrollment.reviewed_at.isoformat() if enrollment.reviewed_at else None,
+        'review_note': enrollment.review_note,
         'date_joined': str(enrollment.date_joined),
         'is_active': enrollment.is_active,
     }
@@ -105,7 +114,35 @@ def activity_list_create(request):
 
     if request.method == 'GET':
         activities = Activity.objects.filter(school=school).select_related('coach')
-        return Response([serialize_activity(a) for a in activities])
+        payload = [serialize_activity(a) for a in activities]
+
+        # For students, include current enrollment status per activity for self-service enrolment UI.
+        if request.user.role == 'student':
+            try:
+                student = request.user.student
+                my_enrollments = ActivityEnrollment.objects.filter(student=student)
+                status_map = {
+                    e.activity_id: {
+                        'status': e.status,
+                        'status_display': e.get_status_display(),
+                        'role': e.role,
+                        'is_active': e.is_active,
+                    }
+                    for e in my_enrollments
+                }
+                for activity_data in payload:
+                    mine = status_map.get(activity_data['id'])
+                    activity_data['my_enrollment'] = mine
+                    activity_data['can_request_enrollment'] = (
+                        activity_data.get('is_active', False) and
+                        (mine is None or mine.get('status') == 'declined')
+                    )
+            except Student.DoesNotExist:
+                for activity_data in payload:
+                    activity_data['my_enrollment'] = None
+                    activity_data['can_request_enrollment'] = False
+
+        return Response(payload)
 
     # POST — admin only
     if request.user.role != 'admin':
@@ -184,37 +221,89 @@ def activity_enrollments(request, activity_id):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def enroll_student(request, activity_id):
-    """Enroll a student in an activity. Admin or coach only."""
-    if request.user.role not in ('admin', 'teacher'):
-        return Response({'error': 'Only admins or coaches can enrol students'}, status=status.HTTP_403_FORBIDDEN)
-
     try:
         activity = Activity.objects.get(id=activity_id, school=request.user.school)
     except Activity.DoesNotExist:
         return Response({'error': 'Activity not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    user_role = request.user.role
+    is_management_actor = user_role in ('admin', 'hr', 'teacher')
+    is_student_actor = user_role == 'student'
+    if not is_management_actor and not is_student_actor:
+        return Response({'error': 'Only admin/hr/teacher/students can enrol in activities'}, status=status.HTTP_403_FORBIDDEN)
+
+    if not activity.is_active:
+        return Response({'error': 'This activity is not currently active'}, status=status.HTTP_400_BAD_REQUEST)
+
     student_id = request.data.get('student_id')
     role = request.data.get('role', 'member')
+    if role not in dict(ActivityEnrollment.ROLE_CHOICES):
+        role = 'member'
 
-    try:
-        student = Student.objects.get(id=student_id, user__school=request.user.school)
-    except Student.DoesNotExist:
-        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Check capacity
-    current_count = activity.enrollments.filter(is_active=True).count()
-    if current_count >= activity.max_participants:
-        return Response({'error': 'Activity is at full capacity'}, status=status.HTTP_400_BAD_REQUEST)
+    if is_student_actor:
+        try:
+            student = request.user.student
+        except Student.DoesNotExist:
+            return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        # Students can only request enrolment for themselves, as members.
+        role = 'member'
+    else:
+        try:
+            student = Student.objects.get(id=student_id, user__school=request.user.school)
+        except Student.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
 
     enrollment, created = ActivityEnrollment.objects.get_or_create(
         student=student,
         activity=activity,
-        defaults={'role': role, 'is_active': True},
+        defaults={
+            'role': role,
+            'status': 'approved' if is_management_actor else 'pending',
+            'is_active': True if is_management_actor else False,
+            'requested_by': request.user,
+            'reviewed_by': request.user if is_management_actor else None,
+            'reviewed_at': timezone.now() if is_management_actor else None,
+        },
     )
+
+    if created and is_management_actor:
+        # Capacity check only matters for approved enrollments.
+        current_count = activity.enrollments.filter(status='approved', is_active=True).count()
+        if current_count > activity.max_participants:
+            enrollment.delete()
+            return Response({'error': 'Activity is at full capacity'}, status=status.HTTP_400_BAD_REQUEST)
+
     if not created:
+        if is_student_actor:
+            if enrollment.status == 'approved' and enrollment.is_active:
+                return Response({'error': 'You are already enrolled in this activity'}, status=status.HTTP_400_BAD_REQUEST)
+            if enrollment.status == 'pending':
+                return Response({'error': 'Your enrollment request is already pending review'}, status=status.HTTP_400_BAD_REQUEST)
+            # Re-apply after decline/inactive.
+            enrollment.status = 'pending'
+            enrollment.role = 'member'
+            enrollment.is_active = False
+            enrollment.requested_by = request.user
+            enrollment.reviewed_by = None
+            enrollment.reviewed_at = None
+            enrollment.review_note = ''
+            enrollment.save(update_fields=[
+                'status', 'role', 'is_active', 'requested_by',
+                'reviewed_by', 'reviewed_at', 'review_note',
+            ])
+            return Response(serialize_enrollment(enrollment), status=status.HTTP_201_CREATED)
+
+        # Admin/HR/teacher direct enroll/restore approved enrollment.
+        if enrollment.status != 'approved' or not enrollment.is_active:
+            current_count = activity.enrollments.filter(status='approved', is_active=True).exclude(id=enrollment.id).count()
+            if current_count >= activity.max_participants:
+                return Response({'error': 'Activity is at full capacity'}, status=status.HTTP_400_BAD_REQUEST)
+        enrollment.status = 'approved'
         enrollment.is_active = True
         enrollment.role = role
-        enrollment.save()
+        enrollment.reviewed_by = request.user
+        enrollment.reviewed_at = timezone.now()
+        enrollment.save(update_fields=['status', 'is_active', 'role', 'reviewed_by', 'reviewed_at'])
 
     return Response(serialize_enrollment(enrollment), status=status.HTTP_201_CREATED)
 
@@ -223,8 +312,8 @@ def enroll_student(request, activity_id):
 @permission_classes([permissions.IsAuthenticated])
 def unenroll_student(request, activity_id, student_id):
     """Remove a student from an activity."""
-    if request.user.role not in ('admin', 'teacher'):
-        return Response({'error': 'Only admins or coaches can remove students'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'hr', 'teacher'):
+        return Response({'error': 'Only admins/HR/coaches can remove students'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         enrollment = ActivityEnrollment.objects.get(
@@ -237,6 +326,49 @@ def unenroll_student(request, activity_id, student_id):
 
     enrollment.delete()
     return Response({'message': 'Student removed from activity'}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def review_activity_enrollment(request, activity_id, enrollment_id):
+    """Approve or decline an activity enrollment request. HR/admin only."""
+    if request.user.role not in ('admin', 'hr'):
+        return Response({'error': 'Only admin/HR can review enrollment requests'}, status=status.HTTP_403_FORBIDDEN)
+
+    decision = (request.data.get('decision') or '').strip().lower()
+    review_note = (request.data.get('review_note') or '').strip()
+    if decision not in ('approve', 'decline'):
+        return Response({'error': 'decision must be "approve" or "decline"'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        enrollment = ActivityEnrollment.objects.select_related('activity').get(
+            id=enrollment_id,
+            activity_id=activity_id,
+            activity__school=request.user.school,
+        )
+    except ActivityEnrollment.DoesNotExist:
+        return Response({'error': 'Enrollment request not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if decision == 'approve':
+        approved_count = ActivityEnrollment.objects.filter(
+            activity=enrollment.activity,
+            status='approved',
+            is_active=True,
+        ).exclude(id=enrollment.id).count()
+        if approved_count >= enrollment.activity.max_participants:
+            return Response({'error': 'Activity is at full capacity'}, status=status.HTTP_400_BAD_REQUEST)
+        enrollment.status = 'approved'
+        enrollment.is_active = True
+    else:
+        enrollment.status = 'declined'
+        enrollment.is_active = False
+
+    enrollment.reviewed_by = request.user
+    enrollment.reviewed_at = timezone.now()
+    enrollment.review_note = review_note
+    enrollment.save(update_fields=['status', 'is_active', 'reviewed_by', 'reviewed_at', 'review_note'])
+
+    return Response(serialize_enrollment(enrollment))
 
 
 # ── Activity Events ──────────────────────────────────────────────────────────
@@ -293,7 +425,7 @@ def student_activities(request):
         return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
     enrollments = ActivityEnrollment.objects.filter(
-        student=student, is_active=True
+        student=student, status='approved', is_active=True
     ).select_related('activity__coach')
 
     activities = []

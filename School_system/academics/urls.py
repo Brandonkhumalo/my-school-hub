@@ -4,6 +4,7 @@ from . import promotion_views
 from . import activity_views
 from . import health_views
 from . import discipline_views
+from . import assessment_plan_views
 
 urlpatterns = [
     # Subject endpoints
@@ -82,6 +83,7 @@ urlpatterns = [
     path('activities/', activity_views.activity_list_create, name='activity-list-create'),
     path('activities/<int:activity_id>/', activity_views.activity_detail, name='activity-detail'),
     path('activities/<int:activity_id>/enrollments/', activity_views.activity_enrollments, name='activity-enrollments'),
+    path('activities/<int:activity_id>/enrollments/<int:enrollment_id>/review/', activity_views.review_activity_enrollment, name='activity-enrollment-review'),
     path('activities/<int:activity_id>/enroll/', activity_views.enroll_student, name='activity-enroll'),
     path('activities/<int:activity_id>/unenroll/<int:student_id>/', activity_views.unenroll_student, name='activity-unenroll'),
     path('activities/<int:activity_id>/events/', activity_views.activity_events, name='activity-events'),
@@ -103,4 +105,11 @@ urlpatterns = [
 
     # At-Risk Students (Admin)
     path('admin/at-risk-students/', views.admin_at_risk_students, name='admin-at-risk-students'),
+
+    # Assessment Plans (admin CRUD + role-specific reads)
+    path('assessment-plans/', assessment_plan_views.assessment_plans_list_create, name='assessment-plans-list-create'),
+    path('assessment-plans/<int:pk>/', assessment_plan_views.assessment_plan_detail, name='assessment-plan-detail'),
+    path('assessment-plans/for-teacher/', assessment_plan_views.plan_for_teacher, name='assessment-plan-for-teacher'),
+    path('assessment-plans/for-student/', assessment_plan_views.plans_for_student, name='assessment-plans-for-student'),
+    path('assessment-plans/for-parent/', assessment_plan_views.plans_for_parent, name='assessment-plans-for-parent'),
 ]

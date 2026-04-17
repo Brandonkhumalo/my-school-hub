@@ -125,6 +125,18 @@ class StudentListView(generics.ListCreateAPIView):
         class_id = self.request.query_params.get('class', None)
         if class_id:
             queryset = queryset.filter(student_class_id=class_id)
+
+        residence_type = (self.request.query_params.get('residence_type') or '').strip().lower()
+        if residence_type:
+            normalize_residence = {
+                'boarder': 'boarding',
+                'boarders': 'boarding',
+                'boarding': 'boarding',
+                'day': 'day',
+            }
+            normalized = normalize_residence.get(residence_type)
+            if normalized in ('day', 'boarding'):
+                queryset = queryset.filter(residence_type=normalized)
         return queryset
 
 
@@ -146,14 +158,14 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Student.objects.none()
 
     def perform_update(self, serializer):
-        if self.request.user.role != 'admin':
+        if self.request.user.role not in ('admin', 'hr', 'superadmin'):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only admins can edit students.')
+            raise PermissionDenied('Only admin/HR can edit students.')
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({'error': 'Only admins can delete students.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Only admin/HR can delete students.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
 
@@ -185,17 +197,15 @@ def student_performance_view(request, student_id):
         
         if not results.exists():
             return Response({'message': 'No results found for this student'})
-        
-        # Calculate averages
-        avg_data = results.aggregate(
-            avg_score=Avg('score'),
-            avg_max_score=Avg('max_score')
+
+        # Composite per-subject percentages via plan weights (with equal-weight
+        # fallback where no plan is attached). Then take the mean across subjects.
+        from .grading_calc import compute_from_queryset
+        per_subject = compute_from_queryset(results.select_related('assessment_plan'))
+        average_percentage = (
+            sum(per_subject.values()) / len(per_subject) if per_subject else 0
         )
-        
-        average_percentage = 0
-        if avg_data['avg_max_score'] and avg_data['avg_max_score'] > 0:
-            average_percentage = (avg_data['avg_score'] / avg_data['avg_max_score']) * 100
-        
+
         # Determine overall grade — Zimbabwe grading system
         from .grading import percentage_to_grade
         grade_info = percentage_to_grade(average_percentage)
@@ -224,7 +234,7 @@ def student_performance_view(request, student_id):
 
 # Teacher Views
 class TeacherListView(generics.ListCreateAPIView):
-    queryset = Teacher.objects.all()
+    queryset = Teacher.objects.all().order_by('user__first_name', 'user__last_name', 'id')
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -235,12 +245,18 @@ class TeacherListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught', 'teaching_classes')
+            return (
+                Teacher.objects
+                .filter(user__school=user.school)
+                .select_related('user')
+                .prefetch_related('subjects_taught', 'teaching_classes')
+                .order_by('user__first_name', 'user__last_name', 'id')
+            )
         return Teacher.objects.none()
 
 
 class TeacherDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Teacher.objects.all()
+    queryset = Teacher.objects.all().order_by('user__first_name', 'user__last_name', 'id')
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -251,18 +267,24 @@ class TeacherDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Teacher.objects.filter(user__school=user.school).select_related('user').prefetch_related('subjects_taught', 'teaching_classes')
+            return (
+                Teacher.objects
+                .filter(user__school=user.school)
+                .select_related('user')
+                .prefetch_related('subjects_taught', 'teaching_classes')
+                .order_by('user__first_name', 'user__last_name', 'id')
+            )
         return Teacher.objects.none()
 
     def perform_update(self, serializer):
-        if self.request.user.role != 'admin':
+        if self.request.user.role not in ('admin', 'hr', 'superadmin'):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only admins can edit teachers.')
+            raise PermissionDenied('Only admin/HR can edit teachers.')
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({'error': 'Only admins can delete teachers.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Only admin/HR can delete teachers.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
 
@@ -307,14 +329,14 @@ class ParentDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Parent.objects.none()
 
     def perform_update(self, serializer):
-        if self.request.user.role != 'admin':
+        if self.request.user.role not in ('admin', 'hr', 'superadmin'):
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only admins can edit parents.')
+            raise PermissionDenied('Only admin/HR can edit parents.')
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({'error': 'Only admins can delete parents.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in ('admin', 'hr', 'superadmin'):
+            return Response({'error': 'Only admin/HR can delete parents.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
 
 
@@ -726,8 +748,8 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def pending_parent_link_requests(request):
     """Get all pending parent-child link requests (Admin only) - filtered by school"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only administrators can view pending requests'}, 
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can view pending requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -762,8 +784,8 @@ def pending_parent_link_requests(request):
 @permission_classes([permissions.IsAuthenticated])
 def approve_parent_link_request(request, link_id):
     """Approve a parent-child link request (Admin only) - filtered by school"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only administrators can approve requests'}, 
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can approve requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -832,8 +854,8 @@ def approve_parent_link_request(request, link_id):
 @permission_classes([permissions.IsAuthenticated])
 def decline_parent_link_request(request, link_id):
     """Decline/delete a parent-child link request (Admin only) - filtered by school"""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only administrators can decline requests'}, 
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can decline requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -1506,14 +1528,27 @@ def _build_report_card_pdf(student, results, school, year, term):
     elements.append(Spacer(1, 0.4 * cm))
 
     # ── Aggregate results per subject ──
+    # Score/max_score totals are still shown on the report for transparency,
+    # but the reported % comes from compute_subject_percentage so the
+    # admin-configured AssessmentPlan weights (papers/tests/assignments +
+    # per-paper weights) drive the number — not the raw ratio of sums.
     from collections import OrderedDict
+    from .grading_calc import compute_subject_percentage
     subject_data = OrderedDict()
+    subject_results = OrderedDict()
+    subject_plan = {}
     for r in results:
         name = r.subject.name
         if name not in subject_data:
-            subject_data[name] = {'score': 0, 'max_score': 0}
+            subject_data[name] = {'score': 0, 'max_score': 0, 'pct': 0.0}
+            subject_results[name] = []
         subject_data[name]['score'] += r.score
         subject_data[name]['max_score'] += r.max_score
+        subject_results[name].append(r)
+        if name not in subject_plan and getattr(r, 'assessment_plan_id', None):
+            subject_plan[name] = r.assessment_plan
+    for name, rows in subject_results.items():
+        subject_data[name]['pct'] = compute_subject_percentage(rows, subject_plan.get(name))
 
     # Organise by group if enabled
     def _subject_list():
@@ -1571,7 +1606,7 @@ def _build_report_card_pdf(student, results, school, year, term):
         row_colors = []
 
         for subj_name, data in items:
-            pct = score_to_percentage(data['score'], data['max_score'])
+            pct = data.get('pct', score_to_percentage(data['score'], data['max_score']))
             gi = percentage_to_grade(pct)
             row = [subj_name,
                    str(round(data['score'], 1)),
@@ -1680,7 +1715,7 @@ def _build_report_card_pdf(student, results, school, year, term):
         values = []
         for subj_name, data in subject_data.items():
             names.append(subj_name[:10])
-            values.append(score_to_percentage(data['score'], data['max_score']))
+            values.append(data.get('pct', score_to_percentage(data['score'], data['max_score'])))
         d = Drawing(col_total, 4.5 * cm)
         bc = VerticalBarChart()
         bc.x = 30

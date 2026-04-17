@@ -485,6 +485,19 @@ class Result(models.Model):
         help_text='Whether this result appears on the report card')
     report_term = models.CharField(max_length=50, blank=True, default='', db_index=True,
         help_text='Override term for report card (blank = use academic_term)')
+    assessment_plan = models.ForeignKey(
+        'AssessmentPlan', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='results',
+        help_text='Plan this result belongs to (null for legacy / ad-hoc entries)'
+    )
+    component_kind = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text="Plan component kind: 'paper', 'test', 'assignment', or '' for legacy/other"
+    )
+    component_index = models.IntegerField(
+        null=True, blank=True,
+        help_text='1-based index within its kind (e.g. paper_number 1..6, test 1..N)'
+    )
 
     class Meta:
         indexes = [
@@ -500,6 +513,73 @@ class Result(models.Model):
 
     def __str__(self):
         return f"{self.student.user.full_name} - {self.subject.name}: {self.score}/{self.max_score}"
+
+
+class AssessmentPlan(models.Model):
+    """
+    Admin/HR-boss-defined plan of which assessment components are being written
+    in a given term for a set of subjects. Teachers enter marks against components
+    declared here; parents and students see the same plan.
+
+    A plan is scoped to (school, academic_year, academic_term) and attached to
+    one or more Subjects via the M2M `subjects`. Each (school, year, term, subject)
+    triple should have at most one active plan — enforced in the save() below.
+    """
+    school = models.ForeignKey(
+        'users.School', on_delete=models.CASCADE, related_name='assessment_plans', db_index=True
+    )
+    academic_year = models.CharField(max_length=20, db_index=True)
+    academic_term = models.CharField(max_length=50, db_index=True)
+    subjects = models.ManyToManyField(Subject, related_name='assessment_plans')
+
+    num_papers = models.PositiveSmallIntegerField(
+        default=0, help_text='How many exam papers are written this term (0-6)'
+    )
+    paper_numbers = models.JSONField(
+        default=list, blank=True,
+        help_text='Which paper numbers are written, e.g. [1,2,4]. If empty, defaults to 1..num_papers'
+    )
+    paper_weights = models.JSONField(
+        default=dict, blank=True,
+        help_text='Optional per-paper weight map, e.g. {"1": 0.25, "2": 0.25, "4": 0.5}. Empty = equal weights'
+    )
+    num_tests = models.PositiveSmallIntegerField(default=0)
+    num_assignments = models.PositiveSmallIntegerField(default=0)
+
+    # Composite weights: how much each component category contributes to the final
+    # subject percentage. Must sum to 1.0. If a category has zero items, its weight
+    # is redistributed proportionally at calc time so no marks are "lost".
+    papers_weight = models.FloatField(
+        default=0.6, help_text='Weight of combined exam papers in final mark (0..1)'
+    )
+    tests_weight = models.FloatField(
+        default=0.25, help_text='Weight of combined tests in final mark (0..1)'
+    )
+    assignments_weight = models.FloatField(
+        default=0.15, help_text='Weight of combined assignments in final mark (0..1)'
+    )
+
+    notes = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='assessment_plans_created'
+    )
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['school', 'academic_year', 'academic_term']),
+        ]
+
+    def __str__(self):
+        return f"AssessmentPlan({self.academic_year} {self.academic_term}) — {self.num_papers}P/{self.num_tests}T/{self.num_assignments}A"
+
+    def effective_paper_numbers(self):
+        """Return the list of paper numbers actually written, defaulting to 1..num_papers."""
+        if self.paper_numbers:
+            return [int(n) for n in self.paper_numbers]
+        return list(range(1, int(self.num_papers) + 1))
 
 
 class SubjectTermFeedback(models.Model):
@@ -829,9 +909,31 @@ class ActivityEnrollment(models.Model):
         ('captain', 'Captain'),
         ('vice_captain', 'Vice Captain'),
     ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('declined', 'Declined'),
+    ]
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='activity_enrollments')
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='enrollments')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved')
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='activity_enrollment_requests',
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='activity_enrollment_reviews',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True)
     date_joined = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 

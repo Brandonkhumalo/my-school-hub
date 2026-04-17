@@ -18,8 +18,10 @@ export function canStudentUseBoarding(user) {
 }
 
 export function studentResidenceLabel(value) {
+  if (!value) return "";
   if (value === 'boarding') return 'Boarding Scholar';
-  return 'Day Scholar';
+  if (value === 'day') return 'Day Scholar';
+  return "";
 }
 
 export function schoolAccommodationLabel(value) {

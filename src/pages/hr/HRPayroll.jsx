@@ -1,6 +1,21 @@
 import React, { useEffect, useState } from "react";
 import apiService from "../../services/apiService";
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function parseMonthInput(value) {
+  const [yearStr, monthStr] = (value || "").split("-");
+  const year = Number(yearStr);
+  const monthIndex = Number(monthStr) - 1;
+  if (!year || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    return { year: null, monthName: null };
+  }
+  return { year, monthName: MONTH_NAMES[monthIndex] };
+}
+
 export default function HRPayroll() {
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -13,9 +28,10 @@ export default function HRPayroll() {
 
   const load = () => {
     setLoading(true);
+    const { monthName, year } = parseMonthInput(month);
     Promise.all([
-      apiService.getPayroll({ month }),
-      apiService.getPayrollSummary({ month }),
+      apiService.getPayroll({ month: monthName || "", year: year || "" }),
+      apiService.getPayrollSummary({ month: monthName || "", year: year || "" }),
       apiService.getStaffList(),
     ])
       .then(([r, s, st]) => { setRecords(r); setSummary(s); setStaffList(st); })
@@ -27,8 +43,17 @@ export default function HRPayroll() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const { monthName, year } = parseMonthInput(month);
     try {
-      await apiService.createPayrollEntry({ ...form, month });
+      await apiService.createPayrollEntry({
+        staff: Number(form.staff),
+        basic_salary: Number(form.basic_salary),
+        allowances: 0,
+        deductions: 0,
+        month: monthName,
+        year,
+        is_paid: form.status === "paid",
+      });
       setShowForm(false);
       setForm({ staff: "", basic_salary: "", month, status: "pending" });
       load();
@@ -63,8 +88,8 @@ export default function HRPayroll() {
       {/* Summary */}
       {summary && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          {[
-            { label: "Total Payroll", value: `$${summary.total_gross ?? 0}` },
+            {[
+            { label: "Total Payroll", value: `$${summary.total_gross ?? summary.total_net ?? 0}` },
             { label: "Paid", value: `$${summary.total_paid ?? 0}` },
             { label: "Pending", value: `$${summary.total_pending ?? 0}` },
           ].map((s) => (
@@ -101,7 +126,11 @@ export default function HRPayroll() {
                   <td className="px-4 py-3 text-right">${r.allowances ?? 0}</td>
                   <td className="px-4 py-3 text-right">${r.deductions ?? 0}</td>
                   <td className="px-4 py-3 text-right font-semibold">${r.net_salary ?? r.basic_salary}</td>
-                  <td className="px-4 py-3"><span className={statusBadge(r.status)}>{r.status}</span></td>
+                  <td className="px-4 py-3">
+                    <span className={statusBadge(r.is_paid ? "paid" : "pending")}>
+                      {r.is_paid ? "paid" : "pending"}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

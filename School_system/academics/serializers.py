@@ -5,7 +5,8 @@ from .models import (
     ParentChildLink, WeeklyMessage, SchoolEvent, Assignment, ClassAttendance, SubjectAttendance, ParentTeacherMessage,
     Homework, AssignmentSubmission, DietaryFlag, Dormitory, DormAssignment, MealMenu, MealAttendance,
     DormRollCall, LightsOutRecord, ExeatRequest, ExeatMovementLog, MedicationSchedule, TuckWallet,
-    TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn
+    TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn,
+    AssessmentPlan,
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
@@ -146,7 +147,8 @@ class ResultSerializer(serializers.ModelSerializer):
             'id', 'student', 'student_name', 'student_number', 'subject', 'subject_name',
             'teacher', 'teacher_name', 'exam_type', 'score', 'max_score', 'percentage',
             'grade', 'date_recorded', 'academic_term', 'academic_year',
-            'include_in_report', 'report_term', 'effective_term'
+            'include_in_report', 'report_term', 'effective_term',
+            'assessment_plan', 'component_kind', 'component_index'
         ]
 
     def get_effective_term(self, obj):
@@ -397,6 +399,7 @@ class CreateTeacherSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    gender = serializers.ChoiceField(choices=['M', 'F', 'O', 'P'], required=False, allow_blank=True)
     hire_date = serializers.DateField()
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
     salary = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, min_value=0)
@@ -495,6 +498,7 @@ class CreateTeacherSerializer(serializers.Serializer):
             staff_number = generate_unique_staff_number()
             
             phone = validated_data.get('phone_number', '').strip()
+            gender = validated_data.get('gender') or None
             user = CustomUser.objects.create_user(
                 username=staff_number,
                 email=validated_data['email'],
@@ -504,6 +508,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 role='teacher',
                 student_number=staff_number,
                 phone_number=phone if phone else None,
+                gender=gender,
                 school=school,
                 created_by=created_by
             )
@@ -550,6 +555,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 'full_name': f"{validated_data['first_name']} {validated_data['last_name']}",
                 'email': validated_data['email'],
                 'phone_number': phone if phone else '',
+                'gender': gender or '',
                 'hire_date': str(validated_data['hire_date']),
                 'qualification': validated_data.get('qualification', ''),
                 'salary': str(salary) if salary is not None else None,
@@ -736,6 +742,7 @@ class UpdateTeacherSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=100, required=False)
     email = serializers.EmailField(required=False, allow_blank=True)
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    gender = serializers.CharField(read_only=True)
     password = serializers.CharField(min_length=6, required=False, allow_blank=True)
     hire_date = serializers.DateField(required=False)
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
@@ -1351,3 +1358,60 @@ class StudentWellnessCheckInSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentWellnessCheckIn
         fields = ['id', 'student', 'student_name', 'check_date', 'mood_score', 'notes', 'created_at']
+
+
+class AssessmentPlanSerializer(serializers.ModelSerializer):
+    subject_ids = serializers.PrimaryKeyRelatedField(
+        source='subjects', many=True, queryset=Subject.objects.all(), write_only=True
+    )
+    subjects_detail = serializers.SerializerMethodField(read_only=True)
+    effective_papers = serializers.SerializerMethodField(read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
+
+    class Meta:
+        model = AssessmentPlan
+        fields = [
+            'id', 'academic_year', 'academic_term',
+            'subject_ids', 'subjects_detail',
+            'num_papers', 'paper_numbers', 'paper_weights',
+            'num_tests', 'num_assignments',
+            'papers_weight', 'tests_weight', 'assignments_weight',
+            'effective_papers', 'notes',
+            'created_by', 'created_by_name', 'date_created', 'date_updated',
+        ]
+        read_only_fields = ['created_by', 'date_created', 'date_updated']
+
+    def get_subjects_detail(self, obj):
+        return [{'id': s.id, 'name': s.name, 'code': s.code} for s in obj.subjects.all()]
+
+    def get_effective_papers(self, obj):
+        return obj.effective_paper_numbers()
+
+    def validate(self, attrs):
+        num_papers = attrs.get('num_papers', getattr(self.instance, 'num_papers', 0))
+        paper_numbers = attrs.get('paper_numbers', getattr(self.instance, 'paper_numbers', []) or [])
+        if num_papers and num_papers > 6:
+            raise serializers.ValidationError({'num_papers': 'Maximum 6 papers supported.'})
+        if paper_numbers:
+            try:
+                nums = [int(n) for n in paper_numbers]
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'paper_numbers': 'Must be a list of integers.'})
+            if any(n < 1 or n > 6 for n in nums):
+                raise serializers.ValidationError({'paper_numbers': 'Paper numbers must be between 1 and 6.'})
+            if len(set(nums)) != len(nums):
+                raise serializers.ValidationError({'paper_numbers': 'Duplicate paper numbers not allowed.'})
+            if num_papers and len(nums) != num_papers:
+                raise serializers.ValidationError({'paper_numbers': f'Expected {num_papers} paper numbers, got {len(nums)}.'})
+
+        pw = attrs.get('papers_weight', getattr(self.instance, 'papers_weight', 0.6))
+        tw = attrs.get('tests_weight', getattr(self.instance, 'tests_weight', 0.25))
+        aw = attrs.get('assignments_weight', getattr(self.instance, 'assignments_weight', 0.15))
+        total = float(pw) + float(tw) + float(aw)
+        if any(w < 0 for w in (pw, tw, aw)):
+            raise serializers.ValidationError('Weights cannot be negative.')
+        if abs(total - 1.0) > 0.01:
+            raise serializers.ValidationError(
+                f'papers_weight + tests_weight + assignments_weight must sum to 1.0 (got {total:.2f}).'
+            )
+        return attrs

@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib.auth.hashers import make_password
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics, status, permissions
@@ -9,7 +9,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
-from .models import CustomUser, School, AuditLog, SchoolSettings, Notification
+from .models import (
+    CustomUser, School, AuditLog, SchoolSettings, Notification,
+    HRPermissionProfile, HRPagePermission,
+)
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
     ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer,
@@ -25,6 +28,23 @@ def _check_rate_limit(request, group='api', rate='10/m'):
         return is_ratelimited(request, group=group, key='ip', rate=rate, increment=True)
     except Exception:
         return False
+
+
+HR_PAGE_CATALOG = [
+    {'key': key, 'label': label}
+    for key, label in HRPagePermission.PAGE_CHOICES
+]
+
+
+def _hr_profile_for_user(hr_user):
+    profile, _ = HRPermissionProfile.objects.get_or_create(
+        user=hr_user,
+        defaults={'school': hr_user.school},
+    )
+    if hr_user.school_id and profile.school_id != hr_user.school_id:
+        profile.school = hr_user.school
+        profile.save(update_fields=['school'])
+    return profile
 
 
 class UserRegistrationView(generics.CreateAPIView):
@@ -325,14 +345,20 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
-    from academics.models import Class, Subject, Parent
+    from academics.models import Class, Subject, Parent, Student
     from finances.models import Invoice, StudentPaymentRecord
 
     school = request.user.school
 
     if school:
+        student_qs = Student.objects.filter(user__school=school, user__is_active=True)
+        total_students = student_qs.count()
+        boarding_students = student_qs.filter(residence_type='boarding').count()
+        day_students = student_qs.filter(residence_type='day').count()
         stats = {
-            'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
+            'total_students': total_students,
+            'boarding_students': boarding_students,
+            'day_students': day_students,
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
             # Include parents created by admin and self-registered parents linked to this school.
             'total_parents': Parent.objects.filter(
@@ -359,6 +385,7 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': 0, 'total_teachers': 0, 'total_parents': 0,
             'total_staff': 0, 'total_classes': 0, 'total_subjects': 0,
+            'boarding_students': 0, 'day_students': 0,
             'pending_invoices': 0, 'total_revenue': 0,
         }
 
@@ -368,7 +395,7 @@ def dashboard_stats_view(request):
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def delete_user_view(request, user_id):
-    if request.user.role != 'admin':
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
@@ -381,6 +408,93 @@ def delete_user_view(request, user_id):
         return Response({'message': 'User deleted successfully'})
     except CustomUser.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def hr_permissions_view(request):
+    """Admin-facing endpoint to manage HR employee page permissions."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    hr_users = CustomUser.objects.filter(
+        school=school,
+        role='hr',
+        is_active=True,
+    ).order_by('first_name', 'last_name')
+
+    users_payload = []
+    for hr_user in hr_users:
+        profile = _hr_profile_for_user(hr_user)
+        perms = HRPagePermission.objects.filter(profile=profile)
+        perm_map = {
+            p.page_key: {'read': bool(p.can_read), 'write': bool(p.can_write)}
+            for p in perms
+        }
+        users_payload.append({
+            'id': hr_user.id,
+            'full_name': hr_user.full_name,
+            'email': hr_user.email,
+            'is_root_boss': bool(profile.is_root_boss),
+            'permissions': perm_map,
+        })
+
+    return Response({
+        'pages': HR_PAGE_CATALOG,
+        'hr_users': users_payload,
+    })
+
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def hr_permission_update_view(request, user_id):
+    """Update one HR employee permissions and root boss flag."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        hr_user = CustomUser.objects.get(id=user_id, school=school, role='hr')
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'HR user not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    is_root_boss = bool(request.data.get('is_root_boss', False))
+    raw_permissions = request.data.get('permissions', {}) or {}
+    valid_page_keys = {key for key, _ in HRPagePermission.PAGE_CHOICES}
+
+    with transaction.atomic():
+        profile = _hr_profile_for_user(hr_user)
+        profile.is_root_boss = is_root_boss
+        profile.save(update_fields=['is_root_boss', 'updated_at'])
+
+        HRPagePermission.objects.filter(profile=profile).delete()
+
+        to_create = []
+        for page_key, grant in raw_permissions.items():
+            if page_key not in valid_page_keys:
+                continue
+            can_read = bool((grant or {}).get('read', False))
+            can_write = bool((grant or {}).get('write', False))
+            if can_write:
+                can_read = True
+            to_create.append(HRPagePermission(
+                profile=profile,
+                page_key=page_key,
+                can_read=can_read,
+                can_write=can_write,
+            ))
+
+        if to_create:
+            HRPagePermission.objects.bulk_create(to_create)
+
+    return Response({'message': 'HR permissions updated successfully'})
 
 
 @api_view(['POST'])

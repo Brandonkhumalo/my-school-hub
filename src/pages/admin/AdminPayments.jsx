@@ -26,6 +26,7 @@ export default function AdminPayments() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const canEditPayments = user?.role === "admin" || user?.role === "accountant";
 
   const termMap = { 'Term 1': 'term_1', 'Term 2': 'term_2', 'Term 3': 'term_3' };
   const academicYears = [currentAcademicYear, `${parseInt(currentAcademicYear) - 1}`, `${parseInt(currentAcademicYear) + 1}`];
@@ -532,14 +533,21 @@ export default function AdminPayments() {
                 <h2 className="text-2xl font-bold">Fee Payments Management</h2>
                 <p className="text-green-100 mt-1">Record and track student fee payments</p>
               </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="bg-white text-green-600 px-4 py-2 rounded-lg font-semibold hover:bg-green-50 transition"
-              >
-                <i className="fas fa-plus mr-2"></i>
-                Record Payment
-              </button>
+              {canEditPayments && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="bg-white text-green-600 px-4 py-2 rounded-lg font-semibold hover:bg-green-50 transition"
+                >
+                  <i className="fas fa-plus mr-2"></i>
+                  Record Payment
+                </button>
+              )}
             </div>
+            {!canEditPayments && (
+              <p className="text-green-100 mt-2 text-sm">
+                Read-only access: only admin/accountant can edit payments.
+              </p>
+            )}
           </div>
 
           <div className="border-b border-gray-200">
@@ -628,7 +636,7 @@ export default function AdminPayments() {
                         <td className="px-4 py-3 text-gray-700">{record.due_date ? formatDate(record.due_date) : '-'}</td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2 justify-center">
-                            {record.payment_status !== 'paid' && (
+                            {canEditPayments && record.payment_status !== 'paid' && (
                               <button
                                 onClick={() => openAddPaymentModal(record)}
                                 className="text-green-600 hover:text-green-800"
@@ -637,7 +645,7 @@ export default function AdminPayments() {
                                 <i className="fas fa-plus-circle"></i>
                               </button>
                             )}
-                            {record.payment_status !== 'paid' && (
+                            {canEditPayments && record.payment_status !== 'paid' && (
                               <button
                                 onClick={() => handleUpdateStatus(record.id, 'paid')}
                                 className="text-blue-600 hover:text-blue-800"
@@ -832,7 +840,7 @@ export default function AdminPayments() {
         </div>
       </div>
 
-      {showAddModal && (
+      {canEditPayments && showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="bg-green-600 text-white px-6 py-4 rounded-t-xl">
@@ -1044,7 +1052,7 @@ export default function AdminPayments() {
         </div>
       )}
 
-      {showPaymentModal && selectedRecord && (
+      {canEditPayments && showPaymentModal && selectedRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
             <div className="bg-blue-600 text-white px-6 py-4 rounded-t-xl">

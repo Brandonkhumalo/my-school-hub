@@ -32,6 +32,10 @@ export default function AdminDashboard() {
 
   if (loading) return <LoadingSpinner message="Loading dashboard…" />;
 
+  const schoolAccommodationType = stats?.school_accommodation_type || "day";
+  const showDayStudents = schoolAccommodationType === "day" || schoolAccommodationType === "both";
+  const showBoardingStudents = schoolAccommodationType === "boarding" || schoolAccommodationType === "both";
+
   // ── Quick Actions ────────────────────────────────────────────
   const quickActions = [
     { to: "/admin/students",  icon: "fa-user-plus",      label: "Add Student",      sub: "Register new student",  accent: "#3b82f6", bg: "#eff6ff" },
@@ -64,6 +68,22 @@ export default function AdminDashboard() {
           icon="fas fa-user-graduate"
           gradient="from-blue-500 to-blue-700"
         />
+        {showDayStudents && (
+          <DashboardCard
+            title="Day Students"
+            value={stats?.day_students ?? 0}
+            icon="fas fa-sun"
+            gradient="from-cyan-500 to-cyan-700"
+          />
+        )}
+        {showBoardingStudents && (
+          <DashboardCard
+            title="Boarding Students"
+            value={stats?.boarding_students ?? 0}
+            icon="fas fa-bed"
+            gradient="from-indigo-500 to-indigo-700"
+          />
+        )}
         <DashboardCard
           title="Total Teachers"
           value={stats?.total_teachers ?? 0}

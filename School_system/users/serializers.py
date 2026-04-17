@@ -1,10 +1,14 @@
 from datetime import date
+from django.utils import timezone
 
 from rest_framework import serializers
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import CustomUser, School, SchoolSettings, ReportCardConfig, ReportCardTemplate, SubjectGroup
+from .models import (
+    CustomUser, School, SchoolSettings, ReportCardConfig, ReportCardTemplate, SubjectGroup,
+    HRPermissionProfile, HRPagePermission,
+)
 from academics.models import Parent
 import random
 import secrets
@@ -94,16 +98,19 @@ class UserSerializer(serializers.ModelSerializer):
     employee_id = serializers.SerializerMethodField()
     staff_department_id = serializers.SerializerMethodField()
     staff_hire_date = serializers.SerializerMethodField()
+    hr_is_root_boss = serializers.SerializerMethodField()
+    hr_page_permissions = serializers.SerializerMethodField()
     
     class Meta:
         """Represents Meta."""
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
-            'phone_number', 'role', 'student_number', 'is_active',
+            'phone_number', 'gender', 'role', 'student_number', 'is_active',
             'date_joined', 'password', 'school_name', 'school_code',
             'school_accommodation_type', 'student_residence_type',
-            'salary', 'staff_position', 'employee_id', 'staff_department_id', 'staff_hire_date'
+            'salary', 'staff_position', 'employee_id', 'staff_department_id', 'staff_hire_date',
+            'hr_is_root_boss', 'hr_page_permissions',
         ]
         read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'full_name', 'school_name', 'school_code']
         extra_kwargs = {
@@ -160,6 +167,24 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.staff.hire_date
         except Exception:
             return None
+
+    def get_hr_is_root_boss(self, obj):
+        if obj.role != 'hr':
+            return False
+        profile = getattr(obj, 'hr_permission_profile', None)
+        return bool(profile and profile.is_root_boss)
+
+    def get_hr_page_permissions(self, obj):
+        if obj.role != 'hr':
+            return {}
+        profile = getattr(obj, 'hr_permission_profile', None)
+        if not profile:
+            return {}
+        perms = HRPagePermission.objects.filter(profile=profile)
+        return {
+            p.page_key: {'read': bool(p.can_read), 'write': bool(p.can_write)}
+            for p in perms
+        }
 
 
 class ManagedUserSerializer(serializers.ModelSerializer):
@@ -274,7 +299,7 @@ class ManagedUserSerializer(serializers.ModelSerializer):
         return attrs
 
     def _ensure_staff_record(self, user, validated_data):
-        from staff.models import Staff, Department
+        from staff.models import Staff, Department, Payroll
 
         role = user.role
         if role not in self.STAFF_ROLES:
@@ -307,6 +332,21 @@ class ManagedUserSerializer(serializers.ModelSerializer):
                 salary=salary,
                 is_active=user.is_active,
             )
+            # Ensure salary-based users immediately appear in payroll.
+            month_name = timezone.now().strftime('%B')
+            year = timezone.now().year
+            Payroll.objects.get_or_create(
+                staff=staff,
+                month=month_name,
+                year=year,
+                defaults={
+                    'basic_salary': staff.salary,
+                    'allowances': 0,
+                    'deductions': 0,
+                    'net_salary': staff.salary,
+                    'is_paid': False,
+                }
+            )
             return staff
 
         if salary is not None:
@@ -318,6 +358,25 @@ class ManagedUserSerializer(serializers.ModelSerializer):
         staff.position = position
         staff.is_active = user.is_active
         staff.save(update_fields=['salary', 'hire_date', 'department', 'position', 'is_active'])
+        # Keep current-month payroll aligned with salary for unpaid entries.
+        month_name = timezone.now().strftime('%B')
+        year = timezone.now().year
+        payroll, created = Payroll.objects.get_or_create(
+            staff=staff,
+            month=month_name,
+            year=year,
+            defaults={
+                'basic_salary': staff.salary,
+                'allowances': 0,
+                'deductions': 0,
+                'net_salary': staff.salary,
+                'is_paid': False,
+            }
+        )
+        if not created and not payroll.is_paid and salary is not None:
+            payroll.basic_salary = staff.salary
+            payroll.net_salary = (staff.salary + payroll.allowances) - payroll.deductions
+            payroll.save(update_fields=['basic_salary', 'net_salary'])
         return staff
 
     def create(self, validated_data):

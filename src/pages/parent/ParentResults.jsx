@@ -12,7 +12,7 @@ export default function ParentResults() {
       setIsLoading(true);
       try {
         const data = await apiService.fetchParentResults();
-        setResults(data);
+        setResults(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Error fetching results:", error);
       } finally {
@@ -41,9 +41,13 @@ export default function ParentResults() {
             <tbody>
               {results.map((res, idx) => (
                 <tr key={idx}>
-                  <td>{res.child_name}</td>
-                  <td>{res.subject}</td>
-                  <td>{res.score}</td>
+                  <td>{res.student_name}</td>
+                  <td>{res.subject_name}</td>
+                  <td>
+                    {typeof res.score === "number" && typeof res.max_score === "number"
+                      ? `${res.score}/${res.max_score}`
+                      : "-"}
+                  </td>
                   <td>{res.grade}</td>
                 </tr>
               ))}

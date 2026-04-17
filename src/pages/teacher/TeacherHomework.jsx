@@ -13,6 +13,8 @@ export default function TeacherHomework() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingHomework, setEditingHomework] = useState(null);
+  const [removeExistingFile, setRemoveExistingFile] = useState(false);
 
   // Submission grading state
   const [submissionsModal, setSubmissionsModal] = useState(null); // homework being viewed
@@ -31,6 +33,20 @@ export default function TeacherHomework() {
     due_date: "",
     file: null
   });
+
+  const resetHomeworkForm = () => {
+    setFormData({
+      title: "",
+      subject_id: "",
+      class_id: "",
+      description: "",
+      due_date: "",
+      file: null
+    });
+    setEditingHomework(null);
+    setRemoveExistingFile(false);
+    setShowForm(false);
+  };
 
   useEffect(() => {
     loadData();
@@ -74,6 +90,7 @@ export default function TeacherHomework() {
         return;
       }
       setFormData(prev => ({ ...prev, file }));
+      setRemoveExistingFile(false);
     }
   };
 
@@ -85,7 +102,8 @@ export default function TeacherHomework() {
       return;
     }
 
-    if (!formData.description && !formData.file) {
+    const hasExistingFile = Boolean(editingHomework?.has_file && !removeExistingFile);
+    if (!formData.description && !formData.file && !hasExistingFile) {
       alert("Please either type homework description or upload a file");
       return;
     }
@@ -101,26 +119,40 @@ export default function TeacherHomework() {
       if (formData.file) {
         data.append('file', formData.file);
       }
-      
-      await apiService.createHomework(data);
-      
-      setFormData({
-        title: "",
-        subject_id: "",
-        class_id: "",
-        description: "",
-        due_date: "",
-        file: null
-      });
-      setShowForm(false);
+
+      if (editingHomework) {
+        if (removeExistingFile && !formData.file) {
+          data.append('remove_file', 'true');
+        }
+        await apiService.updateHomework(editingHomework.id, data);
+      } else {
+        await apiService.createHomework(data);
+      }
+
+      resetHomeworkForm();
       await loadData();
-      alert("Homework created successfully!");
+      alert(editingHomework ? "Homework updated successfully!" : "Homework created successfully!");
     } catch (error) {
-      console.error("Error creating homework:", error);
-      alert("Failed to create homework: " + (error.message || "Unknown error"));
+      console.error("Error saving homework:", error);
+      alert(`Failed to ${editingHomework ? "update" : "create"} homework: ` + (error.message || "Unknown error"));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const startEditHomework = (hw) => {
+    setEditingHomework(hw);
+    setFormData({
+      title: hw.title || "",
+      subject_id: hw.subject?.id ? String(hw.subject.id) : "",
+      class_id: hw.assigned_class?.id ? String(hw.assigned_class.id) : "",
+      description: hw.description || "",
+      due_date: hw.due_date || "",
+      file: null
+    });
+    setRemoveExistingFile(false);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = async (homeworkId) => {
@@ -227,7 +259,15 @@ export default function TeacherHomework() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Manage Homework</h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                resetHomeworkForm();
+              } else {
+                setEditingHomework(null);
+                setRemoveExistingFile(false);
+                setShowForm(true);
+              }
+            }}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2"
           >
             {showForm ? (
@@ -246,7 +286,9 @@ export default function TeacherHomework() {
 
         {showForm && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Create New Homework</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              {editingHomework ? "Edit Homework" : "Create New Homework"}
+            </h3>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -320,7 +362,7 @@ export default function TeacherHomework() {
                   name="due_date"
                   value={formData.due_date}
                   onChange={handleInputChange}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={editingHomework ? undefined : new Date().toISOString().split('T')[0]}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -342,11 +384,24 @@ export default function TeacherHomework() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Upload File (PDF or Word)
+                  Upload File (PDF, Word, or Image)
                 </label>
+                {editingHomework?.has_file && !formData.file && (
+                  <div className="mb-2 flex items-center justify-between bg-blue-50 border border-blue-100 rounded px-3 py-2 text-sm">
+                    <span className="text-blue-700">Current file: {editingHomework.file_name}</span>
+                    <label className="inline-flex items-center gap-2 text-red-600">
+                      <input
+                        type="checkbox"
+                        checked={removeExistingFile}
+                        onChange={(e) => setRemoveExistingFile(e.target.checked)}
+                      />
+                      Remove file
+                    </label>
+                  </div>
+                )}
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
                   onChange={handleFileChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -358,7 +413,7 @@ export default function TeacherHomework() {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={resetHomeworkForm}
                   className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
                 >
                   Cancel
@@ -371,12 +426,12 @@ export default function TeacherHomework() {
                   {submitting ? (
                     <>
                       <i className="fas fa-spinner fa-spin mr-2"></i>
-                      Creating...
+                      {editingHomework ? "Updating..." : "Creating..."}
                     </>
                   ) : (
                     <>
                       <i className="fas fa-save mr-2"></i>
-                      Create Homework
+                      {editingHomework ? "Update Homework" : "Create Homework"}
                     </>
                   )}
                 </button>
@@ -425,13 +480,22 @@ export default function TeacherHomework() {
                       ) : (
                         <span className="text-gray-400 text-sm">No file attached</span>
                       )}
-                      <button
-                        onClick={() => handleDelete(hw.id)}
-                        className="text-red-500 hover:text-red-700"
-                        title="Delete homework"
-                      >
-                        <i className="fas fa-trash"></i>
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => startEditHomework(hw)}
+                          className="text-green-600 hover:text-green-800"
+                          title="Edit homework"
+                        >
+                          <i className="fas fa-edit"></i>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(hw.id)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Delete homework"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      </div>
                     </div>
                     <button
                       onClick={() => openSubmissions(hw)}

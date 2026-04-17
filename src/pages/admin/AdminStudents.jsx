@@ -17,13 +17,14 @@ export default function AdminStudents() {
   const [editingStudent, setEditingStudent] = useState(null);
   const [showCredentials, setShowCredentials] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [residenceFilter, setResidenceFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
     student_class: "",
-    residence_type: "day",
+    residence_type: "",
     admission_date: new Date().toISOString().split("T")[0],
     student_email: "",
     student_contact: "",
@@ -39,7 +40,7 @@ export default function AdminStudents() {
       first_name: "",
       last_name: "",
       student_class: "",
-      residence_type: "day",
+      residence_type: "",
       admission_date: new Date().toISOString().split("T")[0],
       student_email: "",
       student_contact: "",
@@ -74,9 +75,13 @@ export default function AdminStudents() {
   };
 
   const filteredStudents = useMemo(() => {
-    if (!searchQuery) return students;
-    const query = searchQuery.toLowerCase();
-    return students.filter(student => {
+    const query = searchQuery.toLowerCase().trim();
+    return students.filter((student) => {
+      const residence = student?.residence_type || "";
+      if (residenceFilter !== "all" && residence !== residenceFilter) {
+        return false;
+      }
+      if (!query) return true;
       const firstName = student.user?.first_name?.toLowerCase() || '';
       const lastName = student.user?.last_name?.toLowerCase() || '';
       const fullName = `${firstName} ${lastName}`;
@@ -84,7 +89,7 @@ export default function AdminStudents() {
       const className = student.class_name?.toLowerCase() || '';
       return fullName.includes(query) || studentNumber.includes(query) || className.includes(query);
     });
-  }, [students, searchQuery]);
+  }, [students, searchQuery, residenceFilter]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE)),
@@ -98,7 +103,7 @@ export default function AdminStudents() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, residenceFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -134,7 +139,6 @@ export default function AdminStudents() {
           email: formData.student_email,
           phone_number: formData.student_contact,
           student_class: formData.student_class,
-          residence_type: formData.residence_type,
           admission_date: formData.admission_date,
           parent_contact: formData.student_contact,
           address: formData.student_address,
@@ -142,6 +146,7 @@ export default function AdminStudents() {
           gender: formData.gender,
           emergency_contact: formData.emergency_contact,
         };
+        if (formData.residence_type) payload.residence_type = formData.residence_type;
         if (formData.password) payload.password = formData.password;
         await apiService.updateStudent(editingStudent.id, payload);
         alert("Student updated successfully.");
@@ -153,7 +158,6 @@ export default function AdminStudents() {
             password: formData.password,
           },
           student_class: formData.student_class,
-          residence_type: formData.residence_type,
           admission_date: formData.admission_date,
           student_email: formData.student_email,
           student_contact: formData.student_contact,
@@ -162,6 +166,9 @@ export default function AdminStudents() {
           gender: formData.gender,
           emergency_contact: formData.emergency_contact,
         };
+        if (formData.residence_type) {
+          formattedData.residence_type = formData.residence_type;
+        }
         const response = await apiService.createStudent(formattedData);
         setShowCredentials({
           full_name: `${response.user.first_name} ${response.user.last_name}`,
@@ -183,7 +190,7 @@ export default function AdminStudents() {
       first_name: student.user?.first_name || "",
       last_name: student.user?.last_name || "",
       student_class: student.student_class || "",
-      residence_type: student.residence_type || "day",
+      residence_type: student.residence_type || "",
       admission_date: student.admission_date || new Date().toISOString().split("T")[0],
       student_email: student.user?.email || "",
       student_contact: student.user?.phone_number || student.parent_contact || "",
@@ -210,7 +217,7 @@ export default function AdminStudents() {
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">
-            All Students ({students.length})
+            All Students ({filteredStudents.length})
           </h2>
           <button
             onClick={() => {
@@ -242,9 +249,24 @@ export default function AdminStudents() {
                 <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
               </div>
             </div>
-            {searchQuery && (
+            <div className="ml-4 min-w-[200px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Residence</label>
+              <select
+                value={residenceFilter}
+                onChange={(e) => setResidenceFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All</option>
+                <option value="day">Day Scholars</option>
+                <option value="boarding">Boarders</option>
+              </select>
+            </div>
+            {(searchQuery || residenceFilter !== "all") && (
               <button
-                onClick={() => setSearchQuery("")}
+                onClick={() => {
+                  setSearchQuery("");
+                  setResidenceFilter("all");
+                }}
                 className="ml-4 mt-6 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
               >
                 Clear
@@ -306,10 +328,11 @@ export default function AdminStudents() {
                   name="residence_type"
                   value={formData.residence_type}
                   onChange={handleInputChange}
-                  required
+                  required={!isSchoolDayOnly(user) && !isSchoolBoardingOnly(user)}
                   disabled={isSchoolDayOnly(user) || isSchoolBoardingOnly(user)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 >
+                  <option value="">Select residence...</option>
                   <option value="day">Day Scholar</option>
                   <option value="boarding">Boarding Scholar</option>
                 </select>
@@ -432,7 +455,7 @@ export default function AdminStudents() {
                   </div>
                   <div className="flex">
                     <span className="w-40 text-gray-600 font-medium">Residence:</span>
-                    <span className="text-gray-800">{studentResidenceLabel(selectedStudent.residence_type)}</span>
+                    <span className="text-gray-800">{studentResidenceLabel(selectedStudent.residence_type) || '-'}</span>
                   </div>
                 </div>
               </div>
@@ -503,7 +526,7 @@ export default function AdminStudents() {
                         <td className="px-6 py-4 text-sm">
                           <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">{student.class_name || "-"}</span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{studentResidenceLabel(student.residence_type)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{studentResidenceLabel(student.residence_type) || "-"}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{student.admission_date}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{student.student_contact || student.parent_contact || "-"}</td>
                         <td className="px-6 py-4 text-sm">

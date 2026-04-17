@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
+import AssessmentPlanCard from "../../components/AssessmentPlanCard";
 import { formatDate } from "../../utils/dateFormat";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -12,7 +13,9 @@ export default function StudentResults() {
   const { user } = useAuth();
   const { currentAcademicYear, currentTerm } = useSchoolSettings();
   const [performance, setPerformance] = useState(null);
+  const [assessmentPlans, setAssessmentPlans] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingPlans, setLoadingPlans] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [reportYear, setReportYear] = useState(currentAcademicYear);
   const [reportTerm, setReportTerm] = useState(currentTerm);
@@ -31,6 +34,23 @@ export default function StudentResults() {
     };
     fetchData();
   }, [user.id]);
+
+  // Fetch assessment plans when year/term changes
+  useEffect(() => {
+    const fetchPlans = async () => {
+      setLoadingPlans(true);
+      try {
+        const plans = await apiService.getAssessmentPlansForStudent(reportYear, reportTerm);
+        setAssessmentPlans(plans || []);
+      } catch (error) {
+        console.error("Error fetching assessment plans:", error);
+        setAssessmentPlans([]);
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+    fetchPlans();
+  }, [reportYear, reportTerm]);
 
   const handleDownloadReport = async () => {
     setDownloading(true);
@@ -86,6 +106,17 @@ export default function StudentResults() {
                 <h3 className="text-3xl font-bold text-orange-600">{performance.total_subjects}</h3>
               </div>
             </div>
+          </div>
+
+          {/* Assessment Plan Card */}
+          <div className="p-6">
+            <AssessmentPlanCard
+              plans={assessmentPlans}
+              existingResults={performance.results || []}
+              isLoading={loadingPlans}
+              year={reportYear}
+              term={reportTerm}
+            />
           </div>
 
           {/* Download Report Card */}

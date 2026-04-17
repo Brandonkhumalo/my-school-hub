@@ -20,7 +20,8 @@ class JWTAuthentication(BaseAuthentication):
     @staticmethod
     def generate_token(payload):
         """Execute generate token."""
-        expiration = datetime.utcnow() + timedelta(days=30)
+        access_hours = max(1, int(getattr(settings, 'JWT_ACCESS_TOKEN_HOURS', 24)))
+        expiration = datetime.utcnow() + timedelta(hours=access_hours)
         token_payload = copy.deepcopy(payload)
         token_payload['exp'] = int(expiration.timestamp())
         token_payload['type'] = 'access_token'
@@ -31,7 +32,8 @@ class JWTAuthentication(BaseAuthentication):
     @staticmethod
     def generate_refresh_token(payload):
         """Execute generate refresh token."""
-        expiration = datetime.utcnow() + timedelta(days=60)
+        refresh_hours = max(1, int(getattr(settings, 'JWT_REFRESH_TOKEN_HOURS', 72)))
+        expiration = datetime.utcnow() + timedelta(hours=refresh_hours)
         token_payload = copy.deepcopy(payload)
         token_payload['exp'] = int(expiration.timestamp())
         token_payload['type'] = 'refresh_token'

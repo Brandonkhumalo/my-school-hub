@@ -320,9 +320,27 @@ def child_dashboard_stats(request, child_id):
         ).count()
         attendance_percentage = round((present_days / total_days * 100), 1) if total_days > 0 else 100
         
-        # Calculate outstanding fees
+        # Calculate outstanding fees using the same logic/path as the Parent Fees page.
+        school = request.user.school
         student_fees = StudentFee.objects.filter(student=student)
-        outstanding_fees = sum(fee.balance for fee in student_fees)
+        fee_breakdown = build_school_fee_breakdown(student, school, parent=parent)
+        additional_fees = get_additional_fees_for_student(student, school)
+
+        legacy_total_fees = sum(float(fee.amount_due) for fee in student_fees)
+        school_fee_total = float(fee_breakdown['total_school_fee'])
+        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        total_fees = school_fee_total + additional_fees_total + legacy_total_fees
+
+        legacy_paid = sum(float(fee.amount_paid) for fee in student_fees)
+        payment_records_paid = sum(
+            float(record.amount_paid)
+            for record in StudentPaymentRecord.objects.filter(
+                student=student,
+                school=school,
+            )
+        )
+        total_paid = legacy_paid + payment_records_paid
+        outstanding_fees = max(total_fees - total_paid, 0)
         
         data = {
             'overall_average': avg_percentage,

@@ -26,9 +26,10 @@ export default function HRLeaves() {
   const filtered = filterStatus ? leaves.filter((l) => l.status === filterStatus) : leaves;
 
   const handleReview = async (action) => {
+    const status = action === "approve" ? "approved" : "rejected";
     try {
-      await apiService.reviewLeave(reviewing.id, { action, notes: reviewNote });
-      setSuccess(`Leave ${action}d successfully.`);
+      await apiService.reviewLeave(reviewing.id, { status, notes: reviewNote });
+      setSuccess(`Leave ${status} successfully.`);
       setReviewing(null);
       setReviewNote("");
       load();
@@ -84,7 +85,7 @@ export default function HRLeaves() {
                   <td className="px-4 py-3 text-gray-600 capitalize">{l.leave_type}</td>
                   <td className="px-4 py-3 text-gray-600">{formatDate(l.start_date)}</td>
                   <td className="px-4 py-3 text-gray-600">{formatDate(l.end_date)}</td>
-                  <td className="px-4 py-3 text-gray-600">{l.total_days ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">{l.days_requested ?? l.total_days ?? "—"}</td>
                   <td className="px-4 py-3"><span className={badge(l.status)}>{l.status}</span></td>
                   <td className="px-4 py-3">
                     {l.status === "pending" && (

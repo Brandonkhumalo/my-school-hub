@@ -462,7 +462,12 @@ def review_leave_view(request, leave_id):
     except Leave.DoesNotExist:
         return Response({'error': 'Leave request not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Accept either `status` (approved/rejected) or legacy `action` (approve/reject)
     new_status = request.data.get('status')
+    action = request.data.get('action')
+    if not new_status and action:
+        action_map = {'approve': 'approved', 'reject': 'rejected'}
+        new_status = action_map.get(str(action).strip().lower())
     if new_status not in ('approved', 'rejected'):
         return Response({'error': "Status must be 'approved' or 'rejected'."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -485,6 +490,8 @@ class PayrollListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         """Return queryset."""
+        if not _is_hr_or_admin(self.request.user):
+            return Payroll.objects.none()
         qs = Payroll.objects.filter(staff__user__school=self.request.user.school).select_related('staff__user')
         month = self.request.query_params.get('month')
         year = self.request.query_params.get('year')
@@ -493,6 +500,12 @@ class PayrollListCreateView(generics.ListCreateAPIView):
         if year:
             qs = qs.filter(year=year)
         return qs
+
+    def perform_create(self, serializer):
+        if not _is_hr_or_admin(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only HR/admin can create payroll entries.')
+        serializer.save()
 
 
 class PayrollDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -531,6 +544,10 @@ def payroll_summary_view(request):
     )
     summary['paid_count'] = qs.filter(is_paid=True).count()
     summary['unpaid_count'] = qs.filter(is_paid=False).count()
+    summary['total_paid'] = qs.filter(is_paid=True).aggregate(total=Sum('net_salary'))['total'] or 0
+    summary['total_pending'] = qs.filter(is_paid=False).aggregate(total=Sum('net_salary'))['total'] or 0
+    # Backward-compatible aliases used by the frontend HR payroll screen.
+    summary['total_gross'] = summary.get('total_net') or 0
     return Response(summary)
 
 
@@ -577,16 +594,25 @@ def hr_dashboard_stats_view(request):
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     school = request.user.school
+    from academics.models import Student
     total_staff = Staff.objects.filter(user__school=school, is_active=True).count()
+    student_qs = Student.objects.filter(user__school=school, user__is_active=True)
+    total_students = student_qs.count()
+    boarding_students = student_qs.filter(residence_type='boarding').count()
+    day_students = student_qs.filter(residence_type='day').count()
     on_leave = Leave.objects.filter(staff__user__school=school, status='approved').count()
     pending_leaves = Leave.objects.filter(staff__user__school=school, status='pending').count()
     departments = Department.objects.filter(staff_members__user__school=school).distinct().count()
     upcoming_meetings = Meeting.objects.filter(organizer__school=school, is_completed=False).count()
 
     return Response({
+        'total_students': total_students,
+        'boarding_students': boarding_students,
+        'day_students': day_students,
         'total_staff': total_staff,
         'on_leave': on_leave,
         'pending_leave_requests': pending_leaves,
         'departments': departments,
         'upcoming_meetings': upcoming_meetings,
+        'school_accommodation_type': getattr(school, 'accommodation_type', 'day'),
     })

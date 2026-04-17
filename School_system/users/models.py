@@ -125,10 +125,18 @@ class CustomUser(AbstractUser):
         ('superadmin', 'Super Admin'),
     ]
 
+    GENDER_CHOICES = [
+        ('M', 'Male'),
+        ('F', 'Female'),
+        ('O', 'Other'),
+        ('P', 'Prefer not to say'),
+    ]
+
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
     email = models.EmailField()
     phone_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, db_index=True)
     student_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     whatsapp_pin = models.CharField(max_length=128, null=True, blank=True)
@@ -370,3 +378,92 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.title} ({'Read' if self.is_read else 'Unread'})"
+
+
+class HRPermissionProfile(models.Model):
+    """Per-HR-employee permission profile managed by admin."""
+    user = models.OneToOneField(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='hr_permission_profile',
+    )
+    school = models.ForeignKey(
+        School,
+        on_delete=models.CASCADE,
+        related_name='hr_permission_profiles',
+    )
+    is_root_boss = models.BooleanField(
+        default=False,
+        help_text='Root HR Boss has full admin-equivalent access.',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['school', 'is_root_boss']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.full_name} (Root HR: {self.is_root_boss})"
+
+
+class HRPagePermission(models.Model):
+    """Page-level read/write grants for an HR employee."""
+    PAGE_CHOICES = [
+        ('dashboard', 'Dashboard'),
+        ('students', 'Students'),
+        ('teachers', 'Teachers'),
+        ('parents', 'Parents'),
+        ('parent_requests', 'Parent Requests'),
+        ('users', 'User Management'),
+        ('staff', 'Staff'),
+        ('classes', 'Classes'),
+        ('subjects', 'Subjects'),
+        ('results', 'Results'),
+        ('at_risk_students', 'At-Risk Students'),
+        ('timetable', 'Timetable'),
+        ('fees', 'Fees'),
+        ('invoices', 'Invoices'),
+        ('payments', 'Payments'),
+        ('reports', 'Reports'),
+        ('leaves', 'Leave Requests'),
+        ('payroll', 'Payroll'),
+        ('attendance', 'Attendance'),
+        ('meetings', 'Meetings'),
+        ('visitor_logs', 'Visitor Logs'),
+        ('incidents', 'Incidents'),
+        ('cleaning', 'Cleaning'),
+        ('discipline', 'Discipline'),
+        ('promotions', 'Promotions'),
+        ('suspensions', 'Suspensions'),
+        ('activities', 'Activities'),
+        ('library', 'Library'),
+        ('health', 'Health Records'),
+        ('complaints', 'Complaints'),
+        ('announcements', 'Announcements'),
+        ('boarding', 'Boarding'),
+        ('extras', 'Extras'),
+        ('report_config', 'Report Config'),
+        ('settings', 'Settings'),
+        ('analytics', 'Analytics'),
+        ('audit_logs', 'Audit Logs'),
+    ]
+
+    profile = models.ForeignKey(
+        HRPermissionProfile,
+        on_delete=models.CASCADE,
+        related_name='page_permissions',
+    )
+    page_key = models.CharField(max_length=50, choices=PAGE_CHOICES)
+    can_read = models.BooleanField(default=False)
+    can_write = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('profile', 'page_key')
+        indexes = [
+            models.Index(fields=['page_key']),
+            models.Index(fields=['profile', 'page_key']),
+        ]
+
+    def __str__(self):
+        return f"{self.profile.user.full_name} - {self.page_key} (R:{self.can_read} W:{self.can_write})"

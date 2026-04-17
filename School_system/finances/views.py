@@ -182,6 +182,9 @@ class PaymentListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         """Execute perform create."""
+        if self.request.user.role not in ['admin', 'accountant']:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admin/accountant can record payments.')
         payment = serializer.save(processed_by=self.request.user)
         # Notify parents of the student that a payment was recorded
         try:
@@ -209,6 +212,24 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Payment.objects.filter(student_fee__student__user__school=user.school).select_related(
+                'student_fee__student__user', 'student_fee__fee_type', 'processed_by'
+            )
+        return Payment.objects.none()
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ['admin', 'accountant']:
+            return Response({'error': 'Only admin/accountant can edit payments.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role not in ['admin', 'accountant']:
+            return Response({'error': 'Only admin/accountant can delete payments.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Invoice Views
@@ -248,12 +269,36 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
             
         return queryset.order_by('-issue_date')
 
+    def perform_create(self, serializer):
+        if self.request.user.role not in ['admin', 'accountant']:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admin/accountant can create invoices.')
+        serializer.save()
+
 
 class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Represents InvoiceDetailView."""
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.school:
+            return Invoice.objects.filter(student__user__school=user.school).select_related(
+                'student__user', 'school'
+            )
+        return Invoice.objects.none()
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ['admin', 'accountant']:
+            return Response({'error': 'Only admin/accountant can update invoices.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role not in ['admin', 'accountant']:
+            return Response({'error': 'Only admin/accountant can delete invoices.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 # Financial Report Views
@@ -637,7 +682,7 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
         """Return queryset."""
         user = self.request.user
         
-        if user.role not in ['admin', 'accountant']:
+        if user.role not in ['admin', 'accountant', 'hr']:
             return StudentPaymentRecord.objects.none()
         
         if user.school:
@@ -666,6 +711,9 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         """Execute perform create."""
+        if self.request.user.role not in ['admin', 'accountant']:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only admin/accountant can create payment records.')
         record = serializer.save()
         # Notify parents that a fee has been assigned to their child
         try:
@@ -696,9 +744,16 @@ class StudentPaymentRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         """Return queryset."""
         user = self.request.user
+        if user.role not in ['admin', 'accountant', 'hr']:
+            return StudentPaymentRecord.objects.none()
         if user.school:
             return StudentPaymentRecord.objects.filter(school=user.school)
         return StudentPaymentRecord.objects.none()
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ['admin', 'accountant']:
+            return Response({'error': 'Only admin/accountant can edit payment records.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         """Only admin can delete payment records; recalculate related balances."""
@@ -784,7 +839,7 @@ def update_payment_status(request, record_id):
 @permission_classes([permissions.IsAuthenticated])
 def class_fees_report(request):
     """Get class-based fees report showing paid/unpaid students"""
-    if request.user.role not in ['admin', 'accountant']:
+    if request.user.role not in ['admin', 'accountant', 'hr']:
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
     class_id = request.query_params.get('class_id')
@@ -1051,7 +1106,7 @@ def parent_transport_preference(request, child_id):
 @permission_classes([permissions.IsAuthenticated])
 def get_students_for_payment(request):
     """Get list of students for payment recording"""
-    if request.user.role not in ['admin', 'accountant']:
+    if request.user.role not in ['admin', 'accountant', 'hr']:
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
     class_id = request.query_params.get('class_id')
@@ -1116,7 +1171,7 @@ def student_invoices_by_class(request):
     Shows both outstanding (unpaid) and paid invoices.
     """
     user = request.user
-    if user.role not in ['admin', 'accountant']:
+    if user.role not in ['admin', 'accountant', 'hr']:
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
     class_id = request.query_params.get('class_id')

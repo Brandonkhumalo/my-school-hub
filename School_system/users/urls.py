@@ -20,6 +20,8 @@ urlpatterns = [
     path('users/', views.UserListView.as_view(), name='user-list'),
     path('users/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'),
     path('users/<int:user_id>/delete/', views.delete_user_view, name='delete-user'),
+    path('permissions/hr/', views.hr_permissions_view, name='hr-permissions'),
+    path('permissions/hr/<int:user_id>/', views.hr_permission_update_view, name='hr-permission-update'),
 
     # Dashboard
     path('dashboard/stats/', views.dashboard_stats_view, name='dashboard-stats'),

@@ -241,6 +241,8 @@ const apiService = {
   createManagedUser: (userData) => request("/auth/users/", "POST", userData),
   updateManagedUser: (userId, userData) => request(`/auth/users/${userId}/`, "PATCH", userData),
   deleteUser: (userId) => request(`/auth/users/${userId}/delete/`, "DELETE"),
+  getHRPermissions: () => request("/auth/permissions/hr/", "GET"),
+  updateHRPermissions: (userId, data) => request(`/auth/permissions/hr/${userId}/`, "PUT", data),
 
   getDashboardStats: () => request("/auth/dashboard/stats/", "GET"),
 
@@ -405,6 +407,32 @@ const apiService = {
   searchParents: (query = '') => request(`/parents/search/?q=${query}`, "GET"),
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
 
+  // Assessment Plans (admin/HR-boss configures; teacher/parent/student read)
+  listAssessmentPlans: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/academics/assessment-plans/${qs ? `?${qs}` : ''}`, "GET");
+  },
+  createAssessmentPlan: (data) => request(`/academics/assessment-plans/`, "POST", data),
+  updateAssessmentPlan: (planId, data) => request(`/academics/assessment-plans/${planId}/`, "PATCH", data),
+  deleteAssessmentPlan: (planId) => request(`/academics/assessment-plans/${planId}/`, "DELETE"),
+  getAssessmentPlanForTeacher: (subjectId, year, term) =>
+    request(`/academics/assessment-plans/for-teacher/?subject=${subjectId}&year=${encodeURIComponent(year)}&term=${encodeURIComponent(term)}`, "GET"),
+  getAssessmentPlansForStudent: (year = '', term = '') => {
+    const qs = new URLSearchParams();
+    if (year) qs.set('year', year);
+    if (term) qs.set('term', term);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request(`/academics/assessment-plans/for-student/${suffix}`, "GET");
+  },
+  getAssessmentPlansForParent: (childId = '', year = '', term = '') => {
+    const qs = new URLSearchParams();
+    if (childId) qs.set('child', childId);
+    if (year) qs.set('year', year);
+    if (term) qs.set('term', term);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request(`/academics/assessment-plans/for-parent/${suffix}`, "GET");
+  },
+
   // Homework endpoints
   getTeacherHomework: () => request("/teachers/homework/", "GET"),
   getTeacherHomeworkClasses: () => request("/teachers/homework/classes/", "GET"),
@@ -420,6 +448,21 @@ const apiService = {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(errorText || "Failed to create homework");
+    }
+    return response.json();
+  },
+  updateHomework: async (homeworkId, formData) => {
+    const token = getToken();
+    const response = await fetch(`${API_BASE_URL}/teachers/homework/${homeworkId}/update/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Failed to update homework");
     }
     return response.json();
   },
@@ -669,7 +712,8 @@ const apiService = {
   updateActivity: (id, data) => request(`/academics/activities/${id}/`, "PUT", data),
   deleteActivity: (id) => request(`/academics/activities/${id}/`, "DELETE"),
   getActivityEnrollments: (id) => request(`/academics/activities/${id}/enrollments/`, "GET"),
-  enrollStudent: (activityId, data) => request(`/academics/activities/${activityId}/enroll/`, "POST", data),
+  enrollStudent: (activityId, data = {}) => request(`/academics/activities/${activityId}/enroll/`, "POST", data),
+  reviewActivityEnrollment: (activityId, enrollmentId, data) => request(`/academics/activities/${activityId}/enrollments/${enrollmentId}/review/`, "POST", data),
   unenrollStudent: (activityId, studentId) => request(`/academics/activities/${activityId}/unenroll/${studentId}/`, "DELETE"),
   getActivityEvents: (id) => request(`/academics/activities/${id}/events/`, "GET"),
   createActivityEvent: (id, data) => request(`/academics/activities/${id}/events/`, "POST", data),

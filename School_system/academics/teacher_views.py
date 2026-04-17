@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from .models import (
     Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable,
-    SubjectTermFeedback,
+    SubjectTermFeedback, AssessmentPlan,
 )
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
@@ -151,13 +151,18 @@ def add_student_mark(request):
         teacher = request.user.teacher
         student_id = request.data.get('student_id')
         subject_id = request.data.get('subject_id')
-        exam_type = request.data.get('exam_type')
+        exam_type = (request.data.get('exam_type') or '').strip()
         score = request.data.get('score')
         max_score = request.data.get('max_score')
         academic_term = request.data.get('academic_term', 'Term 1')
         academic_year = request.data.get('academic_year', str(datetime.now().year))
         include_in_report = request.data.get('include_in_report', True)
         report_term = request.data.get('report_term', '')
+        
+        # Assessment plan fields (optional, for component tracking)
+        assessment_plan_id = request.data.get('assessment_plan')
+        component_kind = (request.data.get('component_kind', '') or '').strip().lower()
+        component_index = request.data.get('component_index')
         
         # Validation
         if not all([student_id, subject_id, exam_type, score, max_score]):
@@ -200,6 +205,66 @@ def add_student_mark(request):
             return Response({'error': 'Cannot add marks for inactive students'}, 
                            status=status.HTTP_403_FORBIDDEN)
         
+        if component_index in ('', None):
+            component_index = None
+        else:
+            try:
+                component_index = int(component_index)
+            except (TypeError, ValueError):
+                return Response({'error': 'component_index must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate assessment plan if provided
+        assessment_plan_obj = None
+        if assessment_plan_id:
+            try:
+                assessment_plan_obj = AssessmentPlan.objects.get(
+                    id=assessment_plan_id, 
+                    school=request.user.school,
+                    subjects=subject
+                )
+                
+                # Validate component_index is in range for the component_kind (1-based indexing).
+                if component_kind == 'paper':
+                    effective_papers = assessment_plan_obj.effective_paper_numbers()
+                    if component_index is None:
+                        return Response({'error': 'component_index is required for paper components'},
+                                        status=status.HTTP_400_BAD_REQUEST)
+                    if component_index not in effective_papers:
+                        return Response({
+                            'error': f'Invalid paper number {component_index}. Valid papers: {effective_papers}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                elif component_kind == 'test':
+                    if component_index is None:
+                        return Response({'error': 'component_index is required for test components'},
+                                        status=status.HTTP_400_BAD_REQUEST)
+                    if not (1 <= component_index <= assessment_plan_obj.num_tests):
+                        return Response({
+                            'error': f'Invalid test number {component_index}. Valid range: 1-{assessment_plan_obj.num_tests}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                elif component_kind == 'assignment':
+                    if component_index is None:
+                        return Response({'error': 'component_index is required for assignment components'},
+                                        status=status.HTTP_400_BAD_REQUEST)
+                    if not (1 <= component_index <= assessment_plan_obj.num_assignments):
+                        return Response({
+                            'error': f'Invalid assignment number {component_index}. Valid range: 1-{assessment_plan_obj.num_assignments}'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                elif component_kind == '':
+                    # Free-text / manual entry
+                    pass
+                else:
+                    return Response({
+                        'error': f'Invalid component_kind: {component_kind}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            except AssessmentPlan.DoesNotExist:
+                return Response({'error': 'Assessment plan not found'}, 
+                               status=status.HTTP_404_NOT_FOUND)
+        elif component_kind:
+            return Response(
+                {'error': 'assessment_plan is required when component_kind is provided'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
         # Create result
         result = Result.objects.create(
             student=student,
@@ -210,8 +275,11 @@ def add_student_mark(request):
             max_score=max_score,
             academic_term=academic_term,
             academic_year=academic_year,
-            include_in_report=bool(include_in_report),
+            include_in_report=include_in_report,
             report_term=report_term or '',
+            assessment_plan=assessment_plan_obj,
+            component_kind=component_kind or '',
+            component_index=component_index if component_index is not None else None,
         )
         
         return Response({
@@ -222,6 +290,9 @@ def add_student_mark(request):
             'score': score,
             'max_score': max_score,
             'percentage': round((score / max_score) * 100, 2),
+            'assessment_plan': assessment_plan_obj.id if assessment_plan_obj else None,
+            'component_kind': component_kind,
+            'component_index': component_index,
             'message': 'Mark added successfully'
         }, status=status.HTTP_201_CREATED)
     except Teacher.DoesNotExist:
@@ -1139,3 +1210,7 @@ def subject_students_risk(request, subject_id):
         return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        if isinstance(include_in_report, str):
+            include_in_report = include_in_report.strip().lower() not in ('false', '0', 'no', 'off')
+        else:
+            include_in_report = bool(include_in_report)

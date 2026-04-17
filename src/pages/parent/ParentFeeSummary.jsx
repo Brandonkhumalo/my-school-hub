@@ -11,8 +11,56 @@ export default function ParentFeeSummary() {
     const fetchSummary = async () => {
       setIsLoading(true);
       try {
-        const data = await apiService.fetchParentFeeSummary();
-        setSummary(data);
+        const children = await apiService.getParentChildren();
+        const confirmedChildren = Array.isArray(children)
+          ? children.filter((child) => child?.is_confirmed)
+          : [];
+
+        if (confirmedChildren.length === 0) {
+          setSummary({
+            total_fees_due: 0,
+            total_fees_paid: 0,
+            balance: 0,
+            pending_fees: [],
+          });
+          return;
+        }
+
+        const feePayloads = await Promise.all(
+          confirmedChildren.map((child) => apiService.getChildFees(child.id))
+        );
+
+        const aggregate = {
+          total_fees_due: 0,
+          total_fees_paid: 0,
+          balance: 0,
+          pending_fees: [],
+        };
+
+        feePayloads.forEach((data, idx) => {
+          const child = confirmedChildren[idx];
+          const totalFees = Number(data?.total_fees || 0);
+          const totalPaid = Number(data?.total_paid || 0);
+          const outstanding = Number(data?.outstanding || 0);
+
+          aggregate.total_fees_due += totalFees;
+          aggregate.total_fees_paid += totalPaid;
+          aggregate.balance += outstanding;
+
+          const pending = Array.isArray(data?.fees)
+            ? data.fees.filter((fee) => fee?.status !== "paid")
+            : [];
+
+          pending.forEach((fee) => {
+            aggregate.pending_fees.push({
+              fee_type: fee.type || "Fee",
+              balance: Number(fee.amount || 0),
+              child_name: `${child.name || ""} ${child.surname || ""}`.trim(),
+            });
+          });
+        });
+
+        setSummary(aggregate);
       } catch (error) {
         console.error("Error fetching fee summary:", error);
       } finally {
@@ -47,7 +95,10 @@ export default function ParentFeeSummary() {
           <h4 className="text-lg font-semibold mb-2">Pending Fees</h4>
           <ul>
             {summary.pending_fees.map((fee, idx) => (
-              <li key={idx}>{fee.fee_type}: ${fee.balance}</li>
+              <li key={idx}>
+                {fee.child_name ? `${fee.child_name} - ` : ""}
+                {fee.fee_type}: ${fee.balance}
+              </li>
             ))}
           </ul>
         </div>

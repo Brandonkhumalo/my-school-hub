@@ -15,7 +15,15 @@ export default function HRDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
+  const schoolAccommodationType = stats?.school_accommodation_type || "day";
   const cards = stats ? [
+    { label: "Total Students", value: stats.total_students, icon: "fa-user-graduate", color: "indigo" },
+    ...(schoolAccommodationType !== "boarding"
+      ? [{ label: "Day Students", value: stats.day_students ?? 0, icon: "fa-sun", color: "cyan" }]
+      : []),
+    ...(schoolAccommodationType !== "day"
+      ? [{ label: "Boarding Students", value: stats.boarding_students ?? 0, icon: "fa-bed", color: "violet" }]
+      : []),
     { label: "Total Staff", value: stats.total_staff, icon: "fa-users", color: "blue" },
     { label: "On Leave Today", value: stats.on_leave, icon: "fa-calendar-minus", color: "yellow" },
     { label: "Pending Leave Requests", value: stats.pending_leave_requests, icon: "fa-clock", color: "red" },
@@ -49,8 +57,12 @@ export default function HRDashboard() {
           {/* Quick links */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
             {[
+              { to: "/hr/students", icon: "fa-user-graduate", label: "Students" },
+              { to: "/hr/classes", icon: "fa-school", label: "Classes" },
+              { to: "/hr/subjects", icon: "fa-book", label: "Subjects" },
               { to: "/hr/staff", icon: "fa-id-badge", label: "Manage Staff" },
               { to: "/hr/leaves", icon: "fa-calendar-minus", label: "Leave Requests" },
+              { to: "/hr/invoices", icon: "fa-file-invoice", label: "Invoices" },
               { to: "/hr/payroll", icon: "fa-money-bill-wave", label: "Payroll" },
               { to: "/hr/attendance", icon: "fa-clipboard-check", label: "Attendance" },
               { to: "/hr/meetings", icon: "fa-handshake", label: "Meetings" },
@@ -64,7 +76,7 @@ export default function HRDashboard() {
           </div>
 
           {/* Upcoming meetings */}
-          {stats?.upcoming_meetings?.length > 0 && (
+          {Array.isArray(stats?.upcoming_meetings) && stats.upcoming_meetings.length > 0 && (
             <div className="bg-white rounded-lg shadow p-5">
               <h2 className="text-lg font-semibold text-gray-700 mb-3">Upcoming Meetings</h2>
               <ul className="divide-y">

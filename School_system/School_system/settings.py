@@ -48,6 +48,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'School_system.middleware.HRAccessControlMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -128,6 +129,10 @@ REST_FRAMEWORK = {
     'DATETIME_FORMAT': '%d-%m-%Y %H:%M:%S',
     'DATETIME_INPUT_FORMATS': ['%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%fZ'],
 }
+
+# JWT token lifetimes (security hardening defaults)
+JWT_ACCESS_TOKEN_HOURS = config('JWT_ACCESS_TOKEN_HOURS', default=24, cast=int)
+JWT_REFRESH_TOKEN_HOURS = config('JWT_REFRESH_TOKEN_HOURS', default=72, cast=int)
 
 # ---------------------------------------------------------------
 # drf-spectacular (Swagger / OpenAPI)

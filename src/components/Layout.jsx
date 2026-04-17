@@ -24,6 +24,7 @@ const ALL_MENU_ITEMS = {
       { path: "/admin/timetable", icon: "fa-calendar-alt",  title: "Timetable" },
       { path: "/admin/subjects",  icon: "fa-book",           title: "Subjects" },
       { path: "/admin/results",   icon: "fa-chart-bar",      title: "Results" },
+      { path: "/admin/assessment-plans", icon: "fa-clipboard-list", title: "Assessment Plans" },
       { path: "/admin/at-risk-students", icon: "fa-exclamation-triangle", title: "At-Risk Students" },
     ]},
     { section: "FINANCE", items: [
@@ -47,6 +48,7 @@ const ALL_MENU_ITEMS = {
     ]},
     { section: "SYSTEM", items: [
       { path: "/admin/staff",         icon: "fa-id-badge",      title: "Staff / HR" },
+      { path: "/admin/permissions",   icon: "fa-user-shield",   title: "Permissions" },
       { path: "/admin/extras",        icon: "fa-cogs",          title: "Extras" },
       { path: "/admin/analytics",     icon: "fa-chart-line",    title: "Analytics" },
       { path: "/admin/audit-logs",    icon: "fa-clipboard-list",title: "Audit Logs" },
@@ -131,11 +133,31 @@ const ALL_MENU_ITEMS = {
     { section: "OVERVIEW", items: [
       { path: "/hr", icon: "fa-home", title: "Dashboard" },
     ]},
-    { section: "STAFF", items: [
+    { section: "PEOPLE", items: [
+      { path: "/hr/students",    icon: "fa-user-graduate",    title: "Students" },
+      { path: "/hr/teachers",    icon: "fa-chalkboard-teacher", title: "Teachers" },
+      { path: "/hr/parents",     icon: "fa-users",            title: "Parents" },
+      { path: "/hr/parent-requests", icon: "fa-link",         title: "Parent Requests" },
       { path: "/hr/staff",       icon: "fa-users",            title: "Staff" },
       { path: "/hr/users",       icon: "fa-user-cog",         title: "User Management" },
-      { path: "/hr/leaves",      icon: "fa-calendar-minus",   title: "Leave Requests" },
+    ]},
+    { section: "ACADEMICS", items: [
+      { path: "/hr/classes",     icon: "fa-school",           title: "Classes" },
+      { path: "/hr/subjects",    icon: "fa-book",             title: "Subjects" },
+      { path: "/hr/assessment-plans", icon: "fa-clipboard-list", title: "Assessment Plans" },
+      { path: "/hr/results",     icon: "fa-chart-bar",        title: "Results" },
+      { path: "/hr/at-risk-students", icon: "fa-exclamation-triangle", title: "At-Risk Students" },
+      { path: "/hr/timetable",   icon: "fa-calendar-alt",     title: "Timetable" },
+    ]},
+    { section: "FINANCE", items: [
+      { path: "/hr/fees",        icon: "fa-tags",             title: "Fees" },
+      { path: "/hr/invoices",    icon: "fa-file-invoice",     title: "Invoices" },
+      { path: "/hr/payments",    icon: "fa-credit-card",      title: "Payments" },
+      { path: "/hr/reports",     icon: "fa-chart-pie",        title: "Reports" },
       { path: "/hr/payroll",     icon: "fa-money-bill-wave",  title: "Payroll" },
+    ]},
+    { section: "HR OPS", items: [
+      { path: "/hr/leaves",      icon: "fa-calendar-minus",   title: "Leave Requests" },
       { path: "/hr/attendance",  icon: "fa-clipboard-check",  title: "Attendance" },
       { path: "/hr/meetings",    icon: "fa-handshake",        title: "Meetings" },
     ]},
@@ -147,10 +169,19 @@ const ALL_MENU_ITEMS = {
       { path: "/hr/discipline",    icon: "fa-gavel",             title: "Discipline" },
       { path: "/hr/promotions",    icon: "fa-graduation-cap",    title: "Promotions" },
       { path: "/hr/suspensions",   icon: "fa-ban",               title: "Suspensions" },
+      { path: "/hr/activities",    icon: "fa-running",           title: "Activities" },
+      { path: "/hr/library",       icon: "fa-book-reader",       title: "Library" },
+      { path: "/hr/health",        icon: "fa-heartbeat",         title: "Health Records" },
       { path: "/hr/complaints",    icon: "fa-exclamation-circle",title: "Complaints" },
       { path: "/hr/announcements", icon: "fa-bullhorn",          title: "Announcements" },
-      { path: "/hr/timetable",     icon: "fa-calendar-alt",      title: "Timetable" },
+    ]},
+    { section: "SYSTEM", items: [
+      { path: "/admin/permissions", icon: "fa-user-shield",        title: "Permissions", requiresRootHrBoss: true },
+      { path: "/hr/extras",        icon: "fa-cogs",              title: "Extras" },
+      { path: "/hr/analytics",     icon: "fa-chart-line",        title: "Analytics" },
+      { path: "/hr/audit-logs",    icon: "fa-clipboard-list",    title: "Audit Logs" },
       { path: "/hr/report-config", icon: "fa-file-pdf",          title: "Report Config" },
+      { path: "/hr/settings",      icon: "fa-sliders-h",         title: "Settings" },
     ]},
   ],
 };
@@ -166,6 +197,47 @@ const ROLE_COLORS = {
   security:  "bg-red-600",
   cleaner:   "bg-orange-500",
   hr:        "bg-rose-600",
+};
+
+const HR_PATH_TO_PERMISSION_KEY = {
+  "/hr": "dashboard",
+  "/hr/students": "students",
+  "/hr/teachers": "teachers",
+  "/hr/parents": "parents",
+  "/hr/parent-requests": "parent_requests",
+  "/hr/users": "users",
+  "/hr/staff": "staff",
+  "/hr/classes": "classes",
+  "/hr/subjects": "subjects",
+  "/hr/assessment-plans": "results",
+  "/hr/results": "results",
+  "/hr/timetable": "timetable",
+  "/hr/fees": "fees",
+  "/hr/invoices": "invoices",
+  "/hr/payments": "payments",
+  "/hr/reports": "reports",
+  "/hr/leaves": "leaves",
+  "/hr/payroll": "payroll",
+  "/hr/attendance": "attendance",
+  "/hr/meetings": "meetings",
+  "/hr/visitor-logs": "visitor_logs",
+  "/hr/incidents": "incidents",
+  "/hr/cleaning": "cleaning",
+  "/hr/discipline": "discipline",
+  "/hr/promotions": "promotions",
+  "/hr/suspensions": "suspensions",
+  "/hr/activities": "activities",
+  "/hr/library": "library",
+  "/hr/health": "health",
+  "/hr/complaints": "complaints",
+  "/hr/announcements": "announcements",
+  "/hr/boarding": "boarding",
+  "/hr/report-config": "report_config",
+  "/hr/settings": "settings",
+  "/hr/analytics": "analytics",
+  "/hr/audit-logs": "audit_logs",
+  "/hr/at-risk-students": "at_risk_students",
+  "/hr/extras": "extras",
 };
 
 // ── Helper to get initials ────────────────────────────────────────────────
@@ -196,12 +268,22 @@ function Layout() {
   const role = user?.role || "student";
   const boardingEnabled = isSchoolBoardingEnabled(user);
   const { canStudentUseBoarding: studentBoarding } = { canStudentUseBoarding: canStudentUseBoarding(user) };
+  const isRootHrBoss = Boolean(role === "hr" && user?.hr_is_root_boss);
+  const hrPagePermissions = user?.hr_page_permissions || {};
 
   const sections = (ALL_MENU_ITEMS[role] || ALL_MENU_ITEMS.student).map((sec) => ({
     ...sec,
     items: sec.items.filter((item) => {
       if (item.boardingOnly && !boardingEnabled) return false;
       if (item.boardingStudentOnly && !studentBoarding) return false;
+      if (item.requiresRootHrBoss && !isRootHrBoss) return false;
+      if (role === "hr" && !isRootHrBoss) {
+        const permissionKey = HR_PATH_TO_PERMISSION_KEY[item.path];
+        if (!permissionKey) return false;
+        const grant = hrPagePermissions?.[permissionKey];
+        const canRead = Boolean(grant?.read || grant?.write);
+        if (!canRead) return false;
+      }
       return true;
     }),
   })).filter((sec) => sec.items.length > 0);
