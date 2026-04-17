@@ -9,7 +9,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('academics', '0021_announcement_target_audiences'),
-        ('users', '0021_fix_at_risk_alert_status_length'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
