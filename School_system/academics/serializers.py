@@ -188,6 +188,12 @@ class TimetableSerializer(serializers.ModelSerializer):
 class AnnouncementSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.full_name', read_only=True)
     class_name = serializers.CharField(source='target_class.name', read_only=True, default=None)
+    target_audience = serializers.ChoiceField(
+        choices=['all', 'student', 'students', 'parent', 'parents', 'teacher', 'teachers',
+                 'hr', 'accountant', 'librarian', 'security', 'cleaner'],
+        required=False,
+        default='all'
+    )
     target_audiences = serializers.ListField(
         child=serializers.ChoiceField(choices=[
             'all', 'student', 'students', 'parent', 'parents', 'teacher', 'teachers',

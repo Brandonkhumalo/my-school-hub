@@ -357,6 +357,13 @@ const apiService = {
   getTeacherSubjects: () => request("/teachers/subjects/", "GET"),
   getSubjectStudents: (subjectId) => request(`/teachers/subjects/${subjectId}/students/`, "GET"),
   getSubjectPerformance: (subjectId) => request(`/teachers/subjects/${subjectId}/performance/`, "GET"),
+  getSubjectStudentsAtRisk: (subjectId, search = '', atRisk = 'all', sortBy = 'risk_score') => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (atRisk !== 'all') params.append('at_risk', atRisk);
+    if (sortBy) params.append('sort_by', sortBy);
+    return request(`/teachers/subjects/${subjectId}/students-risk/?${params.toString()}`, "GET");
+  },
   addStudentMark: (data) => request("/teachers/marks/add/", "POST", data),
   // Class attendance (class teacher only)
   getClassAttendanceRegister: (date) => {
@@ -819,6 +826,17 @@ const apiService = {
 
   // Admin Analytics
   getAdminAnalytics: () => request("/auth/analytics/", "GET"),
+
+  // At-Risk Students (Admin)
+  getAdminAtRiskStudents: (view = 'overall', search = '', subjectId = null, classId = null, sortBy = 'risk_score') => {
+    const params = new URLSearchParams();
+    if (view) params.append('view', view);
+    if (search) params.append('search', search);
+    if (subjectId) params.append('subject_id', subjectId);
+    if (classId) params.append('class_id', classId);
+    if (sortBy) params.append('sort_by', sortBy);
+    return request(`/academics/admin/at-risk-students/?${params.toString()}`, "GET");
+  },
 };
 
 export default apiService;

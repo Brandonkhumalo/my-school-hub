@@ -5,6 +5,7 @@ urlpatterns = [
     path('subjects/', teacher_views.teacher_subjects, name='teacher-subjects'),
     path('subjects/<int:subject_id>/students/', teacher_views.subject_students, name='subject-students'),
     path('subjects/<int:subject_id>/performance/', teacher_views.subject_performance, name='subject-performance'),
+    path('subjects/<int:subject_id>/students-risk/', teacher_views.subject_students_risk, name='subject-students-risk'),
     path('marks/add/', teacher_views.add_student_mark, name='add-student-mark'),
     path('results/for-report/', teacher_views.results_for_report, name='results-for-report'),
     path('results/report-settings/', teacher_views.update_report_settings, name='update-report-settings'),

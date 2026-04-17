@@ -47,3 +47,5 @@ db.sqlite3
 
 # Claude memory
 .claude/
+
+.venv/

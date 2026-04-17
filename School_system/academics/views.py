@@ -2277,3 +2277,158 @@ def list_published_reports(request):
     } for r in releases]
 
     return Response({'releases': data})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_at_risk_students(request):
+    """
+    Admin view: All at-risk students with comprehensive filtering and details.
+    
+    Query params:
+        view: 'overall' (default) or 'by_subject'
+        subject_id: Filter by specific subject (only with view=by_subject)
+        search: Search by name, email, or student number
+        risk_level: 'all' (default), 'high', 'medium', 'low'
+        class_id: Filter by class
+        sort_by: 'risk_score' (default), 'name', 'date'
+    """
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    
+    school = request.user.school
+    view_type = request.query_params.get('view', 'overall')
+    search = request.query_params.get('search', '').strip()
+    subject_id = request.query_params.get('subject_id', None)
+    class_id = request.query_params.get('class_id', None)
+    sort_by = request.query_params.get('sort_by', 'risk_score')
+    
+    # Get students
+    students = Student.objects.filter(user__school=school, user__is_active=True).select_related('user', 'student_class')
+    
+    if class_id:
+        try:
+            students = students.filter(student_class_id=int(class_id))
+        except (ValueError, TypeError):
+            pass
+    
+    # Search filter
+    if search:
+        students = students.filter(
+            Q(user__first_name__icontains=search) |
+            Q(user__last_name__icontains=search) |
+            Q(user__email__icontains=search) |
+            Q(user__student_number__icontains=search)
+        )
+    
+    at_risk_data = []
+    from .ml_predictions import predict_student_grades
+    from .at_risk_alerts import get_student_risk_score
+    
+    for student in students:
+        try:
+            predictions = predict_student_grades(student)
+            
+            # Calculate overall risk score
+            overall_risk_score = get_student_risk_score(student)
+            at_risk_subjects = [p for p in predictions if p['at_risk']]
+            total_subjects = len(predictions)
+            
+            if view_type == 'by_subject' and subject_id:
+                # Filter to specific subject
+                subject_preds = [p for p in predictions if p['subject_id'] == int(subject_id)]
+                if not subject_preds or not subject_preds[0]['at_risk']:
+                    continue
+                
+                for pred in subject_preds:
+                    # Get recent alerts
+                    from .models import AtRiskAlert
+                    recent_alerts = list(
+                        AtRiskAlert.objects.filter(
+                            student=student,
+                            subject_id=int(subject_id)
+                        ).order_by('-created_at')[:3].values(
+                            'id', 'status', 'created_at', 'triggered_by', 'current_grade', 'predicted_grade'
+                        )
+                    )
+                    
+                    entry = {
+                        'student_id': student.id,
+                        'name': student.user.full_name,
+                        'student_number': student.user.student_number or '',
+                        'email': student.user.email,
+                        'class': student.student_class.name,
+                        'subject': pred['subject'],
+                        'current_grade': pred['current_grade'],
+                        'current_percentage': round(pred['current_percentage'], 1),
+                        'predicted_grade': pred['predicted_grade'],
+                        'predicted_percentage': round(pred['predicted_percentage'], 1),
+                        'trend': pred['trend'],
+                        'confidence': pred['confidence'],
+                        'intervention': pred['intervention'],
+                        'overall_risk_score': overall_risk_score,
+                        'recent_alerts': recent_alerts,
+                    }
+                    at_risk_data.append(entry)
+            else:
+                # Overall view - show all at-risk subjects for students if they have any
+                if at_risk_subjects:
+                    from .models import AtRiskAlert
+                    recent_alerts = list(
+                        AtRiskAlert.objects.filter(
+                            student=student,
+                            status__in=['new', 'acknowledged', 'intervention_scheduled']
+                        ).order_by('-created_at')[:3].values(
+                            'id', 'subject__name', 'status', 'created_at', 'triggered_by', 'current_grade'
+                        )
+                    )
+                    
+                    entry = {
+                        'student_id': student.id,
+                        'name': student.user.full_name,
+                        'student_number': student.user.student_number or '',
+                        'email': student.user.email,
+                        'class': student.student_class.name,
+                        'overall_risk_score': overall_risk_score,
+                        'at_risk_count': len(at_risk_subjects),
+                        'total_subjects': total_subjects,
+                        'at_risk_subjects': [
+                            {
+                                'subject': p['subject'],
+                                'current_grade': p['current_grade'],
+                                'predicted_grade': p['predicted_grade'],
+                                'trend': p['trend'],
+                                'percentage': round(p['current_percentage'], 1),
+                            }
+                            for p in at_risk_subjects
+                        ],
+                        'recent_alerts': recent_alerts,
+                    }
+                    at_risk_data.append(entry)
+        
+        except Exception as e:
+            logger.error(f"Error processing student {student.id} for at-risk view: {str(e)}")
+            continue
+    
+    # Sort
+    if sort_by == 'name':
+        at_risk_data.sort(key=lambda x: x['name'])
+    elif sort_by == 'date':
+        # Sort by most recently created alerts
+        at_risk_data.sort(
+            key=lambda x: x['recent_alerts'][0]['created_at'] if x['recent_alerts'] else timezone.now(),
+            reverse=True
+        )
+    else:  # risk_score (default)
+        at_risk_data.sort(key=lambda x: x['overall_risk_score'], reverse=True)
+    
+    return Response({
+        'students': at_risk_data,
+        'total_at_risk': len(at_risk_data),
+        'view_type': view_type,
+        'filter': {
+            'search': search,
+            'subject_id': subject_id,
+            'class_id': class_id,
+        }
+    })

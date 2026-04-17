@@ -1006,3 +1006,58 @@ class ClinicVisit(models.Model):
 
     def __str__(self):
         return f"{self.student.user.full_name} - {self.visit_date.strftime('%Y-%m-%d')}"
+
+
+class AtRiskAlert(models.Model):
+    """Track student at-risk alerts and interventions."""
+    STATUS_CHOICES = [
+        ('new', 'New'),
+        ('acknowledged', 'Acknowledged'),
+        ('intervention_scheduled', 'Intervention Scheduled'),
+        ('resolved', 'Resolved'),
+        ('escalated', 'Escalated'),
+    ]
+    TRIGGER_CHOICES = [
+        ('grade_drop', 'Grade Drop'),
+        ('prediction_fail', 'Predicted Failure'),
+        ('current_failing', 'Currently Failing'),
+        ('consecutive_d_or_e', 'Consecutive D/E Grades'),
+    ]
+
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='at_risk_alerts')
+    subject = models.ForeignKey(Subject, on_delete=models.SET_NULL, null=True, blank=True, related_name='at_risk_alerts')
+    triggered_by = models.CharField(max_length=20, choices=TRIGGER_CHOICES)
+    previous_grade = models.CharField(max_length=2, null=True, blank=True)
+    current_grade = models.CharField(max_length=2)
+    predicted_grade = models.CharField(max_length=2, null=True, blank=True)
+    predicted_percentage = models.FloatField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    trend = models.CharField(max_length=20, choices=[('up', 'Improving'), ('down', 'Declining'), ('stable', 'Stable')], null=True, blank=True)
+    confidence = models.CharField(max_length=20, choices=[('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], null=True, blank=True)
+    
+    # Notification flags
+    notified_teacher = models.BooleanField(default=False)
+    notified_parent = models.BooleanField(default=False)
+    notified_admin = models.BooleanField(default=False)
+    
+    # Follow-up notes
+    noted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='at_risk_notes')
+    notes = models.TextField(blank=True)
+    intervention_plan = models.TextField(blank=True, help_text='Recommended intervention actions')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, null=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['student', '-created_at']),
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['subject', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.subject.name if self.subject else 'Overall'} ({self.status})"

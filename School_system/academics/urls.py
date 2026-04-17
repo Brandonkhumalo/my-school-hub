@@ -100,4 +100,7 @@ urlpatterns = [
     path('discipline/<int:record_id>/', discipline_views.discipline_update, name='discipline-update'),
     path('discipline/student/<int:student_id>/', discipline_views.discipline_by_student, name='discipline-by-student'),
     path('discipline/<int:record_id>/resolve/', discipline_views.discipline_resolve, name='discipline-resolve'),
+
+    # At-Risk Students (Admin)
+    path('admin/at-risk-students/', views.admin_at_risk_students, name='admin-at-risk-students'),
 ]

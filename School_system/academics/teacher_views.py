@@ -1034,3 +1034,106 @@ def subject_feedback_upsert(request):
         'id': fb.id, 'student_id': student_id, 'subject_id': subject_id,
         'comment': fb.comment, 'effort_grade': fb.effort_grade,
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_students_risk(request, subject_id):
+    """
+    Get all students in a subject taught by the teacher with ML risk predictions.
+    Supports search, filtering, and sorting.
+    
+    Query params:
+        search: Filter by name, email, or student number
+        at_risk: 'all' (default), 'at_risk', or 'safe'
+        sort_by: 'name', 'risk_score', 'trend' (default: 'risk_score')
+    """
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        teacher = request.user.teacher
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
+        
+        # Verify teacher teaches this subject
+        if not teacher.subjects_taught.filter(id=subject_id).exists():
+            return Response({'error': 'You do not teach this subject'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get authorized classes
+        authorized_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject_id)
+        
+        # Get students in authorized classes
+        students = Student.objects.filter(
+            student_class_id__in=authorized_class_ids,
+            user__school=request.user.school,
+            user__is_active=True
+        ).select_related('user')
+        
+        # Search filter
+        search = request.query_params.get('search', '').strip()
+        if search:
+            students = students.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(user__email__icontains=search) |
+                Q(user__student_number__icontains=search)
+            )
+        
+        # Get predictions and build results
+        from .ml_predictions import predict_student_grades
+        
+        results = []
+        at_risk_filter = request.query_params.get('at_risk', 'all')
+        
+        for student in students:
+            predictions = predict_student_grades(student)
+            subject_pred = next((p for p in predictions if p['subject_id'] == subject_id), None)
+            
+            if subject_pred:
+                is_at_risk = subject_pred['at_risk']
+                
+                # Apply at_risk filter
+                if at_risk_filter == 'at_risk' and not is_at_risk:
+                    continue
+                elif at_risk_filter == 'safe' and is_at_risk:
+                    continue
+                
+                results.append({
+                    'student_id': student.id,
+                    'name': student.user.full_name,
+                    'student_number': student.user.student_number or '',
+                    'email': student.user.email,
+                    'current_grade': subject_pred['current_grade'],
+                    'current_percentage': round(subject_pred['current_percentage'], 1),
+                    'predicted_grade': subject_pred['predicted_grade'],
+                    'predicted_percentage': round(subject_pred['predicted_percentage'], 1),
+                    'at_risk': is_at_risk,
+                    'predicted_at_risk': subject_pred['predicted_at_risk'],
+                    'trend': subject_pred['trend'],
+                    'confidence': subject_pred['confidence'],
+                    'intervention': subject_pred['intervention'],
+                    'will_pass': subject_pred['will_pass'],
+                })
+        
+        # Sort
+        sort_by = request.query_params.get('sort_by', 'risk_score')
+        if sort_by == 'name':
+            results.sort(key=lambda x: x['name'])
+        elif sort_by == 'trend':
+            trend_order = {'down': 0, 'stable': 1, 'up': 2}
+            results.sort(key=lambda x: (not x['at_risk'], trend_order.get(x['trend'], 1)))
+        else:  # risk_score (default)
+            results.sort(key=lambda x: (not x['at_risk'], x['predicted_percentage']))
+        
+        return Response({
+            'results': results,
+            'subject': subject.name,
+            'subject_code': subject.code,
+            'total_students': len(results),
+            'at_risk_count': sum(1 for r in results if r['at_risk']),
+        })
+    
+    except Subject.DoesNotExist:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
