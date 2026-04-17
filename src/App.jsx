@@ -115,6 +115,7 @@ const AdminBoarding = lazy(() => import("./pages/admin/AdminBoarding"));
 const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
+const AdminAtRiskStudents = lazy(() => import("./pages/admin/AdminAtRiskStudents"));
 
 // Teacher Pages
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
@@ -265,6 +266,7 @@ function App() {
         <Route path="/admin/discipline" element={<RequireAuth allowedRoles={['admin']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/admin/analytics" element={<RequireAuth allowedRoles={['admin']}><AdminAnalytics /></RequireAuth>} />
         <Route path="/admin/audit-logs" element={<RequireAuth allowedRoles={['admin']}><AdminAuditLog /></RequireAuth>} />
+        <Route path="/admin/at-risk-students" element={<RequireAuth allowedRoles={['admin', 'hr']}><AdminAtRiskStudents /></RequireAuth>} />
         <Route path="/admin/profile" element={<RequireAuth allowedRoles={['admin']}><ProfilePage /></RequireAuth>} />
 
         {/* Teacher Routes */}

@@ -24,6 +24,7 @@ const ALL_MENU_ITEMS = {
       { path: "/admin/timetable", icon: "fa-calendar-alt",  title: "Timetable" },
       { path: "/admin/subjects",  icon: "fa-book",           title: "Subjects" },
       { path: "/admin/results",   icon: "fa-chart-bar",      title: "Results" },
+      { path: "/admin/at-risk-students", icon: "fa-exclamation-triangle", title: "At-Risk Students" },
     ]},
     { section: "FINANCE", items: [
       { path: "/admin/invoices", icon: "fa-file-invoice", title: "Invoices" },
