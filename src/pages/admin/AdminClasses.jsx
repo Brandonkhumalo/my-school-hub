@@ -41,15 +41,28 @@ export default function AdminClasses() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [classesData, teachersData, statsData] = await Promise.all([
+      const [classesResult, teachersResult, statsResult] = await Promise.allSettled([
         apiService.fetchClasses(),
         apiService.fetchTeachers(),
         apiService.getDashboardStats()
       ]);
-      setClasses(classesData);
-      setTeachers(teachersData);
-      if (statsData.school_type) {
-        setSchoolType(statsData.school_type);
+
+      if (classesResult.status === "fulfilled") {
+        setClasses(Array.isArray(classesResult.value) ? classesResult.value : []);
+      } else {
+        console.error("Error fetching classes:", classesResult.reason);
+        setClasses([]);
+      }
+
+      if (teachersResult.status === "fulfilled") {
+        setTeachers(Array.isArray(teachersResult.value) ? teachersResult.value : []);
+      } else {
+        console.error("Error fetching teachers:", teachersResult.reason);
+        setTeachers([]);
+      }
+
+      if (statsResult.status === "fulfilled" && statsResult.value?.school_type) {
+        setSchoolType(statsResult.value.school_type);
       }
     } catch (error) {
       console.error("Error fetching data:", error);

@@ -32,8 +32,23 @@ export default function ParentChildren() {
   const loadChildren = async () => {
     try {
       setLoading(true);
-      const childrenData = await apiService.getParentChildren();
-      setChildren(childrenData);
+      const [confirmedChildrenData, pendingChildrenData] = await Promise.all([
+        apiService.getParentChildren(),
+        apiService.getAvailableChildren(),
+      ]);
+      const confirmed = Array.isArray(confirmedChildrenData)
+        ? confirmedChildrenData.map((child) => ({ ...child, is_confirmed: true }))
+        : [];
+      const pending = Array.isArray(pendingChildrenData)
+        ? pendingChildrenData.map((child) => ({ ...child, is_confirmed: false }))
+        : [];
+
+      const confirmedIds = new Set(confirmed.map((child) => child.id));
+      const mergedChildren = [
+        ...confirmed,
+        ...pending.filter((child) => !confirmedIds.has(child.id)),
+      ];
+      setChildren(mergedChildren);
     } catch (error) {
       console.error("Error loading children:", error);
     } finally {

@@ -35,6 +35,7 @@ export default function AdminExtras() {
   
   const [dailyReport, setDailyReport] = useState(null);
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dailyReportSearch, setDailyReportSearch] = useState("");
   const [additionalFeeForm, setAdditionalFeeForm] = useState({
     fee_name: '',
     amount: '',
@@ -284,10 +285,14 @@ export default function AdminExtras() {
     setShowStudentDropdown(false);
   };
 
-  const loadDailyReport = async (date) => {
+  const loadDailyReport = async (date, search = dailyReportSearch) => {
     try {
       setLoading(true);
-      const data = await apiService.getDailyTransactionReport({ date: date || reportDate });
+      const params = { date: date || reportDate };
+      if ((search || "").trim()) {
+        params.search = search.trim();
+      }
+      const data = await apiService.getDailyTransactionReport(params);
       setDailyReport(data);
     } catch (error) {
       console.error("Error loading daily report:", error);
@@ -1206,7 +1211,7 @@ export default function AdminExtras() {
                 />
               </div>
               <button
-                onClick={() => loadDailyReport(reportDate)}
+                onClick={() => loadDailyReport(reportDate, dailyReportSearch)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
               >
                 <i className="fas fa-search mr-2"></i>Load Report
@@ -1215,7 +1220,7 @@ export default function AdminExtras() {
                 onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   setReportDate(today);
-                  loadDailyReport(today);
+                  loadDailyReport(today, dailyReportSearch);
                 }}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm"
               >
@@ -1225,12 +1230,31 @@ export default function AdminExtras() {
                 onClick={() => {
                   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
                   setReportDate(yesterday);
-                  loadDailyReport(yesterday);
+                  loadDailyReport(yesterday, dailyReportSearch);
                 }}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm"
               >
                 Yesterday
               </button>
+            </div>
+
+            <div className="mb-6">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Search Transactions</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={dailyReportSearch}
+                  onChange={(e) => setDailyReportSearch(e.target.value)}
+                  placeholder="Student name, student number, or reference ID"
+                  className="w-full max-w-xl border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={() => loadDailyReport(reportDate, dailyReportSearch)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
+                >
+                  Filter
+                </button>
+              </div>
             </div>
 
             {loading ? (

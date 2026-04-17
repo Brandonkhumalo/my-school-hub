@@ -26,6 +26,8 @@ from academics.models import (
     AssignmentSubmission,
     ClassAttendance,
     Class,
+    Parent,
+    ParentChildLink,
     Result,
     Suspension,
     Student,
@@ -671,6 +673,17 @@ class AnnouncementSuspensionPermissionAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Announcement.objects.count(), 1)
 
+    def test_hr_can_create_multi_audience_announcement(self):
+        self.client.force_authenticate(user=self.hr)
+        response = self.client.post(self.announcements_url, {
+            "title": "Audience Notice",
+            "content": "Important for students, parents and teachers.",
+            "target_audiences": ["student", "parent", "teacher"],
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        announcement = Announcement.objects.get(id=response.data["id"])
+        self.assertEqual(announcement.target_audiences, ["student", "parent", "teacher"])
+
     def test_teacher_cannot_issue_suspension(self):
         self.client.force_authenticate(user=self.teacher.user)
         response = self.client.post(self.suspensions_url, {
@@ -742,6 +755,45 @@ class StudentAttendanceAPITest(APITestCase):
     def test_attendance_requires_authentication(self):
         """Test that attendance requires authentication."""
         response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ParentLinkRequestApprovalFlowAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Parent Link Flow School")
+        self.admin = make_user(self.school, "flow_admin", role="admin")
+        self.parent_user = make_user(self.school, "flow_parent", role="parent")
+        self.parent_profile = Parent.objects.create(user=self.parent_user, occupation="Engineer")
+        self.cls = make_class(self.school, name="Form 2A", grade_level=9)
+        self.student = make_student(self.school, self.cls, username="flow_student", student_number="FLOW001")
+
+    def test_parent_request_and_admin_approval_flow(self):
+        self.client.force_authenticate(user=self.parent_user)
+        request_response = self.client.post("/api/v1/parents/children/request/", {
+            "student_id": self.student.id,
+        }, format="json")
+        self.assertEqual(request_response.status_code, status.HTTP_201_CREATED)
+
+        link = ParentChildLink.objects.get(parent=self.parent_profile, student=self.student)
+        self.assertFalse(link.is_confirmed)
+
+        self.client.force_authenticate(user=self.admin)
+        pending_response = self.client.get("/api/v1/academics/parent-link-requests/")
+        self.assertEqual(pending_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(item["id"] == link.id for item in pending_response.data))
+
+        approve_response = self.client.post(f"/api/v1/academics/parent-link-requests/{link.id}/approve/", {}, format="json")
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        link.refresh_from_db()
+        self.assertTrue(link.is_confirmed)
+        self.assertTrue(self.parent_profile.children.filter(id=self.student.id).exists())
+
+    def test_parent_cannot_access_admin_pending_requests_endpoint(self):
+        self.client.force_authenticate(user=self.parent_user)
+        response = self.client.get("/api/v1/academics/parent-link-requests/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
@@ -896,3 +948,36 @@ class TeacherAdminAssignmentAPITest(APITestCase):
         class_ids = set(created_teacher.teaching_classes.values_list("id", flat=True))
         self.assertEqual(subject_ids, {self.subject_math.id, self.subject_history.id})
         self.assertEqual(class_ids, {self.cls_form1.id, self.cls_form5.id})
+
+    def test_admin_can_set_teacher_salary_on_create(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "first_name": "Salary",
+            "last_name": "Teacher",
+            "email": "salary.teacher@assign.test",
+            "phone_number": "+263771000777",
+            "hire_date": "2026-01-10",
+            "qualification": "B.Ed",
+            "salary": "1450.50",
+            "password": "teachpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        created_teacher = Teacher.objects.get(id=response.data["id"])
+        self.assertTrue(hasattr(created_teacher.user, "staff"))
+        self.assertEqual(str(created_teacher.user.staff.salary), "1450.50")
+        self.assertEqual(created_teacher.user.staff.position, "teacher")
+
+    def test_admin_can_update_teacher_salary(self):
+        teacher = make_teacher(self.school, username="salary_update_teacher")
+        self.client.force_authenticate(user=self.admin)
+
+        detail_url = f"/api/v1/academics/teachers/{teacher.id}/"
+        response = self.client.patch(detail_url, {
+            "salary": "2100.00",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        teacher.refresh_from_db()
+        self.assertTrue(hasattr(teacher.user, "staff"))
+        self.assertEqual(str(teacher.user.staff.salary), "2100.00")

@@ -545,13 +545,15 @@ class Announcement(models.Model):
     content = models.TextField()
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     target_audience = models.CharField(max_length=50)  # all, students, parents, teachers, staff
+    target_audiences = models.JSONField(default=list, blank=True)
     target_class = models.ForeignKey('Class', on_delete=models.CASCADE, null=True, blank=True,
         help_text='If set, only users in this class see the announcement')
     date_posted = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.title} - {self.target_audience}"
+        audiences = self.target_audiences or [self.target_audience]
+        return f"{self.title} - {', '.join(audiences)}"
 
 
 class ReportCardRelease(models.Model):

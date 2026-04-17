@@ -264,7 +264,7 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard_stats_view(request):
-    from academics.models import Class, Subject, ParentChildLink
+    from academics.models import Class, Subject, Parent
     from finances.models import Invoice, StudentPaymentRecord
 
     school = request.user.school
@@ -273,10 +273,8 @@ def dashboard_stats_view(request):
         stats = {
             'total_students': CustomUser.objects.filter(role='student', is_active=True, school=school).count(),
             'total_teachers': CustomUser.objects.filter(role='teacher', is_active=True, school=school).count(),
-            'total_parents': ParentChildLink.objects.filter(
-                is_confirmed=True,
-                student__user__school=school
-            ).values('parent').distinct().count(),
+            # Keep this aligned with Admin Parents page queryset (Parent.user.school).
+            'total_parents': Parent.objects.filter(user__school=school).count(),
             'total_staff': CustomUser.objects.filter(
                 role__in=['admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian'],
                 is_active=True,

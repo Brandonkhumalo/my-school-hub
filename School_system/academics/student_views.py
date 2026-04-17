@@ -332,10 +332,24 @@ def student_announcements(request):
     if request.user.role != 'student':
         return Response({'error': 'Only students can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
-    
+
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
     announcements = Announcement.objects.filter(
-        Q(target_audience='all') | Q(target_audience='students'),
-        is_active=True
+        (
+            Q(target_audience='all') |
+            Q(target_audience='student') |
+            Q(target_audience='students') |
+            Q(target_audiences__contains=['all']) |
+            Q(target_audiences__contains=['student']) |
+            Q(target_audiences__contains=['students'])
+        ),
+        is_active=True,
+        author__school=request.user.school,
+    ).filter(
+        Q(target_class__isnull=True) | Q(target_class_id=student.student_class_id)
     ).select_related('author').order_by('-date_posted')
     
     data = []

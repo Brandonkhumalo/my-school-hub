@@ -1264,6 +1264,8 @@ def daily_transaction_report(request):
             return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
     else:
         report_date = timezone.now().date()
+
+    search_query = (request.query_params.get('search') or '').strip()
     
     transactions = PaymentTransaction.objects.filter(
         payment_record__school=user.school,
@@ -1273,6 +1275,27 @@ def daily_transaction_report(request):
         'payment_record__student__student_class',
         'processed_by'
     ).order_by('-payment_date')
+
+    if search_query:
+        search_filter = (
+            Q(payment_record__student__user__first_name__icontains=search_query) |
+            Q(payment_record__student__user__last_name__icontains=search_query) |
+            Q(payment_record__student__user__student_number__icontains=search_query) |
+            Q(transaction_reference__icontains=search_query)
+        )
+        search_parts = [part for part in search_query.split() if part]
+        if len(search_parts) >= 2:
+            first_part = search_parts[0]
+            last_part = search_parts[-1]
+            search_filter |= (
+                Q(payment_record__student__user__first_name__icontains=first_part) &
+                Q(payment_record__student__user__last_name__icontains=last_part)
+            )
+            search_filter |= (
+                Q(payment_record__student__user__first_name__icontains=last_part) &
+                Q(payment_record__student__user__last_name__icontains=first_part)
+            )
+        transactions = transactions.filter(search_filter)
     
     transaction_list = []
     total_collected = 0
@@ -1306,6 +1329,7 @@ def daily_transaction_report(request):
     
     return Response({
         'date': report_date.isoformat(),
+        'search': search_query,
         'total_collected': total_collected,
         'transaction_count': len(transaction_list),
         'transactions': transaction_list,

@@ -461,8 +461,15 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         user_role = user.role
 
         if user_role not in ('admin', 'hr', 'superadmin'):
+            audience_aliases = {
+                user_role,
+                f"{user_role}s",
+            }
+            audience_filter = Q(target_audience='all') | Q(target_audiences__contains=['all'])
+            for audience in audience_aliases:
+                audience_filter |= Q(target_audience=audience) | Q(target_audiences__contains=[audience])
             queryset = queryset.filter(
-                Q(target_audience='all') | Q(target_audience=user_role)
+                audience_filter
             )
 
         # Filter by target_class: show announcements with no class (general)
@@ -516,8 +523,9 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
         if self.request.user.role not in ('admin', 'hr'):
             raise PermissionDenied('Only admin and HR can create announcements.')
         announcement = serializer.save(author=self.request.user)
-        # Notify parents if target_audience is 'all' or 'parent'
-        if announcement.target_audience not in ('all', 'parent'):
+        audiences = set(announcement.target_audiences or [announcement.target_audience])
+        # Notify parents if target_audience includes 'all' or 'parent'
+        if not {'all', 'parent', 'parents'}.intersection(audiences):
             return
         try:
             school = self.request.user.school
@@ -713,9 +721,9 @@ class SuspensionListCreateView(generics.ListCreateAPIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def pending_parent_link_requests(request):
-    """Get all pending parent-child link requests (Admin/Teacher only) - filtered by school"""
-    if request.user.role not in ['admin', 'teacher']:
-        return Response({'error': 'Only administrators and teachers can view pending requests'}, 
+    """Get all pending parent-child link requests (Admin only) - filtered by school"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only administrators can view pending requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -749,9 +757,9 @@ def pending_parent_link_requests(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def approve_parent_link_request(request, link_id):
-    """Approve a parent-child link request (Admin/Teacher only) - filtered by school"""
-    if request.user.role not in ['admin', 'teacher']:
-        return Response({'error': 'Only administrators and teachers can approve requests'}, 
+    """Approve a parent-child link request (Admin only) - filtered by school"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only administrators can approve requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -816,9 +824,9 @@ def approve_parent_link_request(request, link_id):
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def decline_parent_link_request(request, link_id):
-    """Decline/delete a parent-child link request (Admin/Teacher only) - filtered by school"""
-    if request.user.role not in ['admin', 'teacher']:
-        return Response({'error': 'Only administrators and teachers can decline requests'}, 
+    """Decline/delete a parent-child link request (Admin only) - filtered by school"""
+    if request.user.role != 'admin':
+        return Response({'error': 'Only administrators can decline requests'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
     from .models import ParentChildLink
@@ -2185,6 +2193,7 @@ def publish_reports(request):
                     f'Go to your Results page to download the PDF.',
             author=request.user,
             target_audience=audience,
+            target_audiences=[audience],
             target_class=class_obj,
         )
 
@@ -2232,6 +2241,7 @@ def publish_all_reports(request):
                             f'Go to your Results page to download the PDF.',
                     author=request.user,
                     target_audience=audience,
+                    target_audiences=[audience],
                     target_class=class_obj,
                 )
         else:

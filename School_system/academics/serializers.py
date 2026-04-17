@@ -12,6 +12,7 @@ from .utils import generate_unique_student_number
 from users.models import CustomUser
 from django.db import transaction
 from django.utils import timezone
+from staff.models import Staff
 
 class SubjectSerializer(serializers.ModelSerializer):
     teachers = serializers.SerializerMethodField()
@@ -187,12 +188,43 @@ class TimetableSerializer(serializers.ModelSerializer):
 class AnnouncementSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.full_name', read_only=True)
     class_name = serializers.CharField(source='target_class.name', read_only=True, default=None)
+    target_audiences = serializers.ListField(
+        child=serializers.ChoiceField(choices=[
+            'all', 'student', 'students', 'parent', 'parents', 'teacher', 'teachers',
+            'hr', 'accountant', 'librarian', 'security', 'cleaner'
+        ]),
+        required=False,
+        allow_empty=False,
+    )
 
     class Meta:
         model = Announcement
         fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience',
-                  'target_class', 'class_name', 'date_posted', 'is_active']
+                  'target_audiences', 'target_class', 'class_name', 'date_posted', 'is_active']
         read_only_fields = ['author', 'author_name', 'class_name', 'date_posted']
+
+    def validate(self, attrs):
+        target_audiences = attrs.get('target_audiences') or []
+        target_audience = attrs.get('target_audience')
+        normalize = {
+            'students': 'student',
+            'parents': 'parent',
+            'teachers': 'teacher',
+        }
+
+        if target_audiences:
+            deduped = []
+            for audience in target_audiences:
+                audience = normalize.get(audience, audience)
+                if audience not in deduped:
+                    deduped.append(audience)
+            attrs['target_audiences'] = deduped
+            attrs['target_audience'] = deduped[0]
+        else:
+            attrs['target_audience'] = normalize.get(target_audience, target_audience) if target_audience else 'all'
+            attrs['target_audiences'] = [attrs['target_audience']]
+
+        return attrs
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
@@ -361,6 +393,7 @@ class CreateTeacherSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     hire_date = serializers.DateField()
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    salary = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, min_value=0)
     password = serializers.CharField(min_length=6)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     teaching_class_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
@@ -474,6 +507,20 @@ class CreateTeacherSerializer(serializers.Serializer):
                 hire_date=validated_data['hire_date'],
                 qualification=validated_data.get('qualification', '')
             )
+
+            salary = validated_data.get('salary')
+            if salary is not None:
+                Staff.objects.update_or_create(
+                    user=user,
+                    defaults={
+                        'employee_id': user.student_number or staff_number,
+                        'department': None,
+                        'position': 'teacher',
+                        'hire_date': validated_data['hire_date'],
+                        'salary': salary,
+                        'is_active': user.is_active,
+                    },
+                )
             
             if validated_data.get('subject_ids'):
                 teacher.subjects_taught.set(validated_data['subject_ids'])
@@ -499,6 +546,7 @@ class CreateTeacherSerializer(serializers.Serializer):
                 'phone_number': phone if phone else '',
                 'hire_date': str(validated_data['hire_date']),
                 'qualification': validated_data.get('qualification', ''),
+                'salary': str(salary) if salary is not None else None,
                 'subject_ids': validated_data.get('subject_ids', []),
                 'teaching_class_ids': validated_data.get('teaching_class_ids', []),
                 'assigned_class_id': validated_data.get('assigned_class_id'),
@@ -685,6 +733,7 @@ class UpdateTeacherSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=6, required=False, allow_blank=True)
     hire_date = serializers.DateField(required=False)
     qualification = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    salary = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, min_value=0)
     subject_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     teaching_class_ids = serializers.ListField(child=serializers.IntegerField(), required=False)
     assigned_class_id = serializers.IntegerField(required=False, allow_null=True)
@@ -748,6 +797,7 @@ class UpdateTeacherSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         user = instance.user
+        salary = validated_data.pop('salary', None)
         for field in ['first_name', 'last_name', 'email', 'phone_number']:
             if field in validated_data:
                 setattr(user, field, validated_data[field] or '')
@@ -762,6 +812,19 @@ class UpdateTeacherSerializer(serializers.Serializer):
         if 'qualification' in validated_data:
             instance.qualification = validated_data['qualification']
         instance.save()
+
+        if salary is not None:
+            Staff.objects.update_or_create(
+                user=user,
+                defaults={
+                    'employee_id': user.student_number or f"EMP{user.id}",
+                    'department': getattr(getattr(user, 'staff', None), 'department', None),
+                    'position': 'teacher',
+                    'hire_date': instance.hire_date,
+                    'salary': salary,
+                    'is_active': user.is_active,
+                },
+            )
 
         if 'subject_ids' in validated_data:
             instance.subjects_taught.set(validated_data.get('subject_ids', []))

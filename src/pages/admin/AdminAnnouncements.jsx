@@ -25,7 +25,7 @@ export default function AdminAnnouncements() {
   const [form, setForm] = useState({
     title: "",
     content: "",
-    target_audience: "all",
+    target_audiences: ["all"],
     target_class: "",
   });
 
@@ -71,6 +71,10 @@ export default function AdminAnnouncements() {
       setFeedback({ type: "error", text: "Title and message are required." });
       return;
     }
+    if (form.target_audiences.length === 0) {
+      setFeedback({ type: "error", text: "Please select at least one audience." });
+      return;
+    }
 
     setIsSubmitting(true);
     setFeedback(null);
@@ -78,14 +82,15 @@ export default function AdminAnnouncements() {
       const payload = {
         title: form.title.trim(),
         content: form.content.trim(),
-        target_audience: form.target_audience,
+        target_audiences: form.target_audiences,
+        target_audience: form.target_audiences[0] || "all",
         target_class: form.target_class ? parseInt(form.target_class, 10) : null,
       };
       await apiService.createAnnouncement(payload);
       setForm({
         title: "",
         content: "",
-        target_audience: "all",
+        target_audiences: ["all"],
         target_class: "",
       });
       setFeedback({ type: "success", text: "Announcement posted successfully." });
@@ -146,17 +151,28 @@ export default function AdminAnnouncements() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Audience</label>
-                <select
-                  value={form.target_audience}
-                  onChange={(e) => onChangeForm("target_audience", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {AUDIENCE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="border border-gray-300 rounded-lg p-3 max-h-44 overflow-y-auto space-y-2">
+                  {AUDIENCE_OPTIONS.map((opt) => {
+                    const checked = form.target_audiences.includes(opt.value);
+                    return (
+                      <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...form.target_audiences, opt.value]
+                              : form.target_audiences.filter((value) => value !== opt.value);
+                            onChangeForm("target_audiences", Array.from(new Set(next)));
+                          }}
+                          className="rounded"
+                        />
+                        <span>{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Select one or more audiences.</p>
               </div>
 
               <div>
@@ -180,7 +196,7 @@ export default function AdminAnnouncements() {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || form.target_audiences.length === 0}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Posting..." : "Post Announcement"}
@@ -197,9 +213,11 @@ export default function AdminAnnouncements() {
                 <li key={announcement.id} className="border-b border-gray-100 pb-4 last:border-b-0">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <h4 className="font-semibold text-gray-900">{announcement.title}</h4>
-                    <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
-                      {announcement.target_audience}
-                    </span>
+                    {(announcement.target_audiences?.length ? announcement.target_audiences : [announcement.target_audience]).map((audience) => (
+                      <span key={`${announcement.id}-${audience}`} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
+                        {audience}
+                      </span>
+                    ))}
                     {announcement.class_name && (
                       <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800">
                         {announcement.class_name}
