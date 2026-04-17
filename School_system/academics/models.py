@@ -1031,7 +1031,7 @@ class AtRiskAlert(models.Model):
     current_grade = models.CharField(max_length=2)
     predicted_grade = models.CharField(max_length=2, null=True, blank=True)
     predicted_percentage = models.FloatField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='new')
     trend = models.CharField(max_length=20, choices=[('up', 'Improving'), ('down', 'Declining'), ('stable', 'Stable')], null=True, blank=True)
     confidence = models.CharField(max_length=20, choices=[('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], null=True, blank=True)
     
