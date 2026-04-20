@@ -1129,6 +1129,24 @@ class TeacherMarksValidationAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Result.objects.filter(student=self.student, subject=self.subject).count(), 1)
 
+    def test_add_mark_preserves_submitted_score_value(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.url, {
+            "student_id": self.student.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Paper 1",
+            "score": "95",
+            "max_score": "100",
+            "academic_term": "Term 1",
+            "academic_year": "2026",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        result = Result.objects.get(student=self.student, subject=self.subject, exam_type="Paper 1")
+        self.assertAlmostEqual(result.score, 95.0)
+        self.assertAlmostEqual(result.max_score, 100.0)
+        self.assertEqual(response.data.get("score"), result.score)
+
 
 class ReportFeedbackSignoffWorkflowAPITest(APITestCase):
 

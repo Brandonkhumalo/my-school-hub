@@ -51,7 +51,7 @@ export default function AdminStaff() {
     setError("");
     try {
       const [staffData, departmentData] = await Promise.all([
-        apiService.getStaffList(),
+        apiService.getStaffList({ include_directory: 1 }),
         apiService.getDepartments(),
       ]);
       setStaff(Array.isArray(staffData) ? staffData : []);
@@ -312,12 +312,16 @@ export default function AdminStaff() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => handleEdit(member)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <i className="fas fa-edit mr-1"></i>Edit
-                          </button>
+                          {member.has_staff_profile === false ? (
+                            <span className="text-xs text-gray-400">User account only</span>
+                          ) : (
+                            <button
+                              onClick={() => handleEdit(member)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <i className="fas fa-edit mr-1"></i>Edit
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

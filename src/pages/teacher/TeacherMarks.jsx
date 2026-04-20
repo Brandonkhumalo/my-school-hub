@@ -194,10 +194,18 @@ export default function TeacherMarks() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const scoreNum = Math.round(parseFloat(score) * 100) / 100;
-    const maxScoreNum = Math.round(parseFloat(maxScore) * 100) / 100;
-    if (!selectedSubject || !selectedStudent || Number.isNaN(scoreNum) || Number.isNaN(maxScoreNum)) {
+    const scoreNum = Number(score);
+    const maxScoreNum = Number(maxScore);
+    if (!selectedSubject || !selectedStudent || !Number.isFinite(scoreNum) || !Number.isFinite(maxScoreNum)) {
       alert("Please fill in all required fields.");
+      return;
+    }
+    if (maxScoreNum <= 0) {
+      alert("Max score must be greater than 0.");
+      return;
+    }
+    if (scoreNum < 0) {
+      alert("Score cannot be negative.");
       return;
     }
     if (scoreNum > maxScoreNum) {
@@ -224,8 +232,9 @@ export default function TeacherMarks() {
       student_id: selectedStudent,
       subject_id: selectedSubject,
       exam_type: examType,
-      score: scoreNum,
-      max_score: maxScoreNum,
+      // Send raw values; backend handles exact normalization/rounding.
+      score: String(score).trim(),
+      max_score: String(maxScore).trim(),
       academic_term: academicTerm,
       academic_year: academicYear,
       include_in_report: selectedComponent === "other" ? false : includeInReport,
@@ -425,7 +434,7 @@ export default function TeacherMarks() {
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="any"
                   value={score}
                   onChange={(e) => setScore(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -438,7 +447,7 @@ export default function TeacherMarks() {
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="any"
                   value={maxScore}
                   onChange={(e) => setMaxScore(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"

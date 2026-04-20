@@ -390,6 +390,8 @@ const apiService = {
     if (sortBy) params.append('sort_by', sortBy);
     return request(`/teachers/subjects/${subjectId}/students-risk/?${params.toString()}`, "GET");
   },
+  getTeacherStudentMarksBreakdown: (studentId, subjectId) =>
+    request(`/teachers/students/${studentId}/marks-breakdown/?subject=${encodeURIComponent(subjectId)}`, "GET"),
   addStudentMark: (data) => request("/teachers/marks/add/", "POST", data),
   // Class attendance (class teacher only)
   getClassAttendanceRegister: (date) => {
@@ -801,6 +803,12 @@ const apiService = {
     const q = new URLSearchParams(params).toString();
     return request(`/library/loans/${q ? '?' + q : ''}`, "GET");
   },
+  getLoanRequests: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/library/loan-requests/${q ? '?' + q : ''}`, "GET");
+  },
+  createLoanRequest: (data) => request("/library/loan-requests/", "POST", data),
+  reviewLoanRequest: (requestId, data) => request(`/library/loan-requests/${requestId}/review/`, "POST", data),
   returnBook: (loanId) => request(`/library/loans/${loanId}/return/`, "POST"),
   getOverdueLoans: () => request("/library/loans/overdue/", "GET"),
   getLibraryStats: () => request("/library/stats/", "GET"),

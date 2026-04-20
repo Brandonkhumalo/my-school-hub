@@ -32,19 +32,30 @@ export default function StudentCalendar() {
       const actEvents = [];
       const activities = Array.isArray(actData) ? actData : (actData?.activities || []);
       for (const act of activities) {
-        if (act.events) {
-          for (const ev of act.events) {
-            actEvents.push({
-              id: `act-${ev.id}`,
-              title: `${act.name}: ${ev.title}`,
-              description: ev.notes || '',
-              type: 'sport',
-              event_type: 'sport',
-              start_date: ev.event_date,
-              end_date: ev.event_date,
-              location: ev.location || act.location || '',
-            });
-          }
+        const sportEvents = Array.isArray(act.events)
+          ? act.events
+          : (Array.isArray(act.upcoming_events) ? act.upcoming_events : []);
+        for (const ev of sportEvents) {
+          const opponent = ev.opponent_school || ev.opponent;
+          const isMatchLike = ["match", "tournament", "competition", "inter_house"].includes((ev.event_type || "").toLowerCase());
+          const title = isMatchLike && opponent
+            ? `${act.name}: vs ${opponent}`
+            : `${act.name}: ${ev.title}`;
+          const detailParts = [
+            ev.event_type_display || ev.event_type,
+            ev.venue,
+            ev.notes,
+          ].filter(Boolean);
+          actEvents.push({
+            id: `act-${ev.id}`,
+            title,
+            description: detailParts.join(" - "),
+            type: 'sport',
+            event_type: 'sport',
+            start_date: ev.event_date,
+            end_date: ev.event_date,
+            location: ev.location || act.location || '',
+          });
         }
       }
       setActivityEvents(actEvents);

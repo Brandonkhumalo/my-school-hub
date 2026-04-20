@@ -148,6 +148,7 @@ const StudentAttendance = lazy(() => import("./pages/student/StudentAttendance")
 const StudentResults = lazy(() => import("./pages/student/StudentResults"));
 const StudentFeeSummary = lazy(() => import("./pages/student/StudentFeeSummary"));
 const StudentActivities = lazy(() => import("./pages/student/StudentActivities"));
+const StudentLibrary = lazy(() => import("./pages/student/StudentLibrary"));
 const StudentBoarding = lazy(() => import("./pages/student/StudentBoarding"));
 
 // Parent Pages
@@ -313,6 +314,7 @@ function App() {
         <Route path="/student/results" element={<RequireAuth allowedRoles={['student']}><StudentResults /></RequireAuth>} />
         <Route path="/student/fees" element={<RequireAuth allowedRoles={['student']}><StudentFeeSummary /></RequireAuth>} />
         <Route path="/student/activities" element={<RequireAuth allowedRoles={['student']}><StudentActivities /></RequireAuth>} />
+        <Route path="/student/library" element={<RequireAuth allowedRoles={['student']}><StudentLibrary /></RequireAuth>} />
         <Route path="/student/boarding" element={<RequireAuth allowedRoles={['student']}><RequireBoardingAccess><StudentBoarding /></RequireBoardingAccess></RequireAuth>} />
 
         {/* Parent Routes */}

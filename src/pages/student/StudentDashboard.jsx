@@ -145,6 +145,28 @@ export default function StudentDashboard() {
                   <p className="text-sm text-gray-600">School events</p>
                 </div>
               </Link>
+
+              <Link
+                to="/student/activities"
+                className="flex items-center p-4 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition"
+              >
+                <i className="fas fa-running text-emerald-500 text-2xl mr-3"></i>
+                <div>
+                  <p className="font-semibold text-gray-800">Sports Sign-up</p>
+                  <p className="text-sm text-gray-600">Join sports teams</p>
+                </div>
+              </Link>
+
+              <Link
+                to="/student/library"
+                className="flex items-center p-4 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition"
+              >
+                <i className="fas fa-book-reader text-indigo-500 text-2xl mr-3"></i>
+                <div>
+                  <p className="font-semibold text-gray-800">Library</p>
+                  <p className="text-sm text-gray-600">Request books</p>
+                </div>
+              </Link>
             </div>
           </div>
 

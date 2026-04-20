@@ -17,7 +17,13 @@ export default function TeacherPerformance() {
   const [sortBy, setSortBy] = useState("risk_score");
   const [viewMode, setViewMode] = useState("risk"); // "risk" | "marks"
   const [marks, setMarks] = useState([]);
+  const [marksStudents, setMarksStudents] = useState([]);
   const [loadingMarks, setLoadingMarks] = useState(false);
+  const [selectedMarksStudent, setSelectedMarksStudent] = useState(null);
+  const [studentBreakdown, setStudentBreakdown] = useState(null);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [breakdownError, setBreakdownError] = useState("");
+  const [breakdownTermFilter, setBreakdownTermFilter] = useState("");
 
   const normalizeStudentsPayload = (payload) => {
     if (Array.isArray(payload)) {
@@ -54,12 +60,17 @@ export default function TeacherPerformance() {
   const loadMarks = useCallback(async () => {
     try {
       setLoadingMarks(true);
-      const data = await apiService.fetchResults({ subject: selectedSubject });
-      const rows = Array.isArray(data) ? data : (data?.results || []);
-      setMarks(rows);
+      const [marksData, studentsData] = await Promise.all([
+        apiService.fetchResults({ subject: selectedSubject }),
+        apiService.getSubjectStudents(selectedSubject),
+      ]);
+      const rows = Array.isArray(marksData) ? marksData : (marksData?.results || []);
+      setMarks(rows || []);
+      setMarksStudents(Array.isArray(studentsData) ? studentsData : []);
     } catch (err) {
       console.error("Error loading marks:", err);
       setMarks([]);
+      setMarksStudents([]);
     } finally {
       setLoadingMarks(false);
     }
@@ -103,6 +114,10 @@ export default function TeacherPerformance() {
 
   useEffect(() => {
     if (!selectedSubject) return;
+    setSelectedMarksStudent(null);
+    setStudentBreakdown(null);
+    setBreakdownError("");
+    setBreakdownTermFilter("");
     if (viewMode === "risk") {
       loadStudents();
     } else {
@@ -110,15 +125,87 @@ export default function TeacherPerformance() {
     }
   }, [selectedSubject, viewMode, loadStudents, loadMarks]);
 
-  const filteredMarks = useMemo(() => {
+  const marksSummaryByStudent = useMemo(() => {
+    const summary = new Map();
+    marks.forEach((row) => {
+      const studentId = row.student;
+      if (!studentId) return;
+      if (!summary.has(studentId)) {
+        summary.set(studentId, {
+          count: 0,
+          totalPercentage: 0,
+          latest: null,
+        });
+      }
+      const item = summary.get(studentId);
+      item.count += 1;
+      item.totalPercentage += Number(row.percentage || 0);
+      if (!item.latest) {
+        item.latest = row;
+      }
+    });
+    return summary;
+  }, [marks]);
+
+  const filteredMarksStudents = useMemo(() => {
     const q = marksSearch.trim().toLowerCase();
-    if (!q) return marks;
-    return marks.filter((row) => {
-      const studentName = (row.student_name || "").toLowerCase();
-      const studentNumber = (row.student_number || "").toLowerCase();
+    if (!q) return marksStudents;
+    return marksStudents.filter((student) => {
+      const studentName = `${student.name || ""} ${student.surname || ""}`.toLowerCase();
+      const studentNumber = (student.student_number || "").toLowerCase();
       return studentName.includes(q) || studentNumber.includes(q);
     });
-  }, [marks, marksSearch]);
+  }, [marksStudents, marksSearch]);
+
+  const loadStudentBreakdown = async (student) => {
+    if (!selectedSubject || !student?.id) return;
+    setSelectedMarksStudent(student);
+    setLoadingBreakdown(true);
+    setBreakdownError("");
+    setBreakdownTermFilter("");
+    try {
+      const payload = await apiService.getTeacherStudentMarksBreakdown(student.id, selectedSubject);
+      setStudentBreakdown(payload || null);
+    } catch (error) {
+      console.error("Error loading student mark breakdown:", error);
+      setStudentBreakdown(null);
+      setBreakdownError(error?.message || "Failed to load student breakdown.");
+    } finally {
+      setLoadingBreakdown(false);
+    }
+  };
+
+  const breakdownTermOptions = useMemo(() => {
+    const terms = [...new Set((studentBreakdown?.results || []).map((r) => r.academic_term).filter(Boolean))];
+    const termOrder = { "Term 1": 1, "Term 2": 2, "Term 3": 3, "Term 4": 4 };
+    return terms.sort((a, b) => (termOrder[a] || 99) - (termOrder[b] || 99) || a.localeCompare(b));
+  }, [studentBreakdown]);
+
+  const filteredBreakdownResults = useMemo(() => {
+    const rows = studentBreakdown?.results || [];
+    if (!breakdownTermFilter) return rows;
+    return rows.filter((row) => row.academic_term === breakdownTermFilter);
+  }, [studentBreakdown, breakdownTermFilter]);
+
+  const filteredBreakdownSummaries = useMemo(() => {
+    const bySubject = new Map();
+    filteredBreakdownResults.forEach((row) => {
+      const key = row.subject_name || "Unknown Subject";
+      if (!bySubject.has(key)) {
+        bySubject.set(key, { subject_name: key, result_count: 0, total: 0 });
+      }
+      const bucket = bySubject.get(key);
+      bucket.result_count += 1;
+      bucket.total += Number(row.percentage || 0);
+    });
+    return Array.from(bySubject.values())
+      .map((item) => ({
+        subject_name: item.subject_name,
+        result_count: item.result_count,
+        average_percentage: item.result_count ? Number((item.total / item.result_count).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => a.subject_name.localeCompare(b.subject_name));
+  }, [filteredBreakdownResults]);
 
   const getGradeColor = (grade) => {
     switch (grade) {
@@ -392,37 +479,162 @@ export default function TeacherPerformance() {
                         <thead className="bg-gray-100 border-b">
                           <tr>
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
-                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Assessment</th>
-                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Term / Year</th>
-                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Score</th>
-                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Out of</th>
-                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">%</th>
-                            <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Grade</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Class</th>
+                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Records (Subject)</th>
+                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Average % (Subject)</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Last Assessment</th>
+                            <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Action</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredMarks.length === 0 ? (
-                            <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No marks found for this search in the selected subject.</td></tr>
-                          ) : filteredMarks.map((r) => (
-                            <tr key={r.id} className="border-b hover:bg-gray-50">
+                          {filteredMarksStudents.length === 0 ? (
+                            <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No students found for this search in the selected subject.</td></tr>
+                          ) : filteredMarksStudents.map((student) => {
+                            const stats = marksSummaryByStudent.get(student.id);
+                            const recordCount = stats?.count || 0;
+                            const averagePercentage = recordCount > 0 ? (stats.totalPercentage / recordCount) : 0;
+                            const latest = stats?.latest || null;
+                            return (
+                            <tr
+                              key={student.id}
+                              className={`border-b hover:bg-blue-50 ${selectedMarksStudent?.id === student.id ? "bg-blue-50" : ""}`}
+                            >
                               <td className="px-6 py-3">
-                                <div className="font-medium text-gray-800">{r.student_name}</div>
-                                <div className="text-xs text-gray-500">#{r.student_number}</div>
+                                <div className="font-medium text-gray-800">{student.name} {student.surname}</div>
+                                <div className="text-xs text-gray-500">#{student.student_number}</div>
                               </td>
-                              <td className="px-6 py-3 text-sm text-gray-700">{r.exam_type}</td>
-                              <td className="px-6 py-3 text-sm text-gray-600">{r.academic_term} / {r.academic_year}</td>
-                              <td className="px-6 py-3 text-right">{r.score}</td>
-                              <td className="px-6 py-3 text-right">{r.max_score}</td>
-                              <td className="px-6 py-3 text-right font-medium">{r.percentage}%</td>
+                              <td className="px-6 py-3 text-sm text-gray-700">{student.class || "-"}</td>
+                              <td className="px-6 py-3 text-right font-medium">{recordCount}</td>
+                              <td className="px-6 py-3 text-right font-medium">{averagePercentage.toFixed(2)}%</td>
+                              <td className="px-6 py-3 text-sm text-gray-700">
+                                {latest ? `${latest.exam_type} (${latest.academic_term} / ${latest.academic_year})` : "No marks yet"}
+                              </td>
                               <td className="px-6 py-3 text-center">
-                                <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((r.grade || '').charAt(0))}`}>{r.grade}</span>
+                                <button
+                                  onClick={() => loadStudentBreakdown(student)}
+                                  className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium"
+                                >
+                                  View Breakdown
+                                </button>
                               </td>
                             </tr>
-                          ))}
+                          )})}
                         </tbody>
                       </table>
                     </div>
                   </div>
+
+                  {selectedMarksStudent && (
+                    <div className="bg-white rounded-lg shadow-lg p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-800">
+                            {selectedMarksStudent.name} {selectedMarksStudent.surname} - Marks Breakdown
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            #{selectedMarksStudent.student_number} | {selectedMarksStudent.class}
+                          </p>
+                        </div>
+                        {studentBreakdown?.scope && (
+                          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                            studentBreakdown.scope === "all_subjects"
+                              ? "bg-indigo-100 text-indigo-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}>
+                            {studentBreakdown.scope === "all_subjects"
+                              ? "Class Teacher View: All Subjects"
+                              : "Subject Teacher View: Selected Subject"}
+                          </span>
+                        )}
+                      </div>
+
+                      {loadingBreakdown && (
+                        <div className="py-6 text-sm text-gray-600">
+                          <i className="fas fa-spinner fa-spin mr-2"></i>Loading detailed results...
+                        </div>
+                      )}
+
+                      {!loadingBreakdown && breakdownError && (
+                        <div className="p-3 mb-3 rounded border border-red-200 bg-red-50 text-sm text-red-700">
+                          {breakdownError}
+                        </div>
+                      )}
+
+                      {!loadingBreakdown && !breakdownError && studentBreakdown && (
+                        <>
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Term</label>
+                            <select
+                              value={breakdownTermFilter}
+                              onChange={(e) => setBreakdownTermFilter(e.target.value)}
+                              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">All Terms</option>
+                              {breakdownTermOptions.map((term) => (
+                                <option key={term} value={term}>{term}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                            <div className="p-3 rounded bg-gray-50 border">
+                              <p className="text-xs text-gray-500">Total Results{breakdownTermFilter ? ` (${breakdownTermFilter})` : ""}</p>
+                              <p className="text-xl font-semibold text-gray-800">{filteredBreakdownResults.length || 0}</p>
+                            </div>
+                            {filteredBreakdownSummaries.slice(0, 2).map((summary) => (
+                              <div key={summary.subject_name} className="p-3 rounded bg-gray-50 border">
+                                <p className="text-xs text-gray-500">{summary.subject_name}</p>
+                                <p className="text-sm font-medium text-gray-700">
+                                  {summary.result_count} results | Avg {summary.average_percentage}%
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="overflow-x-auto border rounded-lg">
+                            <table className="w-full">
+                              <thead className="bg-gray-100 border-b">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Subject</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Assessment</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Term / Year</th>
+                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Score</th>
+                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Out Of</th>
+                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">%</th>
+                                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Grade</th>
+                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Teacher</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredBreakdownResults.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
+                                      No results found for this student in the selected term.
+                                    </td>
+                                  </tr>
+                                ) : filteredBreakdownResults.map((result) => (
+                                  <tr key={result.id} className="border-b hover:bg-gray-50">
+                                    <td className="px-4 py-2 text-sm text-gray-700">{result.subject_name}</td>
+                                    <td className="px-4 py-2 text-sm text-gray-700">{result.exam_type}</td>
+                                    <td className="px-4 py-2 text-sm text-gray-600">{result.academic_term} / {result.academic_year}</td>
+                                    <td className="px-4 py-2 text-right text-sm">{result.score}</td>
+                                    <td className="px-4 py-2 text-right text-sm">{result.max_score}</td>
+                                    <td className="px-4 py-2 text-right text-sm font-medium">{result.percentage}%</td>
+                                    <td className="px-4 py-2 text-center">
+                                      <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((result.grade || '').charAt(0))}`}>
+                                        {result.grade}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-gray-700">{result.teacher_name}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             )}

@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.db.models import Avg, Count, Q, Max, Min
 from django.utils import timezone
@@ -178,9 +179,9 @@ def add_student_mark(request):
                            status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            score = float(score)
-            max_score = float(max_score)
-        except ValueError:
+            score = Decimal(str(score)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            max_score = Decimal(str(max_score)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, TypeError, ValueError):
             return Response({'error': 'Score and max_score must be numbers'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
@@ -285,8 +286,8 @@ def add_student_mark(request):
             subject=subject,
             teacher=teacher,
             exam_type=exam_type,
-            score=score,
-            max_score=max_score,
+            score=float(score),
+            max_score=float(max_score),
             academic_term=academic_term,
             academic_year=academic_year,
             include_in_report=include_in_report,
@@ -301,9 +302,9 @@ def add_student_mark(request):
             'student': f"{student.user.first_name} {student.user.last_name}",
             'subject': subject.name,
             'exam_type': exam_type,
-            'score': score,
-            'max_score': max_score,
-            'percentage': round((score / max_score) * 100, 2),
+            'score': result.score,
+            'max_score': result.max_score,
+            'percentage': round((result.score / result.max_score) * 100, 2),
             'assessment_plan': assessment_plan_obj.id if assessment_plan_obj else None,
             'component_kind': component_kind,
             'component_index': component_index,
@@ -422,6 +423,111 @@ def subject_performance(request, subject_id):
     except Subject.DoesNotExist:
         return Response({'error': 'Subject not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_marks_breakdown(request, student_id):
+    """
+    Detailed marks for one student from teacher performance page.
+
+    Query params:
+    - subject (required): selected subject from the teacher page
+
+    Scope rules:
+    - If the requesting teacher is this student's class teacher, return all subjects.
+    - Otherwise return only the selected subject (if teacher is authorised for it).
+    """
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    subject_id = request.query_params.get('subject')
+    if not subject_id:
+        return Response({'error': 'subject is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        subject_id_int = int(subject_id)
+    except (TypeError, ValueError):
+        return Response({'error': 'subject must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        teacher = request.user.teacher
+        student = Student.objects.select_related('user', 'student_class').get(
+            id=student_id, student_class__school=request.user.school
+        )
+        subject = Subject.objects.get(id=subject_id_int, school=request.user.school)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Subject.DoesNotExist:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    is_class_teacher = bool(student.student_class_id) and Class.objects.filter(
+        id=student.student_class_id, class_teacher=request.user
+    ).exists()
+
+    if not is_class_teacher:
+        teaches_subject = teacher.subjects_taught.filter(id=subject_id_int).exists()
+        if not teaches_subject:
+            return Response({'error': 'You do not teach this subject'}, status=status.HTTP_403_FORBIDDEN)
+
+        authorised_class_ids = _teacher_authorized_class_ids(teacher, subject_id=subject_id_int)
+        has_historical_result = Result.objects.filter(
+            student=student, subject_id=subject_id_int, teacher=teacher
+        ).exists()
+        if student.student_class_id not in authorised_class_ids and not has_historical_result:
+            return Response(
+                {'error': "You are not assigned to teach this student's class for this subject"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    results_qs = Result.objects.filter(student=student).select_related(
+        'student__user', 'subject', 'teacher__user', 'assessment_plan'
+    )
+    if not is_class_teacher:
+        results_qs = results_qs.filter(subject_id=subject_id_int)
+
+    results_qs = results_qs.order_by('-academic_year', '-academic_term', 'subject__name', '-date_recorded', '-id')
+    serialized = ResultSerializer(results_qs, many=True).data
+
+    by_subject = {}
+    for row in serialized:
+        key = row.get('subject_name') or 'Unknown Subject'
+        bucket = by_subject.setdefault(key, {'subject_name': key, 'count': 0, 'total_percentage': 0.0})
+        bucket['count'] += 1
+        bucket['total_percentage'] += float(row.get('percentage') or 0)
+
+    summaries = []
+    for item in by_subject.values():
+        count = item['count']
+        avg = (item['total_percentage'] / count) if count else 0.0
+        summaries.append({
+            'subject_name': item['subject_name'],
+            'result_count': count,
+            'average_percentage': round(avg, 2),
+        })
+    summaries.sort(key=lambda s: s['subject_name'])
+
+    return Response({
+        'student': {
+            'id': student.id,
+            'name': student.user.get_full_name(),
+            'student_number': student.user.student_number or '',
+            'class_name': student.student_class.name if student.student_class_id else '',
+        },
+        'selected_subject': {
+            'id': subject.id,
+            'name': subject.name,
+            'code': subject.code,
+        },
+        'scope': 'all_subjects' if is_class_teacher else 'selected_subject',
+        'is_class_teacher_view': is_class_teacher,
+        'total_results': len(serialized),
+        'subject_summaries': summaries,
+        'results': serialized,
+    })
 
 
 ## --------------- helpers ---------------

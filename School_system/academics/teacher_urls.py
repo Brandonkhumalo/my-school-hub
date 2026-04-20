@@ -4,6 +4,7 @@ from . import teacher_views, homework_views, conference_views
 urlpatterns = [
     path('subjects/', teacher_views.teacher_subjects, name='teacher-subjects'),
     path('subjects/<int:subject_id>/students/', teacher_views.subject_students, name='subject-students'),
+    path('students/<int:student_id>/marks-breakdown/', teacher_views.student_marks_breakdown, name='student-marks-breakdown'),
     path('subjects/<int:subject_id>/performance/', teacher_views.subject_performance, name='subject-performance'),
     path('subjects/<int:subject_id>/students-risk/', teacher_views.subject_students_risk, name='subject-students-risk'),
     path('marks/add/', teacher_views.add_student_mark, name='add-student-mark'),

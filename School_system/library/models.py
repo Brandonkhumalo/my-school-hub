@@ -59,3 +59,42 @@ class BookLoan(models.Model):
     def __str__(self):
         """Return a human-readable string representation."""
         return f"{self.student.user.full_name} - {self.book.title} ({self.status})"
+
+
+class BookLoanRequest(models.Model):
+    """Student-initiated request to borrow a book, reviewed by admin/librarian."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='loan_requests')
+    student = models.ForeignKey('academics.Student', on_delete=models.CASCADE, related_name='library_loan_requests')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='book_loan_requests')
+    requested_due_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    review_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_book_loan_requests',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    loan = models.ForeignKey(BookLoan, on_delete=models.SET_NULL, null=True, blank=True, related_name='source_requests')
+
+    requested_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"{self.student.user.full_name} requested {self.book.title} ({self.status})"

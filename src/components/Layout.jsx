@@ -88,6 +88,7 @@ const ALL_MENU_ITEMS = {
       { path: "/student/announcements", icon: "fa-bullhorn",           title: "Announcements" },
       { path: "/student/attendance",    icon: "fa-calendar-check",     title: "Attendance" },
       { path: "/student/activities",    icon: "fa-running",            title: "Activities" },
+      { path: "/student/library",       icon: "fa-book-reader",        title: "Library" },
     ]},
   ],
   parent: [

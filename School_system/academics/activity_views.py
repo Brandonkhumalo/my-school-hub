@@ -624,14 +624,23 @@ def student_activities(request):
     ).select_related('activity__coach')
 
     activities = []
+    now = timezone.now()
     for enrollment in enrollments:
         activity = enrollment.activity
-        upcoming_events = ActivityEvent.objects.filter(activity=activity).order_by('event_date')[:5]
+        events_qs = ActivityEvent.objects.filter(
+            activity=activity,
+            event_date__gte=now,
+        ).exclude(status='cancelled').order_by('event_date')
+        upcoming_events = events_qs[:5]
         activities.append({
             **serialize_activity(activity),
             'my_role': enrollment.role,
             'my_role_display': enrollment.get_role_display(),
             'date_joined': str(enrollment.date_joined),
+            # Keep both keys for compatibility:
+            # - upcoming_events for the Activities page
+            # - events for the Calendar page
+            'events': [serialize_event(e) for e in events_qs],
             'upcoming_events': [serialize_event(e) for e in upcoming_events],
         })
 

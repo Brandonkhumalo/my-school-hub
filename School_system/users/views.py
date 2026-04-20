@@ -701,6 +701,7 @@ def current_academic_period_view(request):
 
     settings_obj, _ = SchoolSettings.objects.get_or_create(school=school)
     data = {
+        'school_name': school.name,
         'current_academic_year': settings_obj.current_academic_year,
         'current_term': settings_obj.current_term,
         'term_1_start': settings_obj.term_1_start,
@@ -742,6 +743,7 @@ def school_customization_view(request):
     
     if request.method == 'GET':
         data = {
+            'school_name': school.name,
             'primary_color': settings_obj.primary_color,
             'secondary_color': settings_obj.secondary_color,
             'font_family': settings_obj.font_family,
@@ -763,6 +765,7 @@ def school_customization_view(request):
         settings_obj.save(update_fields=changed)
 
     data = {
+        'school_name': school.name,
         'primary_color': settings_obj.primary_color,
         'secondary_color': settings_obj.secondary_color,
         'font_family': settings_obj.font_family,

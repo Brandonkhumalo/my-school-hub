@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
@@ -14,6 +14,7 @@ export default function ParentPerformance() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [assessmentPlans, setAssessmentPlans] = useState([]);
   const [childDetailedPerformance, setChildDetailedPerformance] = useState(null);
+  const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -33,12 +34,14 @@ export default function ParentPerformance() {
       
       if (confirmedChildren.length > 0) {
         setSelectedChild(confirmedChildren[0]);
-        const [marksData, detailed] = await Promise.all([
+        const [marksData, detailed, predictionData] = await Promise.all([
           apiService.getChildPerformance(confirmedChildren[0].id),
           apiService.fetchStudentPerformance(confirmedChildren[0].id),
+          apiService.getStudentGradePredictions(confirmedChildren[0].id).catch(() => ({ predictions: [] })),
         ]);
         setMarks(marksData);
         setChildDetailedPerformance(detailed || null);
+        setPredictions(Array.isArray(predictionData?.predictions) ? predictionData.predictions : []);
       }
     } catch (error) {
       console.error("Error loading performance:", error);
@@ -54,12 +57,14 @@ export default function ParentPerformance() {
     if (child) {
       try {
         setLoading(true);
-        const [marksData, detailed] = await Promise.all([
+        const [marksData, detailed, predictionData] = await Promise.all([
           apiService.getChildPerformance(child.id),
           apiService.fetchStudentPerformance(child.id),
+          apiService.getStudentGradePredictions(child.id).catch(() => ({ predictions: [] })),
         ]);
         setMarks(marksData);
         setChildDetailedPerformance(detailed || null);
+        setPredictions(Array.isArray(predictionData?.predictions) ? predictionData.predictions : []);
       } catch (error) {
         console.error("Error loading child performance:", error);
       } finally {
@@ -67,6 +72,21 @@ export default function ParentPerformance() {
       }
     }
   };
+
+  useEffect(() => {
+    if (!selectedChild?.id) return undefined;
+
+    const interval = setInterval(async () => {
+      try {
+        const predictionData = await apiService.getStudentGradePredictions(selectedChild.id);
+        setPredictions(Array.isArray(predictionData?.predictions) ? predictionData.predictions : []);
+      } catch {
+        // Keep last successful snapshot for resilience.
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [selectedChild?.id]);
 
   // Fetch assessment plans when child or year/term changes
   useEffect(() => {
@@ -123,6 +143,19 @@ export default function ParentPerformance() {
     if (percentage >= 40) return 'bg-orange-100';
     return 'bg-red-100';
   };
+
+  const getAiRiskBadge = (pred) => {
+    if (!pred) return { label: "No AI data", className: "bg-gray-100 text-gray-700" };
+    if (pred.predicted_at_risk) return { label: "High Risk", className: "bg-red-100 text-red-700" };
+    if ((pred.predicted_percentage ?? 0) < 60) return { label: "Watch", className: "bg-amber-100 text-amber-700" };
+    return { label: "On Track", className: "bg-green-100 text-green-700" };
+  };
+
+  const predictionMap = useMemo(() => {
+    const map = new Map();
+    predictions.forEach((p) => map.set(String(p.subject || "").toLowerCase(), p));
+    return map;
+  }, [predictions]);
 
   if (loading) {
     return (
@@ -260,15 +293,34 @@ export default function ParentPerformance() {
             </div>
           ) : (
             <div className="space-y-6">
-              {marks.map((subject) => (
+              {marks.map((subject) => {
+                const prediction = predictionMap.get(String(subject.subject_name || "").toLowerCase());
+                const riskBadge = getAiRiskBadge(prediction);
+                const headerGradient = prediction?.predicted_at_risk
+                  ? "from-red-500 to-red-600"
+                  : prediction && (prediction.predicted_percentage ?? 0) < 60
+                  ? "from-amber-500 to-amber-600"
+                  : "from-green-500 to-green-600";
+
+                return (
                 <div key={subject.subject_id} className="border rounded-lg overflow-hidden">
-                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4">
+                  <div className={`bg-gradient-to-r ${headerGradient} text-white p-4`}>
                     <div className="flex justify-between items-center">
                       <h3 className="text-xl font-semibold">{subject.subject_name}</h3>
                       <div className="text-right">
                         <p className="text-sm text-blue-100">Overall Year Score</p>
                         <p className="text-2xl font-bold">{subject.overall_year_percentage}%</p>
                       </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${riskBadge.className}`}>
+                        AI: {riskBadge.label}
+                      </span>
+                      {prediction && (
+                        <span className="text-xs font-medium text-white/90">
+                          Predicted: {prediction.predicted_percentage}% ({prediction.trend})
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -311,9 +363,17 @@ export default function ParentPerformance() {
                         </div>
                       </div>
                     )}
+
+                    {prediction && (
+                      <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        <p className="text-xs uppercase tracking-wide text-blue-700 font-semibold mb-1">AI Insight</p>
+                        <p className="text-sm text-blue-900">{prediction.intervention}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

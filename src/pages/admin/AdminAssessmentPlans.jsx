@@ -228,10 +228,30 @@ export default function AdminAssessmentPlans() {
     }
   };
 
-  const availableGrades = useMemo(() => {
-    return [...new Set((classes || []).map((c) => Number(c.grade_level)).filter((g) => Number.isInteger(g) && g > 0))]
+  const availableGradeLevels = useMemo(() => {
+    return [...new Set((classes || []).map((c) => Number(c.grade_level)).filter((g) => Number.isInteger(g)))]
       .sort((a, b) => a - b);
   }, [classes]);
+
+  const hasPrimaryLevels = useMemo(
+    () => availableGradeLevels.some((level) => level <= 7),
+    [availableGradeLevels]
+  );
+
+  const hasSecondaryLevels = useMemo(
+    () => availableGradeLevels.some((level) => level > 7),
+    [availableGradeLevels]
+  );
+
+  const formatLevelLabel = (level) => {
+    const numeric = Number(level);
+    if (numeric === -1) return "ECD B";
+    if (numeric === 0) return "ECD A";
+    if (hasSecondaryLevels && !hasPrimaryLevels) return `Form ${numeric - 7}`;
+    if (hasPrimaryLevels && !hasSecondaryLevels) return `Grade ${numeric}`;
+    return numeric > 7 ? `Form ${numeric - 7}` : `Grade ${numeric}`;
+  };
+  const allLevelsLabel = hasSecondaryLevels && !hasPrimaryLevels ? "All Forms" : "All Grades";
 
   if (forbidden) {
     return (
@@ -285,8 +305,8 @@ export default function AdminAssessmentPlans() {
               className="px-3 py-2 border rounded"
             >
               <option value="">All</option>
-              {availableGrades.map((g) => (
-                <option key={g} value={String(g)}>Grade {g}</option>
+              {availableGradeLevels.map((g) => (
+                <option key={g} value={String(g)}>{formatLevelLabel(g)}</option>
               ))}
             </select>
           </div>
@@ -332,8 +352,8 @@ export default function AdminAssessmentPlans() {
                     <td className="px-4 py-2">{p.academic_year}</td>
                     <td className="px-4 py-2 text-sm">
                       {(p.grade_levels || []).length > 0
-                        ? p.grade_levels.map((g) => `Grade ${g}`).join(", ")
-                        : "All Grades"}
+                        ? p.grade_levels.map((g) => formatLevelLabel(g)).join(", ")
+                        : allLevelsLabel}
                     </td>
                     <td className="px-4 py-2 text-sm">
                       {(p.subjects_detail || []).map((s) => s.name).join(", ")}
@@ -420,22 +440,22 @@ export default function AdminAssessmentPlans() {
                   Forms/Grades <span className="text-gray-500 font-normal">(select one, many, or none for all)</span>
                 </label>
                 <div className="max-h-40 overflow-y-auto border rounded p-2 grid grid-cols-3 gap-1">
-                  {availableGrades.map((g) => (
+                  {availableGradeLevels.map((g) => (
                     <label key={g} className="flex items-center gap-2 text-sm py-1">
                       <input
                         type="checkbox"
                         checked={form.grade_levels.includes(g)}
                         onChange={() => toggleGradeLevel(g)}
                       />
-                      Grade {g}
+                      {formatLevelLabel(g)}
                     </label>
                   ))}
-                  {availableGrades.length === 0 && (
+                  {availableGradeLevels.length === 0 && (
                     <div className="text-sm text-gray-500 col-span-3">No classes/forms available</div>
                   )}
                 </div>
                 {(form.grade_levels || []).length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">No selection means this plan applies to all grades.</p>
+                  <p className="text-xs text-gray-500 mt-1">No selection means this plan applies to {allLevelsLabel.toLowerCase()}.</p>
                 )}
               </div>
 

@@ -22,6 +22,7 @@ export default function AdminLibrary() {
   const [activeTab, setActiveTab] = useState("books");
   const [books, setBooks] = useState([]);
   const [loans, setLoans] = useState([]);
+  const [loanRequests, setLoanRequests] = useState([]);
   const [overdueLoans, setOverdueLoans] = useState([]);
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
@@ -64,12 +65,16 @@ export default function AdminLibrary() {
       } else if (activeTab === "stats") {
         const data = await apiService.getLibraryStats();
         setStats(data);
+      } else if (activeTab === "requests") {
+        const data = await apiService.getLoanRequests({ status: "pending" });
+        setLoanRequests(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       // Gracefully handle API errors (endpoint may not be deployed yet)
       setBooks([]);
       setLoans([]);
       setOverdueLoans([]);
+      setLoanRequests([]);
     } finally {
       setIsLoading(false);
     }
@@ -175,8 +180,26 @@ export default function AdminLibrary() {
     { id: "books", label: "Books", icon: "fa-book" },
     { id: "loans", label: "Loans", icon: "fa-exchange-alt" },
     { id: "overdue", label: "Overdue", icon: "fa-exclamation-triangle" },
+    { id: "requests", label: "Requests", icon: "fa-inbox" },
     { id: "stats", label: "Stats", icon: "fa-chart-pie" },
   ];
+
+  const handleReviewRequest = async (requestId, decision) => {
+    try {
+      if (decision === "approve") {
+        const dueDate = window.prompt("Set due date (YYYY-MM-DD):", new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+        if (!dueDate) return;
+        await apiService.reviewLoanRequest(requestId, { decision: "approve", due_date: dueDate });
+      } else {
+        const reviewNote = window.prompt("Optional rejection reason:", "") || "";
+        await apiService.reviewLoanRequest(requestId, { decision: "reject", review_note: reviewNote });
+      }
+      setMessage({ text: `Loan request ${decision}d successfully`, type: "success" });
+      loadData();
+    } catch (error) {
+      setMessage({ text: error.message || "Failed to review request", type: "error" });
+    }
+  };
 
   if (isLoading && !books.length && !loans.length) return <LoadingSpinner />;
 
@@ -375,6 +398,49 @@ export default function AdminLibrary() {
                 </tbody>
               </table>
               {overdueLoans.length === 0 && <p className="text-center py-8 text-green-600">No overdue loans. All books returned on time!</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Requests Tab ── */}
+      {activeTab === "requests" && (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h2 className="text-lg font-semibold mb-4">Pending Student Requests</h2>
+          {isLoading ? <LoadingSpinner /> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3">Book</th>
+                    <th className="px-4 py-3">Student</th>
+                    <th className="px-4 py-3">Requested At</th>
+                    <th className="px-4 py-3">Preferred Due Date</th>
+                    <th className="px-4 py-3">Notes</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {loanRequests.map((req) => (
+                    <tr key={req.id}>
+                      <td className="px-4 py-3 font-medium">{req.book_title}</td>
+                      <td className="px-4 py-3">{req.student_name}</td>
+                      <td className="px-4 py-3">{formatDate(req.requested_at)}</td>
+                      <td className="px-4 py-3">{req.requested_due_date ? formatDate(req.requested_due_date) : "-"}</td>
+                      <td className="px-4 py-3 max-w-xs whitespace-pre-wrap">{req.notes || "-"}</td>
+                      <td className="px-4 py-3 space-x-2">
+                        <button onClick={() => handleReviewRequest(req.id, "approve")} className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700">
+                          Approve
+                        </button>
+                        <button onClick={() => handleReviewRequest(req.id, "reject")} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">
+                          Reject
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {loanRequests.length === 0 && <p className="text-center py-8 text-gray-500">No pending requests.</p>}
             </div>
           )}
         </div>

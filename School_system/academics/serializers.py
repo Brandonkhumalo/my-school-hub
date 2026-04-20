@@ -1499,7 +1499,7 @@ class AssessmentPlanSerializer(serializers.ModelSerializer):
     effective_papers = serializers.SerializerMethodField(read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
     grade_levels = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
+        child=serializers.IntegerField(min_value=-1),
         required=False,
         allow_empty=True,
     )

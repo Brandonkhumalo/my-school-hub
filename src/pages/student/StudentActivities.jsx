@@ -27,6 +27,7 @@ export default function StudentActivities() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("activities");
   const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [showSportsOnly, setShowSportsOnly] = useState(true);
 
   useEffect(() => {
     loadAll();
@@ -68,6 +69,9 @@ export default function StudentActivities() {
 
   const awards = accoladesData?.awards || [];
   const totalPoints = accoladesData?.total_points || 0;
+  const visibleActivities = showSportsOnly
+    ? allActivities.filter((a) => a.activity_type === "sport")
+    : allActivities;
 
   const myRank = leaderboard.find(
     (e) => e.total_points === totalPoints && awards.length > 0
@@ -75,7 +79,7 @@ export default function StudentActivities() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">My Activities & Accolades</h1>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Sports Sign-up, Activities & Accolades</h1>
 
       {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
 
@@ -120,9 +124,17 @@ export default function StudentActivities() {
             <>
               {allActivities.length > 0 && (
                 <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Available Activities</h3>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h3 className="text-lg font-semibold text-gray-800">Available Activities</h3>
+                    <button
+                      onClick={() => setShowSportsOnly((prev) => !prev)}
+                      className="text-xs px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50"
+                    >
+                      {showSportsOnly ? "Show All" : "Sports Only"}
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {allActivities.map((activity) => {
+                    {visibleActivities.map((activity) => {
                       const enrollment = activity.my_enrollment || null;
                       const status = enrollment?.status || null;
                       const isPending = status === "pending";
@@ -152,7 +164,9 @@ export default function StudentActivities() {
                             {actionLoadingId === activity.id
                               ? "Submitting..."
                               : canRequest
-                              ? "Request Enrollment"
+                              ? activity.activity_type === "sport"
+                                ? "Sign Up for Sport"
+                                : "Request Enrollment"
                               : isApproved
                               ? "Already Enrolled"
                               : "Not Available"}
@@ -161,6 +175,11 @@ export default function StudentActivities() {
                       );
                     })}
                   </div>
+                  {visibleActivities.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-3">
+                      No {showSportsOnly ? "sports" : "activities"} available right now.
+                    </p>
+                  )}
                 </div>
               )}
 

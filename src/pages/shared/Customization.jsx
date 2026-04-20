@@ -30,6 +30,7 @@ function Customization() {
   const [primaryColor, setPrimaryColor] = useState('#2563eb');
   const [secondaryColor, setSecondaryColor] = useState('#dbeafe');
   const [fontFamily, setFontFamily] = useState('sans');
+  const [schoolName, setSchoolName] = useState('');
   const [schoolMotto, setSchoolMotto] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [currentLogoUrl, setCurrentLogoUrl] = useState('');
@@ -44,6 +45,7 @@ function Customization() {
       if (data.primary_color) setPrimaryColor(data.primary_color);
       if (data.secondary_color) setSecondaryColor(data.secondary_color);
       if (data.font_family) setFontFamily(data.font_family);
+      if (data.school_name) setSchoolName(data.school_name);
       if (data.school_motto != null) setSchoolMotto(data.school_motto);
       if (data.welcome_message != null) setWelcomeMessage(data.welcome_message);
       if (data.logo_url) setCurrentLogoUrl(data.logo_url);
@@ -318,6 +320,16 @@ function Customization() {
         <div className="flex items-center space-x-3 text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-4">
           <MessageSquare className="w-6 h-6 text-[var(--accent)]" />
           <h2 className="text-lg font-semibold">School Identity</h2>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            School Name Preview
+          </label>
+          <div className="rounded-md border border-gray-200 dark:border-gray-600 px-3 py-2 bg-gray-50 dark:bg-gray-700/40">
+            <strong className="text-gray-900 dark:text-white">{schoolName || 'Your School Name'}</strong>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">School name is always rendered in bold.</p>
         </div>
 
         <div>

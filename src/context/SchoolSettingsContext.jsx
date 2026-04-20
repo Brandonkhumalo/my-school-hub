@@ -46,6 +46,7 @@ export function SchoolSettingsProvider({ children }) {
     term3Start: settings?.term_3_start || "",
     term3End: settings?.term_3_end || "",
     // Identity
+    schoolName: settings?.school_name || "",
     schoolMotto: settings?.school_motto || "",
     primaryColor: settings?.primary_color || "",
     secondaryColor: settings?.secondary_color || "",

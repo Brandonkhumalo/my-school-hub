@@ -26,8 +26,8 @@ export default function HRPayroll({ viewMode = "all" }) {
   const canAddExpense = Boolean(isAccountant || isRootHrHead);
   const canApproveExpense = Boolean(isAdmin);
   const canSignoffPayroll = Boolean(isAdmin);
-  // Accountants and HR head can submit payroll sign-off requests. Admin approves.
-  const canSubmitPayroll = Boolean(isAccountant || isRootHrHead);
+  // Accountants and all HR users can submit payroll sign-off requests. Admin approves.
+  const canSubmitPayroll = Boolean(isAccountant || user?.role === "hr");
   const showPayrollSection = viewMode !== "accounting";
   const showAccountingSection = viewMode !== "payroll";
   const pageTitle = viewMode === "payroll" ? "Payroll" : viewMode === "accounting" ? "Accounting" : "Payroll & Accounting";
