@@ -140,6 +140,13 @@ const ALL_MENU_ITEMS = {
       { path: "/my/leaves",          icon: "fa-calendar-minus", title: "My Leave" },
     ]},
   ],
+  sports_director: [
+    { section: "OVERVIEW", items: [
+      { path: "/sports-director", icon: "fa-home", title: "Dashboard" },
+      { path: "/sports-director/activities", icon: "fa-running", title: "Activity Management" },
+      { path: "/sports-director/analysis", icon: "fa-chart-bar", title: "Sports Analysis" },
+    ]},
+  ],
   hr: [
     { section: "OVERVIEW", items: [
       { path: "/hr", icon: "fa-home", title: "Dashboard" },
@@ -182,6 +189,7 @@ const ALL_MENU_ITEMS = {
       { path: "/hr/promotions",    icon: "fa-graduation-cap",    title: "Promotions" },
       { path: "/hr/suspensions",   icon: "fa-ban",               title: "Suspensions" },
       { path: "/hr/activities",    icon: "fa-running",           title: "Activities" },
+      { path: "/admin/sports-analysis", icon: "fa-chart-bar",    title: "Sports Analysis" },
       { path: "/hr/library",       icon: "fa-book-reader",       title: "Library" },
       { path: "/hr/health",        icon: "fa-heartbeat",         title: "Health Records" },
       { path: "/hr/complaints",    icon: "fa-exclamation-circle",title: "Complaints" },
@@ -210,6 +218,7 @@ const ROLE_COLORS = {
   security:  "bg-red-600",
   cleaner:   "bg-orange-500",
   hr:        "bg-rose-600",
+  sports_director: "bg-emerald-500",
 };
 
 const HR_PATH_TO_PERMISSION_KEY = {
@@ -241,6 +250,7 @@ const HR_PATH_TO_PERMISSION_KEY = {
   "/hr/promotions": "promotions",
   "/hr/suspensions": "suspensions",
   "/hr/activities": "activities",
+  "/admin/sports-analysis": "activities",
   "/hr/library": "library",
   "/hr/health": "health",
   "/hr/complaints": "complaints",

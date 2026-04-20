@@ -1,6 +1,7 @@
 import logging
 
-from django.db.models import Sum, Count
+from django.core.exceptions import ValidationError
+from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes
@@ -8,7 +9,8 @@ from rest_framework.response import Response
 
 from .models import (
     Activity, ActivityEnrollment, ActivityEvent,
-    Accolade, StudentAccolade, Student
+    Accolade, StudentAccolade, Student,
+    SportsHouse, MatchSquadEntry, TrainingAttendance, HousePointEntry
 )
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,12 @@ def serialize_activity(activity):
         'name': activity.name,
         'activity_type': activity.activity_type,
         'activity_type_display': activity.get_activity_type_display(),
+        'age_group': activity.age_group,
+        'age_group_display': activity.get_age_group_display(),
+        'gender_category': activity.gender_category,
+        'gender_category_display': activity.get_gender_category_display(),
+        'level': activity.level,
+        'level_display': activity.get_level_display(),
         'description': activity.description,
         'coach': activity.coach_id,
         'coach_name': activity.coach.full_name if activity.coach else None,
@@ -31,7 +39,7 @@ def serialize_activity(activity):
         'location': activity.location,
         'max_participants': activity.max_participants,
         'is_active': activity.is_active,
-        'enrolled_count': activity.enrollments.filter(is_active=True).count(),
+        'enrolled_count': activity.enrollments.filter(is_active=True, is_suspended=False).count(),
         'date_created': activity.date_created.isoformat(),
     }
 
@@ -56,7 +64,30 @@ def serialize_enrollment(enrollment):
         'review_note': enrollment.review_note,
         'date_joined': str(enrollment.date_joined),
         'is_active': enrollment.is_active,
+        'is_suspended': enrollment.is_suspended,
+        'suspension_reason': enrollment.suspension_reason,
+        'is_injured': enrollment.is_injured,
+        'injury_cleared_date': enrollment.injury_cleared_date.isoformat() if enrollment.injury_cleared_date else None,
+        'injury_notes': enrollment.injury_notes,
+        'is_age_eligible': (
+            enrollment.student.date_of_birth is None or
+            enrollment.activity.age_group in ['open', 'first_team'] or
+            _check_age_eligibility(enrollment.student.date_of_birth, enrollment.activity.age_group)
+        ),
     }
+
+
+def _check_age_eligibility(date_of_birth, age_group):
+    import datetime
+    if not date_of_birth or not age_group or age_group in ['open', 'first_team']:
+        return True
+    try:
+        max_age = int(age_group[1:])
+    except ValueError:
+        return True
+    today = timezone.now().date()
+    age = today.year - date_of_birth.year - ((today.month, today.day) < (date_of_birth.month, date_of_birth.day))
+    return age <= max_age
 
 
 def serialize_event(event):
@@ -70,7 +101,16 @@ def serialize_event(event):
         'event_type_display': event.get_event_type_display(),
         'event_date': event.event_date.isoformat(),
         'location': event.location,
+        'venue': event.venue,
         'opponent': event.opponent,
+        'opponent_school': event.opponent_school,
+        'is_home': event.is_home,
+        'transport_required': event.transport_required,
+        'status': event.status,
+        'status_display': event.get_status_display(),
+        'our_score': event.our_score,
+        'opponent_score': event.opponent_score,
+        'match_result': event.match_result,
         'result': event.result,
         'notes': event.notes,
     }
@@ -144,18 +184,22 @@ def activity_list_create(request):
 
         return Response(payload)
 
-    # POST — admin only
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can create activities'}, status=status.HTTP_403_FORBIDDEN)
+    # POST
+    if request.user.role not in ('admin', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only admins, HR or Sports Directors can create activities'}, status=status.HTTP_403_FORBIDDEN)
 
     data = request.data
     try:
         activity = Activity.objects.create(
             name=data['name'],
             activity_type=data.get('activity_type', 'sport'),
+            age_group=data.get('age_group', 'open'),
+            gender_category=data.get('gender_category', 'mixed'),
+            level=data.get('level', 'social'),
             description=data.get('description', ''),
             school=school,
             coach_id=data.get('coach') or None,
+            assistant_coach_id=data.get('assistant_coach') or None,
             schedule_day=data.get('schedule_day', ''),
             schedule_time=data.get('schedule_time') or None,
             location=data.get('location', ''),
@@ -173,9 +217,9 @@ def activity_list_create(request):
 @api_view(['PUT', 'DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def activity_detail(request, activity_id):
-    """PUT: update activity. DELETE: delete activity. Admin only."""
-    if request.user.role != 'admin':
-        return Response({'error': 'Only admins can modify activities'}, status=status.HTTP_403_FORBIDDEN)
+    """PUT: update activity. DELETE: delete activity."""
+    if request.user.role not in ('admin', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only admins, HR or Sports Directors can modify activities'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         activity = Activity.objects.select_related('coach').get(id=activity_id, school=request.user.school)
@@ -190,8 +234,12 @@ def activity_detail(request, activity_id):
     data = request.data
     activity.name = data.get('name', activity.name)
     activity.activity_type = data.get('activity_type', activity.activity_type)
+    activity.age_group = data.get('age_group', activity.age_group)
+    activity.gender_category = data.get('gender_category', activity.gender_category)
+    activity.level = data.get('level', activity.level)
     activity.description = data.get('description', activity.description)
     activity.coach_id = data.get('coach') or activity.coach_id
+    activity.assistant_coach_id = data.get('assistant_coach') or activity.assistant_coach_id
     activity.schedule_day = data.get('schedule_day', activity.schedule_day)
     activity.schedule_time = data.get('schedule_time') or activity.schedule_time
     activity.location = data.get('location', activity.location)
@@ -227,7 +275,7 @@ def enroll_student(request, activity_id):
         return Response({'error': 'Activity not found'}, status=status.HTTP_404_NOT_FOUND)
 
     user_role = request.user.role
-    is_management_actor = user_role in ('admin', 'hr', 'teacher')
+    is_management_actor = user_role in ('admin', 'hr', 'teacher', 'sports_director', 'superadmin')
     is_student_actor = user_role == 'student'
     if not is_management_actor and not is_student_actor:
         return Response({'error': 'Only admin/hr/teacher/students can enrol in activities'}, status=status.HTTP_403_FORBIDDEN)
@@ -312,8 +360,8 @@ def enroll_student(request, activity_id):
 @permission_classes([permissions.IsAuthenticated])
 def unenroll_student(request, activity_id, student_id):
     """Remove a student from an activity."""
-    if request.user.role not in ('admin', 'hr', 'teacher'):
-        return Response({'error': 'Only admins/HR/coaches can remove students'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'hr', 'teacher', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only admins/HR/coaches/sports directors can remove students'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
         enrollment = ActivityEnrollment.objects.get(
@@ -331,9 +379,9 @@ def unenroll_student(request, activity_id, student_id):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def review_activity_enrollment(request, activity_id, enrollment_id):
-    """Approve or decline an activity enrollment request. HR/admin only."""
-    if request.user.role not in ('admin', 'hr'):
-        return Response({'error': 'Only admin/HR can review enrollment requests'}, status=status.HTTP_403_FORBIDDEN)
+    """Approve or decline an activity enrollment request."""
+    if request.user.role not in ('admin', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only admin/HR/sports directors can review enrollment requests'}, status=status.HTTP_403_FORBIDDEN)
 
     decision = (request.data.get('decision') or '').strip().lower()
     review_note = (request.data.get('review_note') or '').strip()
@@ -387,18 +435,26 @@ def activity_events(request, activity_id):
         return Response([serialize_event(e) for e in events])
 
     # POST
-    if request.user.role not in ('admin', 'teacher'):
-        return Response({'error': 'Only admins or coaches can create events'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'teacher', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only authorized staff can create events'}, status=status.HTTP_403_FORBIDDEN)
 
     data = request.data
     try:
         event = ActivityEvent.objects.create(
             activity=activity,
             title=data['title'],
-            event_type=data.get('event_type', 'practice'),
+            event_type=data.get('event_type', 'training'),
             event_date=data['event_date'],
             location=data.get('location', ''),
+            venue=data.get('venue', ''),
             opponent=data.get('opponent', ''),
+            opponent_school=data.get('opponent_school', ''),
+            is_home=data.get('is_home', True),
+            transport_required=data.get('transport_required', False),
+            status=data.get('status', 'scheduled'),
+            our_score=data.get('our_score', ''),
+            opponent_score=data.get('opponent_score', ''),
+            match_result=data.get('match_result', 'na'),
             result=data.get('result', ''),
             notes=data.get('notes', ''),
         )
@@ -408,6 +464,145 @@ def activity_events(request, activity_id):
     except Exception as e:
         logger.exception("Error creating activity event")
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def sports_houses(request):
+    """List and create sports houses."""
+    school = request.user.school
+    if request.method == 'GET':
+        houses = SportsHouse.objects.filter(school=school).select_related('captain')
+        return Response([{
+            'id': house.id,
+            'name': house.name,
+            'color': house.color,
+            'captain': house.captain_id,
+            'captain_name': house.captain.user.full_name if house.captain else None,
+        } for house in houses])
+
+    if request.user.role not in ('admin', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only admin, HR, or sports directors can create houses'}, status=status.HTTP_403_FORBIDDEN)
+
+    data = request.data
+    try:
+        house = SportsHouse.objects.create(
+            school=school,
+            name=data['name'],
+            color=data.get('color', '#2563eb'),
+            captain_id=data.get('captain') or None,
+        )
+        return Response({
+            'id': house.id,
+            'name': house.name,
+            'color': house.color,
+            'captain': house.captain_id,
+            'captain_name': house.captain.user.full_name if house.captain else None,
+        }, status=status.HTTP_201_CREATED)
+    except KeyError as e:
+        return Response({'error': f'Missing required field: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception('Error creating sports house')
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def event_squad(request, event_id):
+    try:
+        event = ActivityEvent.objects.get(id=event_id, activity__school=request.user.school)
+    except ActivityEvent.DoesNotExist:
+        return Response({'error': 'Event not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        squad = MatchSquadEntry.objects.filter(event=event).select_related('student__user')
+        return Response([{
+            'id': entry.id,
+            'student_id': entry.student_id,
+            'student_name': entry.student.user.full_name,
+            'is_captain': entry.is_captain,
+            'jersey_number': entry.jersey_number,
+            'played': entry.played,
+        } for entry in squad])
+
+    if request.user.role not in ('admin', 'hr', 'teacher', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only authorized staff can update squads'}, status=status.HTTP_403_FORBIDDEN)
+
+    squad_data = request.data.get('squad', [])
+    if not isinstance(squad_data, list):
+        return Response({'error': 'squad must be an array'}, status=status.HTTP_400_BAD_REQUEST)
+
+    updated = []
+    for item in squad_data:
+        student_id = item.get('student_id')
+        if not student_id:
+            continue
+        entry, _ = MatchSquadEntry.objects.update_or_create(
+            event=event,
+            student_id=student_id,
+            defaults={
+                'is_captain': bool(item.get('is_captain', False)),
+                'jersey_number': item.get('jersey_number'),
+                'played': bool(item.get('played', True)),
+            }
+        )
+        updated.append({
+            'id': entry.id,
+            'student_id': entry.student_id,
+            'student_name': entry.student.user.full_name,
+            'is_captain': entry.is_captain,
+            'jersey_number': entry.jersey_number,
+            'played': entry.played,
+        })
+
+    return Response(updated)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def event_training_attendance(request, event_id):
+    try:
+        event = ActivityEvent.objects.get(id=event_id, activity__school=request.user.school)
+    except ActivityEvent.DoesNotExist:
+        return Response({'error': 'Event not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        attendance = TrainingAttendance.objects.filter(event=event).select_related('student__user')
+        return Response([{
+            'id': entry.id,
+            'student_id': entry.student_id,
+            'student_name': entry.student.user.full_name,
+            'present': entry.present,
+            'notes': entry.notes,
+        } for entry in attendance])
+
+    if request.user.role not in ('admin', 'hr', 'teacher', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only authorized staff can log training attendance'}, status=status.HTTP_403_FORBIDDEN)
+
+    attendance_data = request.data.get('attendance', [])
+    if not isinstance(attendance_data, list):
+        return Response({'error': 'attendance must be an array'}, status=status.HTTP_400_BAD_REQUEST)
+
+    created = []
+    for item in attendance_data:
+        student_id = item.get('student_id')
+        if not student_id:
+            continue
+        entry = TrainingAttendance.objects.create(
+            event=event,
+            student_id=student_id,
+            present=bool(item.get('present', True)),
+            notes=item.get('notes', ''),
+        )
+        created.append({
+            'id': entry.id,
+            'student_id': entry.student_id,
+            'student_name': entry.student.user.full_name,
+            'present': entry.present,
+            'notes': entry.notes,
+        })
+
+    return Response(created)
 
 
 # ── Student's own activities ─────────────────────────────────────────────────
@@ -561,3 +756,153 @@ def accolade_leaderboard(request):
         })
 
     return Response(results)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def suspend_student_activity(request, activity_id, student_id):
+    """Suspend a student from an activity."""
+    if request.user.role not in ('admin', 'hr', 'teacher', 'sports_director', 'superadmin'):
+        return Response({'error': 'Only authorized staff can suspend students'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        enrollment = ActivityEnrollment.objects.get(
+            activity_id=activity_id,
+            student_id=student_id,
+            activity__school=request.user.school,
+        )
+    except ActivityEnrollment.DoesNotExist:
+        return Response({'error': 'Enrollment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    reason = request.data.get('reason', '')
+    is_suspended = request.data.get('is_suspended', True)
+
+    enrollment.is_suspended = is_suspended
+    enrollment.suspension_reason = reason if is_suspended else ''
+    enrollment.save(update_fields=['is_suspended', 'suspension_reason'])
+
+    return Response(serialize_enrollment(enrollment))
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def sports_analytics(request):
+    """Get analytics for sports and activities."""
+    if request.user.role not in ('admin', 'hr', 'sports_director', 'superadmin'):
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    activities = Activity.objects.filter(school=school)
+
+    total_activities = activities.count()
+    enrollment_qs = ActivityEnrollment.objects.filter(activity__school=school, status='approved', is_active=True, is_suspended=False)
+    total_enrollments = enrollment_qs.count()
+    unique_students = enrollment_qs.values('student_id').distinct().count()
+
+    events = ActivityEvent.objects.filter(activity__school=school)
+    total_matches = events.filter(event_type__in=('match', 'competition', 'tournament', 'inter_house'), match_result__in=('win', 'loss', 'draw')).count()
+    total_wins = events.filter(match_result='win').count()
+    total_losses = events.filter(match_result='loss').count()
+    total_draws = events.filter(match_result='draw').count()
+
+    upcoming_events = events.filter(event_date__gte=timezone.now()).order_by('event_date')[:5]
+
+    house_leaderboard_qs = HousePointEntry.objects.filter(house__school=school).values(
+        'house__id', 'house__name', 'house__color'
+    ).annotate(
+        total_points=Sum('points'),
+        awards=Count('id'),
+    ).order_by('-total_points')
+
+    top_athlete_commitments_qs = (
+        enrollment_qs
+        .values('student__id', 'student__user__first_name', 'student__user__last_name', 'student__student_class__name')
+        .annotate(activity_count=Count('activity', distinct=True))
+        .filter(activity_count__gte=3)
+        .order_by('-activity_count')[:20]
+    )
+
+    age_group_records = events.filter(match_result__in=('win', 'loss', 'draw')).values(
+        'activity__age_group'
+    ).annotate(
+        total=Count('id'),
+        wins=Count('id', filter=Q(match_result='win')),
+        losses=Count('id', filter=Q(match_result='loss')),
+        draws=Count('id', filter=Q(match_result='draw')),
+    )
+
+    activity_type_records = events.filter(match_result__in=('win', 'loss', 'draw')).values(
+        'activity__activity_type'
+    ).annotate(
+        total=Count('id'),
+        wins=Count('id', filter=Q(match_result='win')),
+        losses=Count('id', filter=Q(match_result='loss')),
+        draws=Count('id', filter=Q(match_result='draw')),
+    )
+
+    overage_enrollees = []
+    for enrollment in ActivityEnrollment.objects.filter(activity__school=school, status='approved', is_active=True).select_related('student', 'activity'):
+        if enrollment.student.date_of_birth and enrollment.activity.age_group not in ['open', 'first_team']:
+            if not _check_age_eligibility(enrollment.student.date_of_birth, enrollment.activity.age_group):
+                overage_enrollees.append({
+                    'student_id': enrollment.student.id,
+                    'student_name': enrollment.student.user.full_name,
+                    'activity': enrollment.activity.name,
+                    'age_group': enrollment.activity.age_group,
+                    'class_name': enrollment.student.student_class.name if enrollment.student.student_class else None,
+                })
+
+    def format_agg(record, field_name, group_label):
+        total = record['total'] or 0
+        return {
+            group_label: record[field_name],
+            'total': total,
+            'wins': record['wins'],
+            'losses': record['losses'],
+            'draws': record['draws'],
+            'win_rate': round(record['wins'] / total * 100, 1) if total else 0,
+        }
+
+    return Response({
+        'overview': {
+            'total_activities': total_activities,
+            'total_active_participants': unique_students,
+            'total_enrollments': total_enrollments,
+        },
+        'matches': {
+            'total_played': total_matches,
+            'wins': total_wins,
+            'losses': total_losses,
+            'draws': total_draws,
+            'win_ratio': round((total_wins / total_matches * 100), 1) if total_matches else 0,
+        },
+        'house_points': [
+            {
+                'house_id': rec['house__id'],
+                'house_name': rec['house__name'],
+                'house_color': rec['house__color'],
+                'total_points': rec['total_points'] or 0,
+                'awards': rec['awards'],
+            }
+            for rec in house_leaderboard_qs
+        ],
+        'top_commitments': [
+            {
+                'student_id': rec['student__id'],
+                'student_name': f"{rec['student__user__first_name']} {rec['student__user__last_name']}",
+                'class_name': rec['student__student_class__name'],
+                'activity_count': rec['activity_count'],
+            }
+            for rec in top_athlete_commitments_qs
+        ],
+        'win_rate_by_age_group': [
+            format_agg(rec, 'activity__age_group', 'age_group')
+            for rec in age_group_records
+        ],
+        'win_rate_by_activity_type': [
+            format_agg(rec, 'activity__activity_type', 'activity_type')
+            for rec in activity_type_records
+        ],
+        'overage_enrollees': overage_enrollees,
+        'upcoming_events': [serialize_event(e) for e in upcoming_events],
+    })

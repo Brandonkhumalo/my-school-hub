@@ -62,6 +62,16 @@ class Class(models.Model):
         return f"{self.name} - {self.academic_year}"
 
 
+class SportsHouse(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=7, default="#2563eb")
+    captain = models.ForeignKey('Student', null=True, blank=True, on_delete=models.SET_NULL, related_name='house_captaincy')
+
+    def __str__(self):
+        return f"{self.name} House"
+
+
 class Student(models.Model):
     RESIDENCE_TYPE_CHOICES = [
         ('day', 'Day Scholar'),
@@ -77,6 +87,7 @@ class Student(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, blank=True)
     emergency_contact = models.CharField(max_length=20, blank=True)
+    house = models.ForeignKey(SportsHouse, null=True, blank=True, on_delete=models.SET_NULL, related_name='students')
 
     class Meta:
         ordering = ['-id']
@@ -670,6 +681,7 @@ class ReportCardApprovalRequest(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_report_approval_requests')
     admin_note = models.TextField(blank=True)
+    teacher_comment = models.TextField(blank=True, help_text='Class teacher remark for the report card')
 
     class Meta:
         unique_together = ('school', 'class_obj', 'academic_year', 'academic_term')
@@ -914,11 +926,37 @@ class Activity(models.Model):
         ('society', 'Society'),
         ('arts', 'Arts'),
     ]
+    AGE_GROUP_CHOICES = [
+        ('u13', 'Under 13'),
+        ('u14', 'Under 14'),
+        ('u15', 'Under 15'),
+        ('u16', 'Under 16'),
+        ('u17', 'Under 17'),
+        ('u18', 'Under 18'),
+        ('u19', 'Under 19'),
+        ('u20', 'Under 20'),
+        ('first_team', 'First Team'),
+        ('open', 'Open'),
+    ]
+    GENDER_CHOICES = [
+        ('boys', 'Boys'),
+        ('girls', 'Girls'),
+        ('mixed', 'Mixed'),
+    ]
+    LEVEL_CHOICES = [
+        ('inter_house', 'Inter-House'),
+        ('inter_school', 'Inter-School'),
+        ('social', 'Social/Recreational'),
+    ]
     name = models.CharField(max_length=100)
     activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    age_group = models.CharField(max_length=20, choices=AGE_GROUP_CHOICES, default='open')
+    gender_category = models.CharField(max_length=20, choices=GENDER_CHOICES, default='mixed')
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='social')
     description = models.TextField(blank=True)
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='activities')
     coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='coached_activities')
+    assistant_coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assistant_coached_activities')
     schedule_day = models.CharField(max_length=20, blank=True)
     schedule_time = models.TimeField(null=True, blank=True)
     location = models.CharField(max_length=200, blank=True)
@@ -967,6 +1005,11 @@ class ActivityEnrollment(models.Model):
     review_note = models.TextField(blank=True)
     date_joined = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.TextField(blank=True)
+    is_injured = models.BooleanField(default=False)
+    injury_cleared_date = models.DateField(null=True, blank=True)
+    injury_notes = models.TextField(blank=True)
 
     class Meta:
         unique_together = ('student', 'activity')
@@ -985,10 +1028,18 @@ class ActivityEvent(models.Model):
     ]
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='events')
     title = models.CharField(max_length=200)
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    event_type = models.CharField(max_length=20, choices=[('training', 'Training'), ('match', 'Match'), ('tournament', 'Tournament'), ('inter_house', 'Inter-House')], default='training')
     event_date = models.DateTimeField()
     location = models.CharField(max_length=200, blank=True)
+    venue = models.CharField(max_length=255, blank=True)
     opponent = models.CharField(max_length=200, blank=True)
+    opponent_school = models.CharField(max_length=255, blank=True)
+    is_home = models.BooleanField(default=True)
+    transport_required = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=[('scheduled', 'Scheduled'), ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('postponed', 'Postponed')], default='scheduled')
+    our_score = models.CharField(max_length=50, blank=True, help_text="e.g. 2, 14, 120/4")
+    opponent_score = models.CharField(max_length=50, blank=True, help_text="e.g. 1, 10, 110/10")
+    match_result = models.CharField(max_length=20, choices=[('win', 'Win'), ('loss', 'Loss'), ('draw', 'Draw'), ('na', 'N/A')], default='na')
     result = models.CharField(max_length=100, blank=True)
     notes = models.TextField(blank=True)
     date_created = models.DateTimeField(auto_now_add=True)
@@ -998,6 +1049,27 @@ class ActivityEvent(models.Model):
 
     def __str__(self):
         return f"{self.activity.name} - {self.title} ({self.event_date.strftime('%Y-%m-%d')})"
+
+class MatchSquadEntry(models.Model):
+    event = models.ForeignKey(ActivityEvent, on_delete=models.CASCADE, related_name='squad')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    is_captain = models.BooleanField(default=False)
+    jersey_number = models.IntegerField(null=True, blank=True)
+    played = models.BooleanField(default=True)
+
+class TrainingAttendance(models.Model):
+    event = models.ForeignKey(ActivityEvent, on_delete=models.CASCADE, related_name='attendance_records')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    present = models.BooleanField(default=True)
+    notes = models.CharField(max_length=255, blank=True)
+
+class HousePointEntry(models.Model):
+    house = models.ForeignKey(SportsHouse, on_delete=models.CASCADE, related_name='points')
+    activity_event = models.ForeignKey(ActivityEvent, null=True, blank=True, on_delete=models.SET_NULL)
+    points = models.IntegerField()
+    reason = models.CharField(max_length=255)
+    awarded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    date = models.DateField(auto_now_add=True)
 
 
 class Accolade(models.Model):

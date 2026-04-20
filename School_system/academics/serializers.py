@@ -6,7 +6,7 @@ from .models import (
     Homework, AssignmentSubmission, DietaryFlag, Dormitory, DormAssignment, MealMenu, MealAttendance,
     DormRollCall, LightsOutRecord, ExeatRequest, ExeatMovementLog, MedicationSchedule, TuckWallet,
     TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn,
-    AssessmentPlan,
+    AssessmentPlan, Activity, ActivityEnrollment, ActivityEvent,
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
@@ -62,12 +62,14 @@ class StudentSerializer(serializers.ModelSerializer):
     parent_phone = serializers.SerializerMethodField()
     parent_email = serializers.SerializerMethodField()
 
+    house_name = serializers.CharField(source='house.name', required=False, allow_null=True)
+
     class Meta:
         model = Student
         fields = [
             'id', 'user', 'student_class', 'class_name', 'residence_type', 'admission_date', 
             'parent_contact', 'address', 'parent_names', 'date_of_birth', 
-            'gender', 'emergency_contact', 'parent_phone', 'parent_email'
+            'gender', 'emergency_contact', 'parent_phone', 'parent_email', 'house', 'house_name'
         ]
 
     def get_parent_names(self, obj):
@@ -282,6 +284,90 @@ class SuspensionSerializer(serializers.ModelSerializer):
             'teacher_name', 'reason', 'start_date', 'end_date',
             'is_active', 'date_created'
         ]
+
+class SportsHouseSerializer(serializers.ModelSerializer):
+    captain_name = serializers.CharField(source='captain.user.full_name', read_only=True)
+
+    class Meta:
+        model = SportsHouse
+        fields = ['id', 'school', 'name', 'color', 'captain', 'captain_name']
+class ActivitySerializer(serializers.ModelSerializer):
+    coach_name = serializers.CharField(source='coach.full_name', read_only=True)
+    assistant_coach_name = serializers.CharField(source='assistant_coach.full_name', read_only=True)
+
+    class Meta:
+        model = Activity
+        fields = [
+            'id', 'name', 'activity_type', 'age_group', 'gender_category', 
+            'level', 'description', 'coach', 'coach_name', 'assistant_coach', 'assistant_coach_name', 'schedule_day', 
+            'schedule_time', 'location', 'max_participants', 'is_active', 
+            'date_created'
+        ]
+
+
+class ActivityEnrollmentSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+    student_number = serializers.CharField(source='student.user.student_number', read_only=True)
+    activity_name = serializers.CharField(source='activity.name', read_only=True)
+    is_age_eligible = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityEnrollment
+        fields = [
+            'id', 'student', 'student_name', 'student_number', 'activity', 
+            'activity_name', 'role', 'status', 'is_active', 'is_suspended', 
+            'suspension_reason', 'is_injured', 'injury_cleared_date', 'injury_notes', 'date_joined', 'is_age_eligible'
+        ]
+
+    def get_is_age_eligible(self, obj):
+        if not obj.student.date_of_birth or not obj.activity.age_group or obj.activity.age_group in ['open', 'first_team']:
+            return True
+        import datetime
+        current_year = datetime.date.today().year
+        age = current_year - obj.student.date_of_birth.year
+        age_group = obj.activity.age_group
+        if age_group.startswith('u'):
+            try:
+                max_age = int(age_group[1:])
+                return age <= max_age
+            except ValueError:
+                return True
+        return True
+
+
+class ActivityEventSerializer(serializers.ModelSerializer):
+    activity_name = serializers.CharField(source='activity.name', read_only=True)
+
+    class Meta:
+        model = ActivityEvent
+        fields = [
+            'id', 'activity', 'activity_name', 'title', 'event_type', 
+            'event_date', 'location', 'venue', 'opponent', 'opponent_school', 'is_home', 
+            'transport_required', 'status', 'our_score', 
+            'opponent_score', 'match_result', 'result', 'notes', 'date_created'
+        ]
+
+class MatchSquadEntrySerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = MatchSquadEntry
+        fields = ['id', 'event', 'student', 'student_name', 'is_captain', 'jersey_number', 'played']
+
+class TrainingAttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.user.full_name', read_only=True)
+
+    class Meta:
+        model = TrainingAttendance
+        fields = ['id', 'event', 'student', 'student_name', 'present', 'notes']
+
+class HousePointEntrySerializer(serializers.ModelSerializer):
+    house_name = serializers.CharField(source='house.name', read_only=True)
+    awarded_by_name = serializers.CharField(source='awarded_by.full_name', read_only=True)
+
+    class Meta:
+        model = HousePointEntry
+        fields = ['id', 'house', 'house_name', 'activity_event', 'points', 'reason', 'awarded_by', 'awarded_by_name', 'date']
 
 
 class StudentPerformanceSerializer(serializers.Serializer):

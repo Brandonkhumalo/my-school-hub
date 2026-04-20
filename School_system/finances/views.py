@@ -105,10 +105,26 @@ def _current_term_window(user):
             start = settings.term_3_start or settings.term_start_date
             end = settings.term_3_end or settings.term_end_date
 
+    try:
+        year_int = int(year)
+    except (TypeError, ValueError):
+        year_int = today.year
+
+    # Fallback to sensible calendar term windows when dates are not configured.
+    if term_key == 'term_1':
+        default_start = date(year_int, 1, 1)
+        default_end = date(year_int, 4, 30)
+    elif term_key == 'term_2':
+        default_start = date(year_int, 5, 1)
+        default_end = date(year_int, 8, 31)
+    else:
+        default_start = date(year_int, 9, 1)
+        default_end = date(year_int, 12, 31)
+
     if not start:
-        start = date(today.year, today.month, 1)
+        start = default_start
     if not end:
-        end = today
+        end = default_end
 
     term_labels = {term_key, term_key.replace('_', ' ').title()}
     if term_key == 'term_1':
@@ -485,9 +501,10 @@ class SchoolExpenseListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user.role not in ['accountant', 'admin', 'superadmin']:
+        is_root_hr_head = bool(getattr(self.request, 'is_root_hr_boss', False))
+        if user.role not in ['accountant', 'admin', 'superadmin'] and not is_root_hr_head:
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only accountant or HR head/admin can add school expenses.')
+            raise PermissionDenied('Only accountant, root HR head, or admin can add school expenses.')
         expense = serializer.save(
             school=user.school,
             created_by=user,
@@ -556,19 +573,25 @@ def finance_summary_view(request):
         year=year,
     ).aggregate(total=Sum('net_salary'))['total'] or Decimal('0')
 
+    term_revenue_transactions = PaymentTransaction.objects.filter(
+        payment_record__school=school,
+        payment_date__date__gte=term_start,
+        payment_date__date__lte=term_end,
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
     term_revenue_records = StudentPaymentRecord.objects.filter(
         school=school,
         academic_year=current_year,
         academic_term__in=term_labels,
     ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+
     term_revenue_invoices = Invoice.objects.filter(
         student__user__school=school,
         is_paid=True,
-    ).filter(
-        Q(payment_record__academic_year=current_year, payment_record__academic_term__in=term_labels) |
-        Q(payment_record__isnull=True, issue_date__gte=term_start, issue_date__lte=term_end)
+        issue_date__gte=term_start,
+        issue_date__lte=term_end,
     ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
-    term_revenue = max(term_revenue_records, term_revenue_invoices)
+    term_revenue = max(term_revenue_transactions, term_revenue_records, term_revenue_invoices)
 
     term_payroll_total = Decimal('0')
     payroll_rows = Payroll.objects.filter(

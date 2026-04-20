@@ -47,6 +47,8 @@ const SUBJECT_GROUP_OPTIONS = [
   { value: "elective", label: "Electives" },
   { value: "other", label: "Other" },
 ];
+const DEFAULT_TEACHER_COMMENT =
+  "when the teacher adds report feedback thats what must be there";
 
 const SECTION_LABELS = {
   templates: { title: "Templates", icon: "fa-layer-group", color: "indigo" },
@@ -112,7 +114,7 @@ const DEFAULT_CONFIG_SECTIONS = {
   },
   content: {
     principal_name: "", principal_title: "Head of School",
-    teacher_comments_default: "", principal_comments_default: "",
+    teacher_comments_default: DEFAULT_TEACHER_COMMENT, principal_comments_default: "",
     comment_char_limit: 250, show_next_term_dates: true, custom_footer_text: "",
   },
   grading: {
@@ -175,9 +177,27 @@ export default function AdminReportConfig() {
     loadSubjectGroups();
   }, []);
 
+  useEffect(() => {
+    if (!genYear && currentAcademicYear) setGenYear(String(currentAcademicYear));
+    if (!genTerm && currentTerm) setGenTerm(String(currentTerm));
+  }, [currentAcademicYear, currentTerm, genYear, genTerm]);
+
   const loadConfig = async () => {
     try {
-      setConfig(await apiService.getReportCardConfig());
+      const data = await apiService.getReportCardConfig();
+      setConfig({
+        ...DEFAULT_CONFIG_SECTIONS.branding,
+        ...DEFAULT_CONFIG_SECTIONS.typography,
+        ...DEFAULT_CONFIG_SECTIONS.layout,
+        ...DEFAULT_CONFIG_SECTIONS.data,
+        ...DEFAULT_CONFIG_SECTIONS.content,
+        ...DEFAULT_CONFIG_SECTIONS.grading,
+        ...DEFAULT_CONFIG_SECTIONS.extras,
+        ...(data || {}),
+        teacher_comments_default: (data?.teacher_comments_default || "").trim()
+          ? data.teacher_comments_default
+          : DEFAULT_TEACHER_COMMENT,
+      });
     } catch {
       setMessage({ type: "error", text: "Failed to load report card configuration" });
     } finally {
@@ -248,6 +268,9 @@ export default function AdminReportConfig() {
         logo: _d, stamp_image: _e, banner_image: _f,
         ...data
       } = config;
+      if (!data.teacher_comments_default || !String(data.teacher_comments_default).trim()) {
+        data.teacher_comments_default = DEFAULT_TEACHER_COMMENT;
+      }
       await apiService.updateReportCardConfig(data);
       setMessage({ type: "success", text: "Report card settings saved!" });
     } catch (err) {
@@ -924,8 +947,8 @@ function Toggle({ label, checked, onChange }) {
   return (
     <label className="flex items-center justify-between py-2 cursor-pointer group">
       <span className="text-sm text-gray-700 group-hover:text-gray-900">{label}</span>
-      <div className={`relative w-10 h-5 rounded-full transition-colors ${checked ? "bg-blue-500" : "bg-gray-300"}`}
-        onClick={onChange}>
+      <input type="checkbox" className="sr-only" checked={!!checked} onChange={onChange} />
+      <div className={`relative w-10 h-5 rounded-full transition-colors ${checked ? "bg-blue-500" : "bg-gray-300"}`}>
         <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-5" : ""}`}></div>
       </div>
     </label>
@@ -1225,8 +1248,17 @@ function ReportPreview({ config, previewStudent, term, year }) {
       <div className="flex justify-between items-end mt-3 pt-2 relative z-10 gap-2">
         <div className="text-center flex-1">
           <div className="border-b border-gray-400 w-24 mx-auto mb-1"></div>
-          <p style={{ fontSize: `${9 * fontScale}px` }}>Mrs. S. Ncube</p>
-          <p className="text-gray-500" style={{ fontSize: `${8 * fontScale}px` }}>Class Teacher</p>
+          {c.show_class_teacher ? (
+            <>
+              <p style={{ fontSize: `${9 * fontScale}px` }}>Mrs. S. Ncube</p>
+              <p className="text-gray-500" style={{ fontSize: `${8 * fontScale}px` }}>Class Teacher</p>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: `${9 * fontScale}px` }}>Teacher Signature</p>
+              <p className="text-gray-500" style={{ fontSize: `${8 * fontScale}px` }}>Class Teacher</p>
+            </>
+          )}
         </div>
         {c.show_qr_code && (
           <div className="w-14 h-14 bg-gray-100 border flex items-center justify-center text-[7px] text-gray-500 text-center">
@@ -1240,6 +1272,12 @@ function ReportPreview({ config, previewStudent, term, year }) {
           <p className="text-gray-500" style={{ fontSize: `${8 * fontScale}px` }}>{c.principal_title || "Head of School"}</p>
         </div>
       </div>
+
+      {c.show_next_term_dates && term !== "Term 3" && (
+        <div className="mt-2 text-gray-600 relative z-10" style={{ fontSize: `${8.5 * fontScale}px` }}>
+          Next Term: Opens 10 Sep {year} | Closes 05 Dec {year}
+        </div>
+      )}
 
       <div className="text-center text-gray-400 mt-3 pt-2 border-t border-gray-100 relative z-10"
         style={{ fontSize: `${7.5 * fontScale}px` }}>

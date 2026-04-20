@@ -716,6 +716,9 @@ def current_academic_period_view(request):
         'max_students_per_class': settings_obj.max_students_per_class,
         'late_fee_percentage': settings_obj.late_fee_percentage,
         'primary_color': settings_obj.primary_color,
+        'secondary_color': settings_obj.secondary_color,
+        'font_family': settings_obj.font_family,
+        'welcome_message': settings_obj.welcome_message,
         'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
     }
     return Response(data)
@@ -740,18 +743,31 @@ def school_customization_view(request):
     if request.method == 'GET':
         data = {
             'primary_color': settings_obj.primary_color,
+            'secondary_color': settings_obj.secondary_color,
+            'font_family': settings_obj.font_family,
+            'school_motto': settings_obj.school_motto,
+            'welcome_message': settings_obj.welcome_message,
             'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
         }
         return Response(data)
-        
+
     # PUT
-    primary_color = request.data.get('primary_color')
-    if primary_color:
-        settings_obj.primary_color = primary_color
-        settings_obj.save(update_fields=['primary_color'])
-    
+    updatable = ['primary_color', 'secondary_color', 'font_family', 'school_motto', 'welcome_message']
+    changed = []
+    for field in updatable:
+        val = request.data.get(field)
+        if val is not None:
+            setattr(settings_obj, field, val)
+            changed.append(field)
+    if changed:
+        settings_obj.save(update_fields=changed)
+
     data = {
         'primary_color': settings_obj.primary_color,
+        'secondary_color': settings_obj.secondary_color,
+        'font_family': settings_obj.font_family,
+        'school_motto': settings_obj.school_motto,
+        'welcome_message': settings_obj.welcome_message,
         'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
     }
     return Response(data)

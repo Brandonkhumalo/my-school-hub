@@ -1213,7 +1213,7 @@ def _build_report_card_pdf(student, results, school, year, term):
     from reportlab.graphics.shapes import Drawing
     from reportlab.graphics.charts.barcharts import VerticalBarChart
     from .grading import percentage_to_grade, score_to_percentage
-    from .models import SubjectTermFeedback, PromotionRecord
+    from .models import ReportCardApprovalRequest, SubjectTermFeedback, PromotionRecord
     from io import BytesIO
     import os
 
@@ -1251,8 +1251,23 @@ def _build_report_card_pdf(student, results, school, year, term):
     principal_name = _cfg(cfg, 'principal_name', '')
     principal_title = _cfg(cfg, 'principal_title', 'Head of School')
     show_class_teacher = _cfg(cfg, 'show_class_teacher', True)
-    teacher_comment = _cfg(cfg, 'teacher_comments_default', '')
+    teacher_comment = _cfg(
+        cfg,
+        'teacher_comments_default',
+        'when the teacher adds report feedback thats what must be there'
+    )
     principal_comment = _cfg(cfg, 'principal_comments_default', '')
+
+    if student.student_class_id:
+        approval = ReportCardApprovalRequest.objects.filter(
+            school=school,
+            class_obj_id=student.student_class_id,
+            academic_year=year,
+            academic_term=term,
+        ).order_by('-submitted_at').first()
+        if approval and approval.teacher_comment:
+            teacher_comment = approval.teacher_comment
+
     show_next_term = _cfg(cfg, 'show_next_term_dates', True)
     footer_text = _cfg(cfg, 'custom_footer_text', '')
     watermark = _cfg(cfg, 'watermark_text', '')

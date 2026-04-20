@@ -26,8 +26,8 @@ export default function HRPayroll() {
   const canAddExpense = Boolean(isAccountant || isRootHrHead);
   const canApproveExpense = Boolean(isAdmin);
   const canSignoffPayroll = Boolean(isAdmin);
-  // Only accountants submit payroll entries / sign-off requests. Admin approves.
-  const canSubmitPayroll = Boolean(isAccountant);
+  // Accountants and HR head can submit payroll sign-off requests. Admin approves.
+  const canSubmitPayroll = Boolean(isAccountant || isRootHrHead);
 
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);

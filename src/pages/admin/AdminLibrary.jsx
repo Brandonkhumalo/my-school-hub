@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
+import SearchableSelect from "../../components/SearchableSelect";
 import { formatDate } from "../../utils/dateFormat";
 
 const CATEGORY_OPTIONS = [
@@ -501,17 +502,19 @@ export default function AdminLibrary() {
             <h2 className="text-lg font-semibold mb-4">Issue Book</h2>
             <form onSubmit={handleIssueBook} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
-                <select required value={issueForm.student_id}
-                  onChange={(e) => setIssueForm({ ...issueForm, student_id: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2">
-                  <option value="">Select student...</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.user?.full_name || s.full_name || `${s.first_name} ${s.last_name}`} ({s.user?.student_number || s.student_number || ""})
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={students.map((s) => ({
+                    id: s.id,
+                    label: `${s.user?.full_name || s.full_name || `${s.first_name || ""} ${s.last_name || ""}`.trim()} ${s.user?.student_number || s.student_number ? `(${s.user?.student_number || s.student_number})` : ""}`.trim(),
+                    searchText: `${s.user?.full_name || s.full_name || `${s.first_name || ""} ${s.last_name || ""}`.trim()} ${s.user?.student_number || s.student_number || ""}`,
+                  }))}
+                  value={issueForm.student_id}
+                  onChange={(studentId) => setIssueForm({ ...issueForm, student_id: studentId })}
+                  placeholder="Search student by name or number..."
+                  label="Student"
+                  required
+                  getOptionLabel={(option) => option.label}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Due Date *</label>

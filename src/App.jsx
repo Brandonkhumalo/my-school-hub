@@ -202,6 +202,11 @@ const CleanerAttendance = lazy(() => import("./pages/cleaner/CleanerAttendance")
 // Shared Profile Page
 const ProfilePage = lazy(() => import("./pages/profile/ProfilePage"));
 
+// Sports Director pages
+const SportsDashboard = lazy(() => import("./pages/sports/SportsDashboard"));
+const ActivityManagement = lazy(() => import("./pages/sports/ActivityManagement"));
+const SportsAnalysis = lazy(() => import("./pages/sports/SportsAnalysis"));
+
 // Payment Return Pages
 const PaymentSuccess = lazy(() => import("./pages/payment/PaymentSuccess"));
 const PaymentFailed = lazy(() => import("./pages/payment/PaymentFailed"));
@@ -253,6 +258,7 @@ function App() {
         <Route path="/admin/results" element={<RequireAuth allowedRoles={['admin']}><AdminResults /></RequireAuth>} />
         <Route path="/admin/invoices" element={<RequireAuth allowedRoles={['admin']}><AdminInvoices /></RequireAuth>} />
         <Route path="/admin/payments" element={<RequireAuth allowedRoles={['admin']}><AdminPayments /></RequireAuth>} />
+        <Route path="/admin/sports-analysis" element={<RequireAuth allowedRoles={['admin']}><SportsAnalysis /></RequireAuth>} />
         <Route path="/admin/announcements" element={<RequireAuth allowedRoles={['admin']}><AdminAnnouncements /></RequireAuth>} />
         <Route path="/admin/complaints" element={<RequireAuth allowedRoles={['admin']}><AdminComplaints /></RequireAuth>} />
         <Route path="/admin/parent-requests" element={<RequireAuth allowedRoles={['admin']}><AdminParentLinkRequests /></RequireAuth>} />
@@ -389,6 +395,11 @@ function App() {
         <Route path="/security/incidents" element={<RequireAuth allowedRoles={['security']}><SecurityIncidents /></RequireAuth>} />
         <Route path="/security/attendance" element={<RequireAuth allowedRoles={['security']}><SecurityAttendance /></RequireAuth>} />
         <Route path="/security/profile" element={<RequireAuth allowedRoles={['security']}><ProfilePage /></RequireAuth>} />
+
+        {/* Sports Director Routes */}
+        <Route path="/sports-director" element={<RequireAuth allowedRoles={['admin','hr','sports_director']}><SportsDashboard /></RequireAuth>} />
+        <Route path="/sports-director/activities" element={<RequireAuth allowedRoles={['admin','hr','sports_director']}><ActivityManagement /></RequireAuth>} />
+        <Route path="/sports-director/analysis" element={<RequireAuth allowedRoles={['admin','hr','sports_director']}><SportsAnalysis /></RequireAuth>} />
 
         {/* Cleaner Routes */}
         <Route path="/cleaner" element={<RequireAuth allowedRoles={['cleaner']}><CleanerDashboard /></RequireAuth>} />

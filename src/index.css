@@ -6,7 +6,7 @@
 
 /* === FONTS ================================================= */
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family, 'Inter', system-ui, -apple-system, sans-serif);
   background: var(--bg-primary);
   color: var(--text-primary);
   transition: background 0.25s ease, color 0.25s ease;
@@ -22,6 +22,7 @@ body {
   --text-muted:      #64748b;
   --border:          #e2e8f0;
   --accent:          #2563eb;
+  --accent-secondary: #dbeafe;
   --accent-hover:    #1d4ed8;
   --accent-amber:    #f59e0b;
   --sidebar-bg:      #0f172a;

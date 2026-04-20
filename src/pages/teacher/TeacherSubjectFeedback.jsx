@@ -36,6 +36,7 @@ export default function TeacherSubjectFeedback() {
     reviewed_at: null,
     admin_note: "",
   });
+  const [classTeacherComment, setClassTeacherComment] = useState("");
   const [submittingForSignoff, setSubmittingForSignoff] = useState(false);
 
   useEffect(() => {
@@ -89,6 +90,7 @@ export default function TeacherSubjectFeedback() {
         reviewed_at: null,
         admin_note: "",
       });
+      setClassTeacherComment("");
       return;
     }
     try {
@@ -103,6 +105,7 @@ export default function TeacherSubjectFeedback() {
         reviewed_at: null,
         admin_note: "",
       });
+      setClassTeacherComment(data?.teacher_comment || "");
     } catch {
       setSubmissionStatus({
         status: "not_submitted",
@@ -110,10 +113,14 @@ export default function TeacherSubjectFeedback() {
         reviewed_at: null,
         admin_note: "",
       });
+      setClassTeacherComment("");
     }
   }, [classId, year, term]);
 
   useEffect(() => { loadSubmissionStatus(); }, [loadSubmissionStatus]);
+
+  const selectedClass = classes.find((cls) => String(cls.id) === String(classId));
+  const isClassTeacher = selectedClass?.is_class_teacher;
 
   const updateField = (studentId, key, value) => {
     setRows(rs => rs.map(r => r.student_id === studentId ? { ...r, [key]: value, _dirty: true } : r));
@@ -152,6 +159,7 @@ export default function TeacherSubjectFeedback() {
         class_id: classId,
         year,
         term,
+        teacher_comment: classTeacherComment,
       });
       setMessage({ type: "success", text: "Submitted to admin for final sign-off." });
       await loadSubmissionStatus();
@@ -216,6 +224,32 @@ export default function TeacherSubjectFeedback() {
                 className="border rounded w-full p-2 text-sm bg-gray-100 text-gray-600 cursor-not-allowed"
               />
             </div>
+          </div>
+          <div className="bg-white rounded-lg shadow border border-gray-200 p-4 mb-4">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Class Teacher Comment</p>
+                <p className="text-xs text-gray-500">This remark will appear on every student report card for the selected class.</p>
+              </div>
+              {isClassTeacher ? (
+                <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">You are class teacher</span>
+              ) : (
+                <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">Read-only for this class</span>
+              )}
+            </div>
+            <textarea
+              className="border rounded-lg w-full p-3 text-sm resize-none"
+              rows={4}
+              value={classTeacherComment}
+              onChange={(e) => setClassTeacherComment(e.target.value)}
+              placeholder="Enter class teacher remark for report cards..."
+              readOnly={!isClassTeacher}
+            />
+            {!isClassTeacher && (
+              <p className="text-xs text-gray-500 mt-2">
+                Only the assigned class teacher can edit this remark. Subject teachers can still submit subject feedback.
+              </p>
+            )}
           </div>
           <div className={`mt-4 border rounded-lg p-3 text-sm ${statusStyle}`}>
             <div className="font-semibold mb-1">

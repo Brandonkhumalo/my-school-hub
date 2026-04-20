@@ -170,6 +170,9 @@ ACCOUNTANT_API_PAGE_PREFIXES = (
     ('/api/v1/finances/reports/', 'reports'),
     ('/api/v1/finances/payment-records/', 'payments'),
     ('/api/v1/finances/payments/', 'payments'),
+    # Canonical endpoint for school expense submission/approval.
+    ('/api/v1/finances/expenses/', 'expenses'),
+    # Legacy alias kept for backward compatibility.
     ('/api/v1/finances/school-expenses/', 'expenses'),
     ('/api/v1/staff/payroll/', 'payroll'),
 )

@@ -1159,6 +1159,7 @@ def report_feedback_submission_status(request):
         'submitted_at': req.submitted_at.isoformat() if req else None,
         'reviewed_at': req.reviewed_at.isoformat() if req and req.reviewed_at else None,
         'admin_note': req.admin_note if req else '',
+        'teacher_comment': req.teacher_comment if req else '',
         'requested_by': req.requested_by.full_name if req and req.requested_by else None,
     })
 
@@ -1195,6 +1196,7 @@ def submit_report_feedback_for_signoff(request):
     if not class_obj:
         return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    teacher_comment = (request.data.get('teacher_comment') or '').strip()
     req, created = ReportCardApprovalRequest.objects.get_or_create(
         school=user.school,
         class_obj=class_obj,
@@ -1204,6 +1206,7 @@ def submit_report_feedback_for_signoff(request):
             'requested_by': user,
             'status': 'pending',
             'admin_note': '',
+            'teacher_comment': teacher_comment,
             'reviewed_at': None,
             'reviewed_by': None,
         },
@@ -1215,7 +1218,8 @@ def submit_report_feedback_for_signoff(request):
         req.reviewed_at = None
         req.reviewed_by = None
         req.admin_note = ''
-        req.save(update_fields=['requested_by', 'status', 'reviewed_at', 'reviewed_by', 'admin_note'])
+        req.teacher_comment = teacher_comment
+        req.save(update_fields=['requested_by', 'status', 'reviewed_at', 'reviewed_by', 'admin_note', 'teacher_comment'])
 
     # Notify admins in this school
     from users.models import CustomUser, Notification

@@ -122,6 +122,7 @@ class CustomUser(AbstractUser):
         ('security', 'Security'),
         ('cleaner', 'Cleaner'),
         ('librarian', 'Librarian'),
+        ('sports_director', 'Sports Director'),
         ('superadmin', 'Super Admin'),
     ]
 
@@ -195,7 +196,15 @@ class SchoolSettings(models.Model):
     paynow_integration_key = models.CharField(max_length=255, blank=True, help_text='PayNow Zimbabwe integration key for this school')
 
     # Customization
+    FONT_FAMILY_CHOICES = [
+        ('sans', 'Sans-Serif (Modern)'),
+        ('serif', 'Serif (Classic)'),
+        ('mono', 'Monospace (Technical)'),
+    ]
     primary_color = models.CharField(max_length=7, default='#2563eb', help_text='Primary accent color for the dashboard')
+    secondary_color = models.CharField(max_length=7, default='#e0e7ff', help_text='Secondary/background accent color')
+    font_family = models.CharField(max_length=10, choices=FONT_FAMILY_CHOICES, default='sans')
+    welcome_message = models.TextField(blank=True, help_text='Custom greeting shown on the dashboard')
     logo = models.ImageField(upload_to='school_logos/', blank=True, null=True, help_text='Custom logo for the dashboard')
 
     def __str__(self):
@@ -272,7 +281,11 @@ class ReportCardConfig(models.Model):
     principal_name = models.CharField(max_length=120, blank=True)
     principal_title = models.CharField(max_length=120, blank=True, default='Head of School')
     show_class_teacher = models.BooleanField(default=True)
-    teacher_comments_default = models.TextField(blank=True, help_text='Default teacher comment on every report')
+    teacher_comments_default = models.TextField(
+        blank=True,
+        default='when the teacher adds report feedback thats what must be there',
+        help_text='Default teacher comment on every report'
+    )
     principal_comments_default = models.TextField(blank=True, help_text='Default principal comment on every report')
     comment_char_limit = models.IntegerField(default=250, help_text='Max chars for per-subject teacher comments')
     show_next_term_dates = models.BooleanField(default=True, help_text='Show next term opening/closing (hidden for Term 3)')

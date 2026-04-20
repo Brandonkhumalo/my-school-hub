@@ -48,6 +48,9 @@ export function SchoolSettingsProvider({ children }) {
     // Identity
     schoolMotto: settings?.school_motto || "",
     primaryColor: settings?.primary_color || "",
+    secondaryColor: settings?.secondary_color || "",
+    fontFamily: settings?.font_family || "sans",
+    welcomeMessage: settings?.welcome_message || "",
     logoUrl: settings?.logo_url || "",
     // Finance
     currency: settings?.currency || "",
@@ -61,7 +64,14 @@ export function SchoolSettingsProvider({ children }) {
       document.documentElement.style.setProperty('--accent', settings.primary_color);
       document.documentElement.style.setProperty('--sidebar-active', settings.primary_color);
     }
-  }, [settings?.primary_color]);
+    if (settings?.secondary_color) {
+      document.documentElement.style.setProperty('--accent-secondary', settings.secondary_color);
+    }
+    if (settings?.font_family) {
+      const fontMap = { sans: 'ui-sans-serif, system-ui, sans-serif', serif: 'ui-serif, Georgia, serif', mono: 'ui-monospace, monospace' };
+      document.documentElement.style.setProperty('--font-family', fontMap[settings.font_family] || fontMap.sans);
+    }
+  }, [settings?.primary_color, settings?.secondary_color, settings?.font_family]);
 
   return (
     <SchoolSettingsContext.Provider value={value}>

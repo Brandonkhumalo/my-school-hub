@@ -1,0 +1,37 @@
+My School Hub - Codex Context
+Last updated: 2026-04-20
+
+Recent completed fixes
+- Dashboard/finance alignment:
+  - Admin dashboard now labels and shows Term Revenue.
+  - Finance term revenue is now resilient:
+    - sums PaymentTransaction amounts within term window,
+    - falls back to StudentPaymentRecord term-tagged totals,
+    - falls back to paid Invoice amounts by term date window.
+  - Term window fallback no longer defaults to current month only.
+
+- Revenue zero bug:
+  - Dashboard and finance logic updated so paid invoices/payments do not show $0 when data tags are inconsistent.
+
+- Report Card Design reliability:
+  - Report config form now merges defaults + server values for stable live preview/edit behavior.
+  - Toggle controls use proper checkbox state handling.
+  - Live preview reflects class-teacher visibility + next-term-date toggle behavior.
+  - Save flow enforces non-empty default teacher comment.
+
+- Default Teacher Comment (required text):
+  - "when the teacher adds report feedback thats what must be there"
+  - Set in frontend defaults and backend model default.
+  - Migration added to backfill blank existing configs:
+    - School_system/users/migrations/0027_reportcard_default_teacher_comment.py
+
+Required backend step after pull
+- Run migrations:
+  - cd School_system
+  - python manage.py migrate
+
+Deployment note
+- If deploy fails with Docker extract/no-space errors:
+  - docker system prune -af
+  - docker builder prune -af
+  - df -h

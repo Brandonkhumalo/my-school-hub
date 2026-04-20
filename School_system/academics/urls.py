@@ -88,7 +88,12 @@ urlpatterns = [
     path('activities/<int:activity_id>/enrollments/<int:enrollment_id>/review/', activity_views.review_activity_enrollment, name='activity-enrollment-review'),
     path('activities/<int:activity_id>/enroll/', activity_views.enroll_student, name='activity-enroll'),
     path('activities/<int:activity_id>/unenroll/<int:student_id>/', activity_views.unenroll_student, name='activity-unenroll'),
+    path('activities/<int:activity_id>/suspend/<int:student_id>/', activity_views.suspend_student_activity, name='activity-suspend'),
     path('activities/<int:activity_id>/events/', activity_views.activity_events, name='activity-events'),
+    path('activities/<int:activity_id>/events/<int:event_id>/squad/', activity_views.event_squad, name='event-squad'),
+    path('activities/<int:activity_id>/events/<int:event_id>/attendance/', activity_views.event_training_attendance, name='event-attendance'),
+    path('activities/analytics/', activity_views.sports_analytics, name='sports-analytics'),
+    path('sports-houses/', activity_views.sports_houses, name='sports-houses'),
 
     # Accolades endpoints
     path('accolades/', activity_views.accolade_list_create, name='accolade-list-create'),
