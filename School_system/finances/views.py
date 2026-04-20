@@ -556,11 +556,19 @@ def finance_summary_view(request):
         year=year,
     ).aggregate(total=Sum('net_salary'))['total'] or Decimal('0')
 
-    term_revenue = StudentPaymentRecord.objects.filter(
+    term_revenue_records = StudentPaymentRecord.objects.filter(
         school=school,
         academic_year=current_year,
         academic_term__in=term_labels,
     ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+    term_revenue_invoices = Invoice.objects.filter(
+        student__user__school=school,
+        is_paid=True,
+    ).filter(
+        Q(payment_record__academic_year=current_year, payment_record__academic_term__in=term_labels) |
+        Q(payment_record__isnull=True, issue_date__gte=term_start, issue_date__lte=term_end)
+    ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+    term_revenue = max(term_revenue_records, term_revenue_invoices)
 
     term_payroll_total = Decimal('0')
     payroll_rows = Payroll.objects.filter(

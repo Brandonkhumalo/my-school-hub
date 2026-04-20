@@ -160,7 +160,7 @@ export default function AdminDashboard() {
             Financial Overview
           </p>
           <div className="space-y-3 mb-5">
-            {/* Total Revenue */}
+            {/* Term Revenue */}
             <div
               className="flex items-center justify-between p-4 rounded-xl"
               style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}
@@ -169,7 +169,7 @@ export default function AdminDashboard() {
                 <span className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
                   <i className="fas fa-money-bill-wave text-emerald-600 text-sm" />
                 </span>
-                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Total Revenue</span>
+                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Term Revenue</span>
               </div>
               <span className="font-bold text-emerald-600 text-base">
                 ${Number(finance?.term_revenue ?? stats?.total_revenue ?? 0).toLocaleString()}

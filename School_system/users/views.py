@@ -391,9 +391,17 @@ def dashboard_stats_view(request):
             'total_classes': Class.objects.filter(school=school).count(),
             'total_subjects': Subject.objects.filter(school=school).count(),
             'pending_invoices': Invoice.objects.filter(is_paid=False, student__user__school=school).count(),
-            'total_revenue': StudentPaymentRecord.objects.filter(
-                school=school
-            ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
+            # Use payment records as primary source, but fall back to paid invoices
+            # when legacy/snapshot data has invoice payments without synced records.
+            'total_revenue': max(
+                StudentPaymentRecord.objects.filter(
+                    school=school
+                ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
+                Invoice.objects.filter(
+                    student__user__school=school,
+                    is_paid=True,
+                ).aggregate(total=models.Sum('amount_paid'))['total'] or 0,
+            ),
             'school_type': school.school_type,
             'school_accommodation_type': school.accommodation_type,
             'school_name': school.name,

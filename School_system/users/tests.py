@@ -11,6 +11,8 @@ Covers:
   - Global search GET
 """
 
+from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.hashers import check_password
@@ -503,6 +505,77 @@ class RolePermissionDefaultAccessTest(APITestCase):
         profile = AccountantPermissionProfile.objects.get(user=created)
         self.assertFalse(profile.is_root_head)
         self.assertEqual(AccountantPagePermission.objects.filter(profile=profile).count(), 0)
+
+
+class DashboardStatsRevenueTest(APITestCase):
+    """Dashboard revenue should not be zero when paid invoices exist."""
+
+    def setUp(self):
+        from academics.models import Class, Student
+
+        self.client = APIClient()
+        self.school = make_school()
+        self.admin = make_user(self.school, "dash_admin", role="admin")
+        self.url = "/api/v1/auth/dashboard/stats/"
+
+        student_user = make_user(self.school, "dash_student", role="student")
+        cls = Class.objects.create(
+            name="Form 1A",
+            grade_level=1,
+            academic_year="2026",
+            school=self.school,
+        )
+        self.student = Student.objects.create(
+            user=student_user,
+            student_class=cls,
+            admission_date=date(2026, 1, 10),
+        )
+
+    def test_dashboard_revenue_falls_back_to_paid_invoices(self):
+        from finances.models import Invoice
+
+        Invoice.objects.create(
+            student=self.student,
+            invoice_number="INV-DASH-001",
+            total_amount=Decimal("300.00"),
+            amount_paid=Decimal("300.00"),
+            due_date=date(2026, 3, 31),
+            is_paid=True,
+            school=self.school,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(float(response.data["total_revenue"]), 300.0)
+
+    def test_dashboard_revenue_prefers_payment_record_total_when_higher(self):
+        from finances.models import Invoice, StudentPaymentRecord
+
+        Invoice.objects.create(
+            student=self.student,
+            invoice_number="INV-DASH-002",
+            total_amount=Decimal("300.00"),
+            amount_paid=Decimal("300.00"),
+            due_date=date(2026, 3, 31),
+            is_paid=True,
+            school=self.school,
+        )
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            academic_year="2026",
+            academic_term="Term 1",
+            total_amount_due=Decimal("500.00"),
+            amount_paid=Decimal("450.00"),
+            payment_status="partial",
+            recorded_by=self.admin,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(float(response.data["total_revenue"]), 450.0)
 
 
 # ---------------------------------------------------------------------------
