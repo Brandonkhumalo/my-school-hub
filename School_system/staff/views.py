@@ -578,6 +578,15 @@ class PayrollListCreateView(generics.ListCreateAPIView):
             )
         return qs
 
+    def create(self, request, *args, **kwargs):
+        """Check permissions before serializer validation."""
+        if not _can_manage_payroll(request.user):
+            return Response(
+                {'error': 'Only HR/admin can create payroll entries.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         if not _can_manage_payroll(self.request.user):
             from rest_framework.exceptions import PermissionDenied
