@@ -194,6 +194,10 @@ class SchoolSettings(models.Model):
     paynow_integration_id = models.CharField(max_length=100, blank=True, help_text='PayNow Zimbabwe integration ID for this school')
     paynow_integration_key = models.CharField(max_length=255, blank=True, help_text='PayNow Zimbabwe integration key for this school')
 
+    # Customization
+    primary_color = models.CharField(max_length=7, default='#2563eb', help_text='Primary accent color for the dashboard')
+    logo = models.ImageField(upload_to='school_logos/', blank=True, null=True, help_text='Custom logo for the dashboard')
+
     def __str__(self):
         return f"Settings for {self.school.name}"
 

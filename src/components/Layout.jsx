@@ -2,6 +2,7 @@ import React from "react";
 import { Outlet, NavLink, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useSchoolSettings } from "../context/SchoolSettingsContext";
 import NotificationBell from "./NotificationBell";
 import { canStudentUseBoarding, isSchoolBoardingEnabled } from "../utils/boardingAccess";
 
@@ -55,6 +56,7 @@ const ALL_MENU_ITEMS = {
       { path: "/admin/analytics",     icon: "fa-chart-line",    title: "Analytics" },
       { path: "/admin/audit-logs",    icon: "fa-clipboard-list",title: "Audit Logs" },
       { path: "/admin/report-config", icon: "fa-file-pdf",      title: "Report Card Design" },
+      { path: "/admin/customization", icon: "fa-palette",       title: "Customization" },
       { path: "/admin/settings",      icon: "fa-sliders-h",     title: "School Settings" },
     ]},
   ],
@@ -191,6 +193,7 @@ const ALL_MENU_ITEMS = {
       { path: "/hr/analytics",     icon: "fa-chart-line",        title: "Analytics" },
       { path: "/hr/audit-logs",    icon: "fa-clipboard-list",    title: "Audit Logs" },
       { path: "/hr/report-config", icon: "fa-file-pdf",          title: "Report Config" },
+      { path: "/hr/customization", icon: "fa-palette",           title: "Customization" },
       { path: "/hr/settings",      icon: "fa-sliders-h",         title: "Settings" },
     ]},
   ],
@@ -244,6 +247,7 @@ const HR_PATH_TO_PERMISSION_KEY = {
   "/hr/announcements": "announcements",
   "/hr/boarding": "boarding",
   "/hr/report-config": "report_config",
+  "/hr/customization": "settings",
   "/hr/settings": "settings",
   "/hr/analytics": "analytics",
   "/hr/audit-logs": "audit_logs",
@@ -273,6 +277,7 @@ function getPageTitle(pathname) {
 function Layout() {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { logoUrl } = useSchoolSettings();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
@@ -335,8 +340,12 @@ function Layout() {
         {/* Brand block */}
         <div style={{ padding: "1.5rem 1.25rem 1rem", borderBottom: "1px solid var(--sidebar-border)" }}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
-              <i className="fas fa-graduation-cap text-white text-base" />
+            <div className={`w-9 h-9 rounded-xl ${logoUrl ? 'bg-white' : 'bg-blue-600'} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+              ) : (
+                <i className="fas fa-graduation-cap text-white text-base" />
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-white font-bold text-sm leading-tight truncate">MySchoolHub</p>

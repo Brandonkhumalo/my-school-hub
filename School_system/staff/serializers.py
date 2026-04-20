@@ -8,7 +8,11 @@ from .models import (
     Department, Staff, Attendance, Leave, Payroll, Meeting,
     VisitorLog, IncidentReport, CleaningSchedule, CleaningTask, PayrollPaymentRequest
 )
-from users.models import CustomUser
+from users.models import (
+    CustomUser,
+    HRPermissionProfile, HRPagePermission,
+    AccountantPermissionProfile, AccountantPagePermission,
+)
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -132,6 +136,48 @@ class CreateStaffSerializer(serializers.Serializer):
             if not Staff.objects.filter(employee_id=eid).exists():
                 return eid
 
+    @staticmethod
+    def _sync_role_based_permissions(user):
+        """New role-based staff users start with no page grants."""
+        if user.role == 'hr':
+            AccountantPermissionProfile.objects.filter(user=user).delete()
+            profile, _ = HRPermissionProfile.objects.get_or_create(
+                user=user,
+                defaults={'school': user.school, 'is_root_boss': False},
+            )
+            updates = []
+            if profile.school_id != user.school_id:
+                profile.school = user.school
+                updates.append('school')
+            if profile.is_root_boss:
+                profile.is_root_boss = False
+                updates.append('is_root_boss')
+            HRPagePermission.objects.filter(profile=profile).delete()
+            if updates:
+                profile.save(update_fields=updates + ['updated_at'])
+            return
+
+        if user.role == 'accountant':
+            HRPermissionProfile.objects.filter(user=user).delete()
+            profile, _ = AccountantPermissionProfile.objects.get_or_create(
+                user=user,
+                defaults={'school': user.school, 'is_root_head': False},
+            )
+            updates = []
+            if profile.school_id != user.school_id:
+                profile.school = user.school
+                updates.append('school')
+            if profile.is_root_head:
+                profile.is_root_head = False
+                updates.append('is_root_head')
+            AccountantPagePermission.objects.filter(profile=profile).delete()
+            if updates:
+                profile.save(update_fields=updates + ['updated_at'])
+            return
+
+        HRPermissionProfile.objects.filter(user=user).delete()
+        AccountantPermissionProfile.objects.filter(user=user).delete()
+
     @transaction.atomic
     def create(self, validated_data):
         """Create and return a new instance."""
@@ -162,6 +208,7 @@ class CreateStaffSerializer(serializers.Serializer):
             school=school,
             created_by=request.user if request else None,
         )
+        self._sync_role_based_permissions(user)
 
         staff = Staff.objects.create(
             user=user,

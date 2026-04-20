@@ -18,7 +18,11 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
-from users.models import AuditLog, CustomUser, School, SchoolSettings
+from users.models import (
+    AuditLog, CustomUser, School, SchoolSettings,
+    HRPermissionProfile, HRPagePermission,
+    AccountantPermissionProfile, AccountantPagePermission,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +464,45 @@ class SchoolSettingsViewTest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         self.client.get(self.url)
         self.assertTrue(SchoolSettings.objects.filter(school=self.school).exists())
+
+
+class RolePermissionDefaultAccessTest(APITestCase):
+    """New HR/Accountant accounts should start with zero page access."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.admin = make_user(self.school, "perm_admin", role="admin")
+        self.url = "/api/v1/auth/users/"
+
+    def _payload(self, role, email_suffix):
+        return {
+            "first_name": "Role",
+            "last_name": "Scoped",
+            "email": f"{role}_{email_suffix}@testschool.com",
+            "password": "StrongPass123!",
+            "role": role,
+            "salary": "1500.00",
+            "hire_date": "2026-01-15",
+        }
+
+    def test_new_hr_user_starts_without_permissions(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, self._payload("hr", "new"), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created = CustomUser.objects.get(id=response.data["id"])
+        profile = HRPermissionProfile.objects.get(user=created)
+        self.assertFalse(profile.is_root_boss)
+        self.assertEqual(HRPagePermission.objects.filter(profile=profile).count(), 0)
+
+    def test_new_accountant_user_starts_without_permissions(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, self._payload("accountant", "new"), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created = CustomUser.objects.get(id=response.data["id"])
+        profile = AccountantPermissionProfile.objects.get(user=created)
+        self.assertFalse(profile.is_root_head)
+        self.assertEqual(AccountantPagePermission.objects.filter(profile=profile).count(), 0)
 
 
 # ---------------------------------------------------------------------------

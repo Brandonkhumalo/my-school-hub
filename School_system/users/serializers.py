@@ -401,6 +401,58 @@ class ManagedUserSerializer(serializers.ModelSerializer):
             payroll.save(update_fields=['basic_salary', 'net_salary'])
         return staff
 
+    @staticmethod
+    def _sync_role_based_permissions(user, old_role=None, is_create=False):
+        """
+        Ensure role-based accounts start with no grants until explicitly assigned.
+        Also clears stale grants when switching roles.
+        """
+        current_role = user.role
+
+        if current_role == 'hr':
+            AccountantPermissionProfile.objects.filter(user=user).delete()
+            profile, _ = HRPermissionProfile.objects.get_or_create(
+                user=user,
+                defaults={'school': user.school, 'is_root_boss': False},
+            )
+            updates = []
+            if profile.school_id != user.school_id:
+                profile.school = user.school
+                updates.append('school')
+            should_reset = is_create or old_role != 'hr'
+            if should_reset:
+                if profile.is_root_boss:
+                    profile.is_root_boss = False
+                    updates.append('is_root_boss')
+                HRPagePermission.objects.filter(profile=profile).delete()
+            if updates:
+                profile.save(update_fields=updates + ['updated_at'])
+            return
+
+        if current_role == 'accountant':
+            HRPermissionProfile.objects.filter(user=user).delete()
+            profile, _ = AccountantPermissionProfile.objects.get_or_create(
+                user=user,
+                defaults={'school': user.school, 'is_root_head': False},
+            )
+            updates = []
+            if profile.school_id != user.school_id:
+                profile.school = user.school
+                updates.append('school')
+            should_reset = is_create or old_role != 'accountant'
+            if should_reset:
+                if profile.is_root_head:
+                    profile.is_root_head = False
+                    updates.append('is_root_head')
+                AccountantPagePermission.objects.filter(profile=profile).delete()
+            if updates:
+                profile.save(update_fields=updates + ['updated_at'])
+            return
+
+        # Non role-based account types should not carry stale role grants.
+        HRPermissionProfile.objects.filter(user=user).delete()
+        AccountantPermissionProfile.objects.filter(user=user).delete()
+
     def create(self, validated_data):
         from academics.models import Parent
 
@@ -428,6 +480,7 @@ class ManagedUserSerializer(serializers.ModelSerializer):
         if user.role == 'parent':
             Parent.objects.get_or_create(user=user)
 
+        self._sync_role_based_permissions(user, is_create=True)
         self._ensure_staff_record(user, {
             'salary': salary,
             'hire_date': hire_date,
@@ -459,6 +512,7 @@ class ManagedUserSerializer(serializers.ModelSerializer):
         if instance.role == 'parent' and old_role != 'parent':
             Parent.objects.get_or_create(user=instance)
 
+        self._sync_role_based_permissions(instance, old_role=old_role, is_create=False)
         self._ensure_staff_record(instance, {
             'salary': salary,
             'hire_date': hire_date,
@@ -617,6 +671,7 @@ class SetWhatsAppPinSerializer(serializers.Serializer):
 class SchoolSettingsSerializer(serializers.ModelSerializer):
     """Represents SchoolSettingsSerializer."""
     school_name = serializers.CharField(source='school.name', read_only=True)
+    logo_url = serializers.SerializerMethodField()
     DATE_FIELDS = (
         'term_start_date', 'term_end_date',
         'term_1_start', 'term_1_end',
@@ -645,8 +700,18 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
             'grading_system', 'school_motto',
             'currency', 'timezone', 'max_students_per_class', 'late_fee_percentage',
             'paynow_integration_id', 'paynow_integration_key',
+            'primary_color', 'logo_url',
         ]
-        read_only_fields = ['id', 'school_name']
+        read_only_fields = ['id', 'school_name', 'logo_url']
+
+    def get_logo_url(self, obj):
+        if not obj.logo:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.logo.url)
+        return obj.logo.url
+
 
 
 class ReportCardConfigSerializer(serializers.ModelSerializer):

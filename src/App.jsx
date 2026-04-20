@@ -113,6 +113,7 @@ const AdminActivities = lazy(() => import("./pages/admin/AdminActivities"));
 const AdminLibrary = lazy(() => import("./pages/admin/AdminLibrary"));
 const AdminHealth = lazy(() => import("./pages/admin/AdminHealth"));
 const AdminBoarding = lazy(() => import("./pages/admin/AdminBoarding"));
+const Customization = lazy(() => import("./pages/shared/Customization"));
 
 const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
@@ -260,6 +261,7 @@ function App() {
         <Route path="/admin/payroll" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
         <Route path="/admin/accounting" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
         <Route path="/admin/settings" element={<RequireAuth allowedRoles={['admin']}><AdminSettings /></RequireAuth>} />
+        <Route path="/admin/customization" element={<RequireAuth allowedRoles={['admin']}><Customization /></RequireAuth>} />
         <Route path="/admin/permissions" element={<RequireAuth allowedRoles={['admin']}><AdminPermissions /></RequireAuth>} />
         <Route path="/admin/report-config" element={<RequireAuth allowedRoles={['admin']}><AdminReportConfig /></RequireAuth>} />
         <Route path="/admin/fees" element={<RequireAuth allowedRoles={['admin']}><AdminFees /></RequireAuth>} />
@@ -361,6 +363,7 @@ function App() {
         <Route path="/hr/health" element={<RequireAuth allowedRoles={['hr']}><AdminHealth /></RequireAuth>} />
         <Route path="/hr/extras" element={<RequireAuth allowedRoles={['hr']}><AdminExtras /></RequireAuth>} />
         <Route path="/hr/settings" element={<RequireAuth allowedRoles={['hr']}><AdminSettings /></RequireAuth>} />
+        <Route path="/hr/customization" element={<RequireAuth allowedRoles={['hr']}><Customization /></RequireAuth>} />
         <Route path="/hr/at-risk-students" element={<RequireAuth allowedRoles={['hr']}><AdminAtRiskStudents /></RequireAuth>} />
         <Route path="/hr/profile" element={<RequireAuth allowedRoles={['hr']}><ProfilePage /></RequireAuth>} />
 

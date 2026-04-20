@@ -39,6 +39,8 @@ urlpatterns = [
 
     # School settings
     path('school/settings/', views.school_settings_view, name='school-settings'),
+    path('school/customization/', views.school_customization_view, name='school-customization'),
+    path('school/customization/logo/', views.school_customization_upload_logo, name='school-customization-logo'),
     path('school/current-period/', views.current_academic_period_view, name='current-academic-period'),
     path('school/report-config/', views.report_card_config_view, name='report-card-config'),
     path('school/report-config/upload/', views.report_card_upload_image, name='report-card-upload'),

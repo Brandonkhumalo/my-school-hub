@@ -47,12 +47,21 @@ export function SchoolSettingsProvider({ children }) {
     term3End: settings?.term_3_end || "",
     // Identity
     schoolMotto: settings?.school_motto || "",
+    primaryColor: settings?.primary_color || "",
+    logoUrl: settings?.logo_url || "",
     // Finance
     currency: settings?.currency || "",
     lateFeePercentage: settings?.late_fee_percentage ?? "",
     // System
     timezone: settings?.timezone || "",
   };
+
+  useEffect(() => {
+    if (settings?.primary_color) {
+      document.documentElement.style.setProperty('--accent', settings.primary_color);
+      document.documentElement.style.setProperty('--sidebar-active', settings.primary_color);
+    }
+  }, [settings?.primary_color]);
 
   return (
     <SchoolSettingsContext.Provider value={value}>

@@ -19,7 +19,11 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
-from users.models import CustomUser, School, Notification
+from users.models import (
+    CustomUser, School, Notification,
+    HRPermissionProfile, HRPagePermission,
+    AccountantPermissionProfile, AccountantPagePermission,
+)
 from staff.models import Attendance, Department, Leave, Payroll, PayrollPaymentRequest, Staff
 
 
@@ -428,6 +432,22 @@ class StaffListAPITest(APITestCase):
         items = get_list(response.data)
         self.assertTrue(any(item.get("has_staff_profile") is False for item in items))
 
+    def test_include_directory_includes_inactive_teacher_users(self):
+        """Inactive teachers should still appear in HR directory view."""
+        inactive_user = make_user(self.school, "sl_emp_inactive", role="teacher", first_name="Dormant", last_name="Teacher")
+        inactive_user.is_active = False
+        inactive_user.save(update_fields=["is_active"])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.url, {"include_directory": "1"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        items = get_list(response.data)
+        found = next((item for item in items if item.get("user", {}).get("id") == inactive_user.id), None)
+        self.assertIsNotNone(found)
+        self.assertEqual(found.get("has_staff_profile"), False)
+        self.assertEqual(found.get("is_active"), False)
+
 
 # ---------------------------------------------------------------------------
 # API tests — Create staff
@@ -507,6 +527,19 @@ class CreateStaffAPITest(APITestCase):
         self.client.post(self.url, payload, format="json")
         response = self.client.post(self.url, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_hr_staff_starts_without_permissions(self):
+        """HR accounts created from staff flow should have zero grants."""
+        self.client.force_authenticate(user=self.admin)
+        payload = self._payload("_hr")
+        payload["position"] = "hr"
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_user_id = response.data["staff"]["user"]["id"]
+        created_user = CustomUser.objects.get(id=created_user_id)
+        profile = HRPermissionProfile.objects.get(user=created_user)
+        self.assertFalse(profile.is_root_boss)
+        self.assertEqual(HRPagePermission.objects.filter(profile=profile).count(), 0)
 
 
 # ---------------------------------------------------------------------------

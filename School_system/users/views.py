@@ -707,8 +707,70 @@ def current_academic_period_view(request):
         'timezone': settings_obj.timezone,
         'max_students_per_class': settings_obj.max_students_per_class,
         'late_fee_percentage': settings_obj.late_fee_percentage,
+        'primary_color': settings_obj.primary_color,
+        'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
     }
     return Response(data)
+
+
+# ---------------------------------------------------------------
+# Dashboard Customization
+# ---------------------------------------------------------------
+
+@api_view(['GET', 'PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def school_customization_view(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    settings_obj, _ = SchoolSettings.objects.get_or_create(school=school)
+    
+    if request.method == 'GET':
+        data = {
+            'primary_color': settings_obj.primary_color,
+            'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
+        }
+        return Response(data)
+        
+    # PUT
+    primary_color = request.data.get('primary_color')
+    if primary_color:
+        settings_obj.primary_color = primary_color
+        settings_obj.save(update_fields=['primary_color'])
+    
+    data = {
+        'primary_color': settings_obj.primary_color,
+        'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
+    }
+    return Response(data)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def school_customization_upload_logo(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    settings_obj, _ = SchoolSettings.objects.get_or_create(school=school)
+    
+    file = request.FILES.get('file')
+    if not file:
+        return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    settings_obj.logo = file
+    settings_obj.save(update_fields=['logo'])
+    
+    return Response({
+        'primary_color': settings_obj.primary_color,
+        'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
+    })
 
 
 # ---------------------------------------------------------------
@@ -780,7 +842,7 @@ REPORT_CARD_CONFIG_FIELDS = [
     'show_overall_average', 'show_position', 'show_class_average',
     'show_previous_term', 'show_effort_grade', 'show_subject_chart',
     'show_promotion_status', 'show_fees_status', 'show_qr_code',
-    'subject_grouping_enabled', 'principal_title', 'show_class_teacher',
+    'subject_grouping_enabled', 'principal_name', 'principal_title', 'show_class_teacher',
     'teacher_comments_default', 'principal_comments_default', 'comment_char_limit',
     'show_next_term_dates', 'custom_footer_text', 'show_grade_remark',
     'show_exam_types', 'highlight_pass_fail', 'watermark_text',

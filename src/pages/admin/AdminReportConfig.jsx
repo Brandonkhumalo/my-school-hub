@@ -241,11 +241,17 @@ export default function AdminReportConfig() {
     setSaving(true);
     setMessage(null);
     try {
-      const { logo_url: _LOGO, stamp_url: _STAMP, banner_url: _BANNER, ...data } = config;
+      // Strip image fields — those are updated via handleUpload (multipart POST).
+      // Sending them as strings/null in a JSON PATCH causes DRF ImageField validation to fail.
+      const {
+        logo_url: _a, stamp_url: _b, banner_url: _c,
+        logo: _d, stamp_image: _e, banner_image: _f,
+        ...data
+      } = config;
       await apiService.updateReportCardConfig(data);
       setMessage({ type: "success", text: "Report card settings saved!" });
-    } catch {
-      setMessage({ type: "error", text: "Failed to save settings" });
+    } catch (err) {
+      setMessage({ type: "error", text: err.message || "Failed to save settings" });
     } finally {
       setSaving(false);
     }

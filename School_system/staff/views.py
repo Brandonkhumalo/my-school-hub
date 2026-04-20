@@ -196,7 +196,6 @@ class StaffListView(generics.ListAPIView):
         missing_users = CustomUser.objects.filter(
             school=school,
             role__in=employee_roles,
-            is_active=True,
         ).exclude(id__in=linked_user_ids).order_by('first_name', 'last_name', 'id')
 
         position_filter = request.query_params.get('position')

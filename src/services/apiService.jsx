@@ -598,6 +598,15 @@ const apiService = {
   // Current academic period (all authenticated users)
   getCurrentAcademicPeriod: () => request("/auth/school/current-period/", "GET"),
 
+  // Dashboard Customization
+  getSchoolCustomization: () => request("/auth/school/customization/", "GET"),
+  updateSchoolCustomization: (data) => request("/auth/school/customization/", "PUT", data),
+  uploadSchoolLogo: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestMultipart("/auth/school/customization/logo/", "POST", formData);
+  },
+
   // Report card config (admin)
   getReportCardConfig: () => request("/auth/school/report-config/", "GET"),
   updateReportCardConfig: (data) => request("/auth/school/report-config/", "PUT", data),
