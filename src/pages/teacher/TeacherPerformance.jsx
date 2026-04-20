@@ -51,15 +51,6 @@ export default function TeacherPerformance() {
     loadSubjects();
   }, []);
 
-  useEffect(() => {
-    if (!selectedSubject) return;
-    if (viewMode === "risk") {
-      loadStudents();
-    } else {
-      loadMarks();
-    }
-  }, [selectedSubject, viewMode, loadStudents, loadMarks]);
-
   const loadMarks = useCallback(async () => {
     try {
       setLoadingMarks(true);
@@ -109,6 +100,15 @@ export default function TeacherPerformance() {
       setLoadingStudents(false);
     }
   }, [selectedSubject, riskSearch, filterAtRisk, sortBy]);
+
+  useEffect(() => {
+    if (!selectedSubject) return;
+    if (viewMode === "risk") {
+      loadStudents();
+    } else {
+      loadMarks();
+    }
+  }, [selectedSubject, viewMode, loadStudents, loadMarks]);
 
   const filteredMarks = useMemo(() => {
     const q = marksSearch.trim().toLowerCase();

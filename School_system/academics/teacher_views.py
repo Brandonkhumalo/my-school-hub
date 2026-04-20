@@ -1121,6 +1121,25 @@ def subject_feedback_upsert(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def report_feedback_config(request):
+    """Return report-feedback config visible to teachers."""
+    user = request.user
+    if user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+
+    from users.models import ReportCardConfig
+    try:
+        limit = ReportCardConfig.objects.get(school=user.school).comment_char_limit
+    except ReportCardConfig.DoesNotExist:
+        limit = 250
+
+    return Response({
+        'comment_char_limit': limit or 250,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def report_feedback_submission_status(request):
     """Return submission status for a class/year/term for the logged-in teacher."""
     user = request.user
@@ -1303,7 +1322,17 @@ def subject_students_risk(request, subject_id):
         at_risk_filter = request.query_params.get('at_risk', 'all')
         
         for student in students:
-            predictions = predict_student_grades(student)
+            try:
+                predictions = predict_student_grades(student)
+            except Exception:
+                logger.exception(
+                    "Failed to generate predictions for student_id=%s subject_id=%s teacher_id=%s",
+                    student.id,
+                    subject_id,
+                    teacher.id,
+                )
+                continue
+
             subject_pred = next((p for p in predictions if p['subject_id'] == subject_id), None)
             
             if subject_pred:

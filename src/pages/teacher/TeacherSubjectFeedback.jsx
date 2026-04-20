@@ -59,7 +59,7 @@ export default function TeacherSubjectFeedback() {
         setClasses(classList);
       } catch { /* noop */ }
       try {
-        const cfg = await apiService.getReportCardConfig();
+        const cfg = await apiService.getTeacherReportFeedbackConfig();
         if (cfg?.comment_char_limit) setCharLimit(cfg.comment_char_limit);
       } catch { /* noop */ }
     })();

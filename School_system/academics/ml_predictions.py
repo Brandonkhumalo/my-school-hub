@@ -59,7 +59,9 @@ def _compute_prediction(scores):
     """Returns (predicted_score, used_sklearn)."""
     try:
         return _sklearn_predict(scores), True
-    except ImportError:
+    except Exception:
+        # Keep API resilient if sklearn/numpy is missing or misconfigured at runtime.
+        logger.exception("Falling back to linear prediction for scores=%s", scores)
         return _linear_predict(scores), False
 
 

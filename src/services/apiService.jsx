@@ -634,6 +634,7 @@ const apiService = {
     return request(`/teachers/subject-feedback/${q ? '?' + q : ''}`, "GET");
   },
   saveSubjectFeedback: (data) => request("/teachers/subject-feedback/save/", "POST", data),
+  getTeacherReportFeedbackConfig: () => request("/teachers/report-feedback/config/", "GET"),
   submitReportFeedbackForSignoff: (data) => request("/teachers/report-feedback/submit/", "POST", data),
   getReportFeedbackSubmissionStatus: (params = {}) => {
     const q = new URLSearchParams(params).toString();
