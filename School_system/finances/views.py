@@ -91,7 +91,8 @@ def _current_term_window(user):
 
     term_raw = getattr(settings, 'current_term', '') if settings else ''
     term_key = _normalize_term(term_raw)
-    year = str(getattr(settings, 'current_academic_year', today.year)) if settings else str(today.year)
+    configured_year = str(getattr(settings, 'current_academic_year', '')).strip() if settings else ''
+    year = configured_year or str(today.year)
 
     start = end = None
     if settings:
@@ -104,11 +105,6 @@ def _current_term_window(user):
         else:
             start = settings.term_3_start or settings.term_start_date
             end = settings.term_3_end or settings.term_end_date
-
-    try:
-        year_int = int(year)
-    except (TypeError, ValueError):
-        year_int = today.year
 
     # Fallback to sensible calendar term windows when dates are not configured.
     # Use today's year so that transactions made in the current calendar year
@@ -124,10 +120,22 @@ def _current_term_window(user):
         default_start = date(fallback_year, 9, 1)
         default_end = date(fallback_year, 12, 31)
 
-    if not start:
+    use_calendar_fallback = False
+    if not start or not end:
+        use_calendar_fallback = True
+    elif start > end:
+        use_calendar_fallback = True
+    elif today > end and (today - end).days > 366:
+        # Configured window is over a year behind current date.
+        use_calendar_fallback = True
+    elif today < start and (start - today).days > 366:
+        # Configured window is over a year ahead of current date.
+        use_calendar_fallback = True
+
+    if use_calendar_fallback:
         start = default_start
-    if not end:
         end = default_end
+        year = str(fallback_year)
 
     term_labels = {term_key, term_key.replace('_', ' ').title()}
     if term_key == 'term_1':

@@ -101,7 +101,11 @@ export default function AdminPromotions() {
       .filter((s) => !s.already_processed)
       .map((s) => {
         const d = decisions[s.student_id] || {};
-        const entry = { student_id: s.student_id, action: d.action || "promote" };
+        const entry = {
+          student_id: s.student_id,
+          action: d.action || "promote",
+          from_class_id: s.current_class?.id,
+        };
         if (d.action === "promote" && d.to_class_id) {
           entry.to_class_id = Number(d.to_class_id);
         }
@@ -117,6 +121,7 @@ export default function AdminPromotions() {
     try {
       const result = await apiService.processPromotions({
         academic_year: academicYear,
+        confirm_class_changes: true,
         promotions,
       });
       const summary = result.summary || result;

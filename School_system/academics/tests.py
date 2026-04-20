@@ -502,6 +502,109 @@ class StudentAPITest(APITestCase):
 
 
 # ---------------------------------------------------------------------------
+# API tests — Promotions
+# ---------------------------------------------------------------------------
+
+class PromotionAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Promotion School")
+        self.admin = make_user(self.school, "promo_admin", role="admin")
+        self.cls_form1_2026 = make_class(self.school, name="Form 1A", grade_level=1, year="2026")
+        self.cls_form2_2026 = make_class(self.school, name="Form 2A", grade_level=2, year="2026")
+        self.cls_form2_2025 = make_class(self.school, name="Form 2A Legacy", grade_level=2, year="2025")
+        self.student = make_student(
+            self.school, self.cls_form1_2026, username="promo_student", student_number="PROMO001"
+        )
+        self.preview_url = "/api/v1/academics/promotions/preview/"
+        self.process_url = "/api/v1/academics/promotions/"
+
+    def test_preview_rejects_class_year_mismatch(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.preview_url, {
+            "class_id": self.cls_form1_2026.id,
+            "academic_year": "2025",
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_preview_suggests_next_class_from_same_academic_year(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.preview_url, {
+            "class_id": self.cls_form1_2026.id,
+            "academic_year": "2026",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        student_preview = response.data["students"][0]
+        self.assertEqual(student_preview["suggested_to_class"]["id"], self.cls_form2_2026.id)
+        self.assertFalse(student_preview["requires_manual_target"])
+
+    def test_preview_requires_manual_target_when_multiple_next_classes_exist(self):
+        make_class(self.school, name="Form 2B", grade_level=2, year="2026")
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.preview_url, {
+            "class_id": self.cls_form1_2026.id,
+            "academic_year": "2026",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        student_preview = response.data["students"][0]
+        self.assertIsNone(student_preview["suggested_to_class"])
+        self.assertTrue(student_preview["requires_manual_target"])
+        self.assertGreaterEqual(len(student_preview["candidate_next_classes"]), 2)
+
+    def test_process_requires_explicit_confirmation(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.process_url, {
+            "academic_year": "2026",
+            "promotions": [{
+                "student_id": self.student.id,
+                "action": "promote",
+                "to_class_id": self.cls_form2_2026.id,
+                "from_class_id": self.cls_form1_2026.id,
+            }],
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.student_class_id, self.cls_form1_2026.id)
+
+    def test_process_rejects_wrong_year_target_class(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.process_url, {
+            "academic_year": "2026",
+            "confirm_class_changes": True,
+            "promotions": [{
+                "student_id": self.student.id,
+                "action": "promote",
+                "to_class_id": self.cls_form2_2025.id,
+                "from_class_id": self.cls_form1_2026.id,
+            }],
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["promoted"], 0)
+        self.assertGreaterEqual(len(response.data["summary"]["errors"]), 1)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.student_class_id, self.cls_form1_2026.id)
+
+    def test_process_promotes_student_when_confirmed_and_validated(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.process_url, {
+            "academic_year": "2026",
+            "confirm_class_changes": True,
+            "promotions": [{
+                "student_id": self.student.id,
+                "action": "promote",
+                "to_class_id": self.cls_form2_2026.id,
+                "from_class_id": self.cls_form1_2026.id,
+            }],
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["promoted"], 1)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.student_class_id, self.cls_form2_2026.id)
+
+
+# ---------------------------------------------------------------------------
 # API tests — Results
 # ---------------------------------------------------------------------------
 

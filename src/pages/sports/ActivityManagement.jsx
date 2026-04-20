@@ -445,17 +445,21 @@ export default function ActivityManagement() {
                               </span>
                             </td>
                             <td className="px-3 py-2">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                e.is_suspended
-                                  ? "bg-red-800 text-white"
-                                  : e.status === "approved"
-                                    ? "bg-green-100 text-green-700"
-                                    : e.status === "declined"
-                                    ? "bg-red-100 text-red-700"
-                                    : "bg-yellow-100 text-yellow-700"
-                              }`}>
-                                {e.is_suspended ? `Suspended: ${e.suspension_reason}` : (e.status_display || e.status)}
-                              </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  e.is_suspended
+                                    ? "bg-red-800 text-white"
+                                    : e.status === "approved"
+                                      ? "bg-green-100 text-green-700"
+                                      : e.status === "declined"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-yellow-100 text-yellow-700"
+                                }`}>
+                                  {e.is_suspended ? `Suspended: ${e.suspension_reason}` : (e.status_display || e.status)}
+                                </span>
+                                {!e.is_age_eligible && <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs"><i className="fas fa-exclamation-triangle mr-1"></i>Age Ineligible</span>}
+                                {e.is_injured && <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs"><i className="fas fa-briefcase-medical mr-1"></i>Injured</span>}
+                              </div>
                             </td>
                             <td className="px-3 py-2">{formatDate(e.date_joined)}</td>
                             <td className="px-3 py-2">
@@ -790,6 +794,7 @@ export default function ActivityManagement() {
 
                     <div className="text-xs text-gray-500 space-y-1">
                       {activity.coach_name && <p><i className="fas fa-user-tie mr-1"></i>Coach: {activity.coach_name}</p>}
+                      {activity.assistant_coach_name && <p><i className="fas fa-user-friends mr-1"></i>Assistant: {activity.assistant_coach_name}</p>}
                       {activity.schedule_day && <p><i className="fas fa-calendar mr-1"></i>{activity.schedule_day} {activity.schedule_time ? `at ${activity.schedule_time}` : ""}</p>}
                       {activity.location && <p><i className="fas fa-map-marker-alt mr-1"></i>{activity.location}</p>}
                       <p><i className="fas fa-users mr-1"></i>{activity.enrolled_count}/{activity.max_participants} enrolled</p>

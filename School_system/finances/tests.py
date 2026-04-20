@@ -951,3 +951,64 @@ class FinanceSummaryAndExpensesAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         expense.refresh_from_db()
         self.assertEqual(expense.status, "approved")
+
+    def test_finance_summary_falls_back_to_current_year_when_term_dates_missing(self):
+        today = datetime.date.today()
+
+        StudentPaymentRecord.objects.filter(school=self.school).delete()
+        settings = self.school.settings
+        settings.current_academic_year = str(today.year - 1)
+        settings.current_term = "Term 1"
+        settings.term_1_start = None
+        settings.term_1_end = None
+        settings.save(update_fields=["current_academic_year", "current_term", "term_1_start", "term_1_end"])
+
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year=str(today.year),
+            academic_term="term_1",
+            total_amount_due=Decimal("600.00"),
+            amount_paid=Decimal("275.00"),
+            payment_status="partial",
+            recorded_by=self.admin,
+        )
+
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.get("/api/v1/finances/summary/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(response.data["current_year"]), str(today.year))
+        self.assertEqual(float(response.data["term_revenue"]), 275.0)
+
+    def test_finance_summary_ignores_stale_term_window_over_one_year_old(self):
+        today = datetime.date.today()
+        stale_year = today.year - 2
+
+        StudentPaymentRecord.objects.filter(school=self.school).delete()
+        settings = self.school.settings
+        settings.current_academic_year = str(stale_year)
+        settings.current_term = "Term 1"
+        settings.term_1_start = datetime.date(stale_year, 1, 1)
+        settings.term_1_end = datetime.date(stale_year, 4, 30)
+        settings.save(update_fields=["current_academic_year", "current_term", "term_1_start", "term_1_end"])
+
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year=str(today.year),
+            academic_term="Term 1",
+            total_amount_due=Decimal("900.00"),
+            amount_paid=Decimal("410.00"),
+            payment_status="partial",
+            recorded_by=self.admin,
+        )
+
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.get("/api/v1/finances/summary/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(response.data["current_year"]), str(today.year))
+        self.assertEqual(float(response.data["term_revenue"]), 410.0)

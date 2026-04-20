@@ -46,6 +46,8 @@ export default function StudentDashboard() {
     );
   }
 
+  const studentSubjects = Array.isArray(stats?.subjects) ? stats.subjects : [];
+
   return (
     <div>
       <Header title="Student Dashboard" user={user} />
@@ -96,6 +98,28 @@ export default function StudentDashboard() {
               <i className="fas fa-calendar-check text-4xl opacity-50"></i>
             </div>
           </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">My Subjects</h3>
+            <span className="text-sm text-gray-500">{studentSubjects.length} total</span>
+          </div>
+          {studentSubjects.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {studentSubjects.map((subject) => (
+                <span
+                  key={subject.id}
+                  className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-100"
+                >
+                  {subject.name}
+                  {subject.code ? <span className="ml-2 text-blue-500">({subject.code})</span> : null}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">No subjects are assigned yet.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

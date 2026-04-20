@@ -112,6 +112,7 @@ export default function ParentDashboard() {
   };
 
   const formatDate = formatDateShort;
+  const childSubjects = Array.isArray(stats?.subjects) ? stats.subjects : [];
 
   const submitComplaint = async (e) => {
     e.preventDefault();
@@ -259,6 +260,32 @@ export default function ParentDashboard() {
                     <i className="fas fa-money-bill-wave text-4xl opacity-50"></i>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {selectedChild && stats && (
+              <div className="bg-white p-6 rounded-lg shadow mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Subjects {selectedChild?.name} is Learning
+                  </h3>
+                  <span className="text-sm text-gray-500">{childSubjects.length} total</span>
+                </div>
+                {childSubjects.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {childSubjects.map((subject) => (
+                      <span
+                        key={subject.id}
+                        className="inline-flex items-center px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-sm font-medium border border-green-100"
+                      >
+                        {subject.name}
+                        {subject.code ? <span className="ml-2 text-green-500">({subject.code})</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">No subjects are assigned yet.</p>
+                )}
               </div>
             )}
 

@@ -74,10 +74,28 @@ def student_dashboard_stats(request):
             sum(per_subject.values()) / len(per_subject), 1
         ) if per_subject else 0
         
-        # Get total subjects
-        total_subjects = student.student_class.timetable.filter(
-            class_assigned__school=student.user.school
-        ).values('subject').distinct().count() if student.student_class else 0
+        # Get subjects the student is currently learning from their timetable
+        subjects = []
+        if student.student_class:
+            subject_rows = (
+                Timetable.objects.filter(
+                    class_assigned=student.student_class,
+                    class_assigned__school=student.user.school,
+                    subject__is_deleted=False,
+                )
+                .values('subject_id', 'subject__name', 'subject__code')
+                .distinct()
+                .order_by('subject__name')
+            )
+            subjects = [
+                {
+                    'id': row['subject_id'],
+                    'name': row['subject__name'],
+                    'code': row['subject__code'],
+                }
+                for row in subject_rows
+            ]
+        total_subjects = len(subjects)
         
         # Get pending submissions
         pending_submissions = Assignment.objects.filter(
@@ -96,6 +114,7 @@ def student_dashboard_stats(request):
         data = {
             'overall_average': avg_percentage,
             'total_subjects': total_subjects,
+            'subjects': subjects,
             'pending_submissions': pending_submissions,
             'attendance_percentage': attendance_percentage
         }

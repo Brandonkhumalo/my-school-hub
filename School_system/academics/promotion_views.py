@@ -20,6 +20,17 @@ def _is_admin_or_hr(user):
     return getattr(user, 'role', None) in ('admin', 'hr', 'superadmin')
 
 
+def _as_bool(value):
+    """Parse common truthy values from JSON payloads."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return False
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def promotion_preview(request):
@@ -53,6 +64,17 @@ def promotion_preview(request):
     except Class.DoesNotExist:
         return Response({'error': 'Class not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    if str(current_class.academic_year) != str(academic_year):
+        return Response(
+            {
+                'error': (
+                    f'Class {current_class.name} belongs to academic_year '
+                    f'{current_class.academic_year}. Use matching academic_year.'
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     # Students currently in this class
     students = (
         Student.objects
@@ -61,12 +83,19 @@ def promotion_preview(request):
         .order_by('user__last_name', 'user__first_name')
     )
 
-    # Try to find the next class (grade_level + 1) in the same school
-    next_class = (
+    # Suggest targets for the next grade in the same academic year only.
+    next_class_candidates = list(
         Class.objects
-        .filter(school=request.user.school, grade_level=current_class.grade_level + 1)
-        .first()
+        .filter(
+            school=request.user.school,
+            grade_level=current_class.grade_level + 1,
+            academic_year=academic_year,
+        )
+        .order_by('name', 'id')
     )
+    has_single_candidate = len(next_class_candidates) == 1
+    has_multiple_candidates = len(next_class_candidates) > 1
+    chosen_next_class = next_class_candidates[0] if has_single_candidate else None
 
     preview = []
     for student in students:
@@ -75,13 +104,17 @@ def promotion_preview(request):
             student=student, academic_year=academic_year
         ).exists()
 
-        if next_class:
+        if has_single_candidate and chosen_next_class:
             suggested_action = 'promote'
             suggested_to_class = {
-                'id': next_class.id,
-                'name': str(next_class),
-                'grade_level': next_class.grade_level,
+                'id': chosen_next_class.id,
+                'name': str(chosen_next_class),
+                'grade_level': chosen_next_class.grade_level,
             }
+        elif has_multiple_candidates:
+            # Ambiguous: require admin/HR to choose explicitly.
+            suggested_action = 'promote'
+            suggested_to_class = None
         else:
             suggested_action = 'graduate'
             suggested_to_class = None
@@ -97,6 +130,14 @@ def promotion_preview(request):
             },
             'suggested_action': suggested_action,
             'suggested_to_class': suggested_to_class,
+            'requires_manual_target': has_multiple_candidates,
+            'candidate_next_classes': [
+                {
+                    'id': c.id,
+                    'name': str(c),
+                    'grade_level': c.grade_level,
+                } for c in next_class_candidates
+            ],
             'already_processed': already_processed,
         })
 
@@ -133,11 +174,17 @@ def process_promotions(request):
     if not _is_admin_or_hr(request.user):
         return Response({'error': 'Admin/HR access required.'}, status=status.HTTP_403_FORBIDDEN)
 
-    academic_year = request.data.get('academic_year')
+    academic_year = str(request.data.get('academic_year', '')).strip()
     promotions = request.data.get('promotions', [])
+    confirm_class_changes = _as_bool(request.data.get('confirm_class_changes'))
 
     if not academic_year:
         return Response({'error': 'academic_year is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not confirm_class_changes:
+        return Response(
+            {'error': 'confirm_class_changes=true is required to process promotions.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if not promotions:
         return Response({'error': 'promotions list is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -167,6 +214,24 @@ def process_promotions(request):
 
             from_class = student.student_class
             to_class = None
+            expected_from_class_id = entry.get('from_class_id')
+            if expected_from_class_id is not None:
+                try:
+                    expected_from_class_id = int(expected_from_class_id)
+                except (TypeError, ValueError):
+                    results['errors'].append(
+                        f'{student.user.full_name}: from_class_id must be an integer.'
+                    )
+                    continue
+                if student.student_class_id != expected_from_class_id:
+                    results['errors'].append(
+                        (
+                            f'{student.user.full_name}: class changed since preview '
+                            f'(expected {expected_from_class_id}, now {student.student_class_id}). '
+                            f'Refresh preview and retry.'
+                        )
+                    )
+                    continue
 
             if action == 'promote':
                 if not to_class_id:
@@ -179,6 +244,22 @@ def process_promotions(request):
                 except Class.DoesNotExist:
                     results['errors'].append(
                         f'{student.user.full_name}: target class {to_class_id} not found.'
+                    )
+                    continue
+                if str(to_class.academic_year) != academic_year:
+                    results['errors'].append(
+                        (
+                            f'{student.user.full_name}: target class {to_class.name} belongs to '
+                            f'academic_year {to_class.academic_year}, expected {academic_year}.'
+                        )
+                    )
+                    continue
+                if from_class and to_class.grade_level != from_class.grade_level + 1:
+                    results['errors'].append(
+                        (
+                            f'{student.user.full_name}: target class {to_class.name} is grade '
+                            f'{to_class.grade_level}; expected grade {from_class.grade_level + 1}.'
+                        )
                     )
                     continue
                 student.student_class = to_class
