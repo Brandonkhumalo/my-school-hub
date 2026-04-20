@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('academics', '0028_add_reportcard_teacher_comment'),
+        ('academics', '0029_create_sportshouse'),
     ]
 
     operations = [
