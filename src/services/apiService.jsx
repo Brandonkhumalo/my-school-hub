@@ -661,11 +661,24 @@ const apiService = {
     return request(`/staff/payroll/${q ? '?' + q : ''}`, "GET");
   },
   generatePayroll: (data) => request("/staff/payroll/generate/", "POST", data),
+  markPayrollPaid: (data) => request("/staff/payroll/mark-paid/", "POST", data),
+  getPayrollPaymentRequests: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/staff/payroll/payment-requests/${q ? '?' + q : ''}`, "GET");
+  },
+  reviewPayrollPaymentRequest: (requestId, data) => request(`/staff/payroll/payment-requests/${requestId}/review/`, "POST", data),
   createPayrollEntry: (data) => request("/staff/payroll/", "POST", data),
   getPayrollSummary: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return request(`/staff/payroll/summary/${q ? '?' + q : ''}`, "GET");
   },
+  getFinanceSummary: () => request("/finances/summary/", "GET"),
+  getSchoolExpenses: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/finances/expenses/${q ? '?' + q : ''}`, "GET");
+  },
+  createSchoolExpense: (data) => request("/finances/expenses/", "POST", data),
+  approveSchoolExpense: (expenseId, data) => request(`/finances/expenses/${expenseId}/approve/`, "POST", data),
 
   getMeetings: () => request("/staff/meetings/", "GET"),
   createMeeting: (data) => request("/staff/meetings/", "POST", data),

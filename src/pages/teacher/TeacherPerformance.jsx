@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -11,7 +11,8 @@ export default function TeacherPerformance() {
   const [students, setStudents] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingStudents, setLoadingStudents] = useState(false);
-  const [search, setSearch] = useState("");
+  const [riskSearch, setRiskSearch] = useState("");
+  const [marksSearch, setMarksSearch] = useState("");
   const [filterAtRisk, setFilterAtRisk] = useState("all");
   const [sortBy, setSortBy] = useState("risk_score");
   const [viewMode, setViewMode] = useState("risk"); // "risk" | "marks"
@@ -57,9 +58,9 @@ export default function TeacherPerformance() {
     } else {
       loadMarks();
     }
-  }, [selectedSubject, search, filterAtRisk, sortBy, viewMode]);
+  }, [selectedSubject, viewMode, loadStudents, loadMarks]);
 
-  const loadMarks = async () => {
+  const loadMarks = useCallback(async () => {
     try {
       setLoadingMarks(true);
       const data = await apiService.fetchResults({ subject: selectedSubject });
@@ -71,7 +72,7 @@ export default function TeacherPerformance() {
     } finally {
       setLoadingMarks(false);
     }
-  };
+  }, [selectedSubject]);
 
   const loadSubjects = async () => {
     try {
@@ -90,13 +91,13 @@ export default function TeacherPerformance() {
     }
   };
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     if (!selectedSubject) return;
     try {
       setLoadingStudents(true);
       const data = await apiService.getSubjectStudentsAtRisk(
         selectedSubject,
-        search,
+        riskSearch,
         filterAtRisk,
         sortBy
       );
@@ -107,7 +108,17 @@ export default function TeacherPerformance() {
     } finally {
       setLoadingStudents(false);
     }
-  };
+  }, [selectedSubject, riskSearch, filterAtRisk, sortBy]);
+
+  const filteredMarks = useMemo(() => {
+    const q = marksSearch.trim().toLowerCase();
+    if (!q) return marks;
+    return marks.filter((row) => {
+      const studentName = (row.student_name || "").toLowerCase();
+      const studentNumber = (row.student_number || "").toLowerCase();
+      return studentName.includes(q) || studentNumber.includes(q);
+    });
+  }, [marks, marksSearch]);
 
   const getGradeColor = (grade) => {
     switch (grade) {
@@ -208,8 +219,8 @@ export default function TeacherPerformance() {
                   <input
                     type="text"
                     placeholder="Name, email, or student #"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    value={riskSearch}
+                    onChange={(e) => setRiskSearch(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -362,41 +373,55 @@ export default function TeacherPerformance() {
 
             {viewMode === "marks" && (
               loadingMarks ? <LoadingSpinner /> : (
-                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-100 border-b">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
-                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Assessment</th>
-                          <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Term / Year</th>
-                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Score</th>
-                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Out of</th>
-                          <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">%</th>
-                          <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Grade</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {marks.length === 0 ? (
-                          <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No marks recorded for this subject yet.</td></tr>
-                        ) : marks.map((r) => (
-                          <tr key={r.id} className="border-b hover:bg-gray-50">
-                            <td className="px-6 py-3">
-                              <div className="font-medium text-gray-800">{r.student_name}</div>
-                              <div className="text-xs text-gray-500">#{r.student_number}</div>
-                            </td>
-                            <td className="px-6 py-3 text-sm text-gray-700">{r.exam_type}</td>
-                            <td className="px-6 py-3 text-sm text-gray-600">{r.academic_term} / {r.academic_year}</td>
-                            <td className="px-6 py-3 text-right">{r.score}</td>
-                            <td className="px-6 py-3 text-right">{r.max_score}</td>
-                            <td className="px-6 py-3 text-right font-medium">{r.percentage}%</td>
-                            <td className="px-6 py-3 text-center">
-                              <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((r.grade || '').charAt(0))}`}>{r.grade}</span>
-                            </td>
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg shadow-lg p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <i className="fas fa-search mr-2"></i>Find Student Marks
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Search by name, surname, or student number"
+                      value={marksSearch}
+                      onChange={(e) => setMarksSearch(e.target.value)}
+                      className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-100 border-b">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Student</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Assessment</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Term / Year</th>
+                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Score</th>
+                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Out of</th>
+                            <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">%</th>
+                            <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Grade</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {filteredMarks.length === 0 ? (
+                            <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No marks found for this search in the selected subject.</td></tr>
+                          ) : filteredMarks.map((r) => (
+                            <tr key={r.id} className="border-b hover:bg-gray-50">
+                              <td className="px-6 py-3">
+                                <div className="font-medium text-gray-800">{r.student_name}</div>
+                                <div className="text-xs text-gray-500">#{r.student_number}</div>
+                              </td>
+                              <td className="px-6 py-3 text-sm text-gray-700">{r.exam_type}</td>
+                              <td className="px-6 py-3 text-sm text-gray-600">{r.academic_term} / {r.academic_year}</td>
+                              <td className="px-6 py-3 text-right">{r.score}</td>
+                              <td className="px-6 py-3 text-right">{r.max_score}</td>
+                              <td className="px-6 py-3 text-right font-medium">{r.percentage}%</td>
+                              <td className="px-6 py-3 text-center">
+                                <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((r.grade || '').charAt(0))}`}>{r.grade}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )

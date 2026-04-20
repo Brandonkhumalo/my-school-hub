@@ -27,6 +27,9 @@ urlpatterns = [
     path('payroll/<int:pk>/', views.PayrollDetailView.as_view(), name='payroll-detail'),
     path('payroll/summary/', views.payroll_summary_view, name='payroll-summary'),
     path('payroll/generate/', views.payroll_generate_view, name='payroll-generate'),
+    path('payroll/mark-paid/', views.payroll_mark_paid_view, name='payroll-mark-paid'),
+    path('payroll/payment-requests/', views.payroll_payment_requests_view, name='payroll-payment-requests'),
+    path('payroll/payment-requests/<int:request_id>/review/', views.payroll_payment_request_review_view, name='payroll-payment-request-review'),
 
     # Meetings
     path('meetings/', views.MeetingListCreateView.as_view(), name='meeting-list-create'),

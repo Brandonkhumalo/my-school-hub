@@ -1,6 +1,7 @@
 import logging
 import uuid
 from decimal import Decimal, InvalidOperation
+from datetime import date
 
 from django.db import transaction
 from django.db.models import Sum, Q, Count
@@ -29,7 +30,10 @@ from .models import (
     PaymentIntent,
     AdditionalFee,
     TransportFeePreference,
+    SchoolExpense,
 )
+from staff.models import Payroll
+from users.models import Notification, CustomUser, HRPermissionProfile
 from academics.models import Student, Class, ParentChildLink
 from .fee_calculator import (
     build_school_fee_breakdown,
@@ -49,8 +53,130 @@ from .serializers import (
     StudentFinancialSummarySerializer, SchoolFeesSerializer,
     StudentPaymentRecordSerializer, CreatePaymentRecordSerializer,
     AddPaymentSerializer, InvoiceDetailSerializer, PaymentTransactionSerializer,
-    AdditionalFeeSerializer
+    AdditionalFeeSerializer, SchoolExpenseSerializer
 )
+
+
+MONTH_INDEX = {
+    'January': 1,
+    'February': 2,
+    'March': 3,
+    'April': 4,
+    'May': 5,
+    'June': 6,
+    'July': 7,
+    'August': 8,
+    'September': 9,
+    'October': 10,
+    'November': 11,
+    'December': 12,
+}
+
+
+def _normalize_term(term_value):
+    raw = (term_value or '').strip().lower().replace(' ', '_')
+    if raw in {'term1', 'term_1', '1', 't1'}:
+        return 'term_1'
+    if raw in {'term2', 'term_2', '2', 't2'}:
+        return 'term_2'
+    if raw in {'term3', 'term_3', '3', 't3'}:
+        return 'term_3'
+    return raw or 'term_1'
+
+
+def _current_term_window(user):
+    school = getattr(user, 'school', None)
+    settings = getattr(school, 'settings', None) if school else None
+    today = timezone.localdate()
+
+    term_raw = getattr(settings, 'current_term', '') if settings else ''
+    term_key = _normalize_term(term_raw)
+    year = str(getattr(settings, 'current_academic_year', today.year)) if settings else str(today.year)
+
+    start = end = None
+    if settings:
+        if term_key == 'term_1':
+            start = settings.term_1_start or settings.term_start_date
+            end = settings.term_1_end or settings.term_end_date
+        elif term_key == 'term_2':
+            start = settings.term_2_start or settings.term_start_date
+            end = settings.term_2_end or settings.term_end_date
+        else:
+            start = settings.term_3_start or settings.term_start_date
+            end = settings.term_3_end or settings.term_end_date
+
+    if not start:
+        start = date(today.year, today.month, 1)
+    if not end:
+        end = today
+
+    term_labels = {term_key, term_key.replace('_', ' ').title()}
+    if term_key == 'term_1':
+        term_labels.add('Term 1')
+    elif term_key == 'term_2':
+        term_labels.add('Term 2')
+    elif term_key == 'term_3':
+        term_labels.add('Term 3')
+
+    return start, end, year, term_labels, term_key
+
+
+def _months_inclusive(start_date, end_date):
+    start_month = date(start_date.year, start_date.month, 1)
+    end_month = date(end_date.year, end_date.month, 1)
+    months = 0
+    cursor = start_month
+    while cursor <= end_month:
+        months += 1
+        if cursor.month == 12:
+            cursor = date(cursor.year + 1, 1, 1)
+        else:
+            cursor = date(cursor.year, cursor.month + 1, 1)
+    return months
+
+
+def _expense_value_in_window(expense, window_start, window_end):
+    if not expense.is_active or expense.status != 'approved':
+        return Decimal('0')
+    if expense.start_date > window_end:
+        return Decimal('0')
+
+    effective_start = max(expense.start_date, window_start)
+    if effective_start > window_end:
+        return Decimal('0')
+
+    if expense.expense_frequency == 'monthly':
+        return expense.amount * _months_inclusive(effective_start, window_end)
+
+    # term frequency: once per term if active in the period.
+    return expense.amount
+
+
+def _notify_admin_and_root_hr_boss(school, title, message, link=''):
+    if not school:
+        return
+    root_hr_ids = HRPermissionProfile.objects.filter(
+        school=school,
+        is_root_boss=True,
+    ).values_list('user_id', flat=True)
+    recipients = CustomUser.objects.filter(
+        school=school,
+        is_active=True,
+    ).filter(
+        Q(role='admin') | Q(id__in=root_hr_ids)
+    ).distinct()
+    notifications = [
+        Notification(
+            user=user,
+            title=title,
+            message=message,
+            notification_type='general',
+            link=link or '',
+        )
+        for user in recipients
+    ]
+    if notifications:
+        Notification.objects.bulk_create(notifications)
 
 
 # Fee Type Views
@@ -338,6 +464,149 @@ class FinancialReportListCreateView(generics.ListCreateAPIView):
         # Enqueue heavy aggregation as a background task — do not block the request
         from .tasks import generate_financial_report_task
         generate_financial_report_task.delay(report.id)
+
+
+class SchoolExpenseListCreateView(generics.ListCreateAPIView):
+    """Create/list school operational expenses pending admin approval."""
+    serializer_class = SchoolExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role not in ['admin', 'superadmin', 'accountant', 'hr']:
+            return SchoolExpense.objects.none()
+        if not user.school:
+            return SchoolExpense.objects.none()
+        qs = SchoolExpense.objects.filter(school=user.school).select_related('created_by', 'approved_by')
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in ['accountant', 'admin', 'superadmin']:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Only accountant or HR boss/admin can add school expenses.')
+        expense = serializer.save(
+            school=user.school,
+            created_by=user,
+            status='pending',
+            approved_by=None,
+            approved_at=None,
+        )
+        _notify_admin_and_root_hr_boss(
+            school=user.school,
+            title='New Expense Awaiting Approval',
+            message=f"{user.full_name} submitted expense '{expense.title}' ({expense.expense_frequency}) for approval.",
+            link='/hr/accounting',
+        )
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def school_expense_approve_view(request, expense_id):
+    user = request.user
+    if user.role not in ['admin', 'superadmin'] or getattr(request, 'is_root_hr_boss', False):
+        return Response({'error': 'Only admin can approve or reject expenses.'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.school:
+        return Response({'error': 'No school associated with current user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    decision = (request.data.get('status') or '').strip().lower()
+    if decision not in ('approved', 'rejected'):
+        return Response({'error': "status must be 'approved' or 'rejected'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        expense = SchoolExpense.objects.get(id=expense_id, school=user.school)
+    except SchoolExpense.DoesNotExist:
+        return Response({'error': 'Expense not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    expense.status = decision
+    expense.approved_by = user
+    expense.approved_at = timezone.now()
+    expense.save(update_fields=['status', 'approved_by', 'approved_at', 'updated_at'])
+
+    _notify_admin_and_root_hr_boss(
+        school=user.school,
+        title=f"Expense {decision.title()}",
+        message=f"{user.full_name} {decision} expense '{expense.title}'.",
+        link='/hr/accounting',
+    )
+    return Response(SchoolExpenseSerializer(expense).data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def finance_summary_view(request):
+    user = request.user
+    if user.role not in ['admin', 'superadmin', 'accountant', 'hr']:
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    if not user.school:
+        return Response({'error': 'No school associated with current user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    today = timezone.localdate()
+    month_name = today.strftime('%B')
+    year = today.year
+    school = user.school
+    term_start, term_end, current_year, term_labels, term_key = _current_term_window(user)
+
+    monthly_salary_total = Payroll.objects.filter(
+        staff__user__school=school,
+        month=month_name,
+        year=year,
+    ).aggregate(total=Sum('net_salary'))['total'] or Decimal('0')
+
+    term_revenue = StudentPaymentRecord.objects.filter(
+        school=school,
+        academic_year=current_year,
+        academic_term__in=term_labels,
+    ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+
+    term_payroll_total = Decimal('0')
+    payroll_rows = Payroll.objects.filter(
+        staff__user__school=school,
+        year__gte=term_start.year,
+        year__lte=term_end.year,
+        is_paid=True,
+    )
+    for row in payroll_rows:
+        month_num = MONTH_INDEX.get(row.month)
+        if not month_num:
+            continue
+        row_date = date(row.year, month_num, 1)
+        if term_start <= row_date <= term_end:
+            term_payroll_total += row.net_salary
+
+    approved_expenses = SchoolExpense.objects.filter(
+        school=school,
+        status='approved',
+        is_active=True,
+        start_date__lte=term_end,
+    )
+    term_other_expenses = sum(
+        (_expense_value_in_window(expense, term_start, term_end) for expense in approved_expenses),
+        Decimal('0'),
+    )
+    term_total_expenses = term_payroll_total + term_other_expenses
+    term_profit = term_revenue - term_total_expenses
+
+    payroll_qs = Payroll.objects.filter(staff__user__school=school, month=month_name, year=year)
+    paid_count = payroll_qs.filter(is_paid=True).count()
+    unpaid_count = payroll_qs.filter(is_paid=False).count()
+
+    return Response({
+        'current_month': month_name,
+        'current_year': year,
+        'current_term': term_key,
+        'monthly_salary_total': monthly_salary_total,
+        'term_revenue': term_revenue,
+        'term_other_expenses': term_other_expenses,
+        'term_salary_expenses': term_payroll_total,
+        'term_total_expenses': term_total_expenses,
+        'term_profit': term_profit,
+        'monthly_paid_count': paid_count,
+        'monthly_unpaid_count': unpaid_count,
+    })
 
 
 @api_view(['GET'])

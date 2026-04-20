@@ -5,12 +5,19 @@ import { formatDateTime } from "../../utils/dateFormat";
 
 export default function HRDashboard() {
   const [stats, setStats] = useState(null);
+  const [finance, setFinance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    apiService.getHRDashboardStats()
-      .then(setStats)
+    Promise.all([
+      apiService.getHRDashboardStats(),
+      apiService.getFinanceSummary().catch(() => null),
+    ])
+      .then(([statsData, financeData]) => {
+        setStats(statsData);
+        setFinance(financeData);
+      })
       .catch(() => setError("Failed to load dashboard stats"))
       .finally(() => setLoading(false));
   }, []);
@@ -28,6 +35,11 @@ export default function HRDashboard() {
     { label: "On Leave Today", value: stats.on_leave, icon: "fa-calendar-minus", color: "yellow" },
     { label: "Pending Leave Requests", value: stats.pending_leave_requests, icon: "fa-clock", color: "red" },
     { label: "Departments", value: stats.departments, icon: "fa-building", color: "green" },
+    { label: "Monthly Salaries", value: `$${Number(finance?.monthly_salary_total ?? 0).toLocaleString()}`, icon: "fa-money-bill-wave", color: "orange" },
+    { label: "Term Revenue", value: `$${Number(finance?.term_revenue ?? 0).toLocaleString()}`, icon: "fa-coins", color: "emerald" },
+    { label: "Term Profit", value: `$${Number(finance?.term_profit ?? 0).toLocaleString()}`, icon: "fa-chart-line", color: "teal" },
+    { label: "Paid This Month", value: finance?.monthly_paid_count ?? 0, icon: "fa-check-circle", color: "lime" },
+    { label: "Unpaid This Month", value: finance?.monthly_unpaid_count ?? 0, icon: "fa-times-circle", color: "rose" },
   ] : [];
 
   return (
@@ -64,6 +76,7 @@ export default function HRDashboard() {
               { to: "/hr/leaves", icon: "fa-calendar-minus", label: "Leave Requests" },
               { to: "/hr/invoices", icon: "fa-file-invoice", label: "Invoices" },
               { to: "/hr/payroll", icon: "fa-money-bill-wave", label: "Payroll" },
+              { to: "/hr/accounting", icon: "fa-calculator", label: "Accounting" },
               { to: "/hr/attendance", icon: "fa-clipboard-check", label: "Attendance" },
               { to: "/hr/meetings", icon: "fa-handshake", label: "Meetings" },
             ].map((link) => (

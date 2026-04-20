@@ -214,6 +214,41 @@ class Payroll(models.Model):
         return f"{self.staff.user.full_name} - {self.month} {self.year}"
 
 
+class PayrollPaymentRequest(models.Model):
+    """Approval request for marking payroll entries as paid."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    TARGET_CHOICES = [
+        ('all', 'All Staff'),
+        ('selected', 'Selected Staff'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='payroll_payment_requests')
+    month = models.CharField(max_length=20)
+    year = models.IntegerField()
+    target_type = models.CharField(max_length=20, choices=TARGET_CHOICES, default='all')
+    staff_ids = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='requested_payroll_payments')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_payroll_payments')
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['school', 'month', 'year']),
+        ]
+
+    def __str__(self):
+        return f"{self.school.name} payroll request {self.month} {self.year} ({self.status})"
+
+
 class Meeting(models.Model):
     """Represents Meeting."""
     title = models.CharField(max_length=200)

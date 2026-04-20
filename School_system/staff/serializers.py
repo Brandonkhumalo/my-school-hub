@@ -6,7 +6,7 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import (
     Department, Staff, Attendance, Leave, Payroll, Meeting,
-    VisitorLog, IncidentReport, CleaningSchedule, CleaningTask
+    VisitorLog, IncidentReport, CleaningSchedule, CleaningTask, PayrollPaymentRequest
 )
 from users.models import CustomUser
 
@@ -340,3 +340,35 @@ class MeetingSerializer(serializers.ModelSerializer):
     def get_participant_count(self, obj):
         """Return participant count."""
         return obj.participants.count()
+
+
+class PayrollPaymentRequestSerializer(serializers.ModelSerializer):
+    requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True)
+
+    class Meta:
+        model = PayrollPaymentRequest
+        fields = [
+            'id',
+            'month',
+            'year',
+            'target_type',
+            'staff_ids',
+            'status',
+            'requested_by',
+            'requested_by_name',
+            'approved_by',
+            'approved_by_name',
+            'requested_at',
+            'reviewed_at',
+            'admin_note',
+        ]
+        read_only_fields = [
+            'status',
+            'requested_by',
+            'requested_by_name',
+            'approved_by',
+            'approved_by_name',
+            'requested_at',
+            'reviewed_at',
+        ]

@@ -19,8 +19,8 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
-from users.models import CustomUser, School
-from staff.models import Attendance, Department, Leave, Payroll, Staff
+from users.models import CustomUser, School, Notification
+from staff.models import Attendance, Department, Leave, Payroll, PayrollPaymentRequest, Staff
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +658,7 @@ class PayrollAPITest(APITestCase):
         self.school = make_school()
         self.admin = make_user(self.school, "pay_roll_admin", role="admin")
         self.hr = make_user(self.school, "pay_roll_hr", role="hr")
+        self.accountant = make_user(self.school, "pay_roll_accountant", role="accountant")
         self.teacher_user = make_user(self.school, "pay_roll_teacher", role="teacher")
 
         staff_user = make_user(self.school, "pay_roll_staff", role="teacher")
@@ -675,6 +676,12 @@ class PayrollAPITest(APITestCase):
     def test_list_payroll_as_hr_returns_200(self):
         """Test that list payroll as hr returns 200."""
         self.client.force_authenticate(user=self.hr)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_list_payroll_as_accountant_returns_200(self):
+        """Test that list payroll as accountant returns 200."""
+        self.client.force_authenticate(user=self.accountant)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -702,6 +709,106 @@ class PayrollAPITest(APITestCase):
             "net_salary": "1500.00",
         }, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_payroll_as_accountant_forbidden(self):
+        """Test that create payroll as accountant returns 403."""
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.post(self.url, {
+            "staff": self.staff.pk,
+            "month": "April",
+            "year": 2026,
+            "basic_salary": "1400.00",
+            "allowances": "0.00",
+            "deductions": "0.00",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_payroll_as_accountant_forbidden(self):
+        """Test that update payroll as accountant returns 403."""
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.patch(f"{self.url}{self.payroll.pk}/", {
+            "allowances": "100.00",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_payroll_summary_as_accountant_returns_200(self):
+        """Test that payroll summary is visible to accountant."""
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.get(f"{self.url}summary/", {"month": "March", "year": 2026})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("total_net", response.data)
+        self.assertIn("total_gross", response.data)
+
+    def test_mark_all_payroll_paid_as_accountant_creates_pending_request(self):
+        """Test accountant creates pending sign-off request instead of direct payment."""
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.post(f"{self.url}mark-paid/", {
+            "month": "March",
+            "year": 2026,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.payroll.refresh_from_db()
+        self.assertFalse(self.payroll.is_paid)
+        req = PayrollPaymentRequest.objects.get(id=response.data["request_id"])
+        self.assertEqual(req.status, "pending")
+        self.assertEqual(req.target_type, "all")
+
+    def test_mark_selected_payroll_paid_creates_selected_request(self):
+        """Test selected payroll request requires admin sign-off."""
+        other_staff_user = make_user(self.school, "pay_roll_staff_2", role="teacher")
+        other_staff = make_staff(other_staff_user, position="teacher", salary=1200.00)
+        other_payroll = make_payroll(other_staff)
+
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.post(f"{self.url}mark-paid/", {
+            "month": "March",
+            "year": 2026,
+            "staff_ids": [self.staff.id],
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.payroll.refresh_from_db()
+        other_payroll.refresh_from_db()
+        self.assertFalse(self.payroll.is_paid)
+        self.assertFalse(other_payroll.is_paid)
+        req = PayrollPaymentRequest.objects.get(id=response.data["request_id"])
+        self.assertEqual(req.target_type, "selected")
+        self.assertEqual(req.staff_ids, [self.staff.id])
+
+    def test_admin_can_approve_payroll_payment_request(self):
+        """Test admin final sign-off marks salaries as paid."""
+        self.client.force_authenticate(user=self.accountant)
+        create_res = self.client.post(f"{self.url}mark-paid/", {
+            "month": "March",
+            "year": 2026,
+            "staff_ids": [self.staff.id],
+        }, format="json")
+        req_id = create_res.data["request_id"]
+
+        self.client.force_authenticate(user=self.admin)
+        review_res = self.client.post(f"{self.url}payment-requests/{req_id}/review/", {
+            "status": "approved",
+        }, format="json")
+        self.assertEqual(review_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(review_res.data["updated"], 1)
+        self.payroll.refresh_from_db()
+        self.assertTrue(self.payroll.is_paid)
+        self.assertTrue(Notification.objects.filter(user=self.staff.user, title="Salary Paid").exists())
+
+    def test_accountant_cannot_final_signoff_payroll_request(self):
+        """Test final payroll sign-off is admin only."""
+        req = PayrollPaymentRequest.objects.create(
+            school=self.school,
+            month="March",
+            year=2026,
+            target_type="all",
+            requested_by=self.accountant,
+        )
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.post(f"{self.url}payment-requests/{req.id}/review/", {
+            "status": "approved",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_filter_payroll_by_month(self):
         """Test that filter payroll by month."""

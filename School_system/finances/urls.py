@@ -24,6 +24,9 @@ urlpatterns = [
     
     # Financial Report endpoints
     path('reports/', views.FinancialReportListCreateView.as_view(), name='financial-report-list-create'),
+    path('summary/', views.finance_summary_view, name='finance-summary'),
+    path('expenses/', views.SchoolExpenseListCreateView.as_view(), name='school-expense-list-create'),
+    path('expenses/<int:expense_id>/approve/', views.school_expense_approve_view, name='school-expense-approve'),
     
     # Summary endpoints
     path('students/<int:student_id>/summary/', views.student_financial_summary, name='student-financial-summary'),

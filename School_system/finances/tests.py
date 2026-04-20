@@ -29,6 +29,7 @@ from finances.models import (
     Payment,
     PaymentIntent,
     SchoolFees,
+    SchoolExpense,
     StudentFee,
     StudentPaymentRecord,
 )
@@ -869,3 +870,84 @@ class BulkFeeImportAPITest(APITestCase):
         """Test that bulk import requires authentication."""
         response = self.client.post(self.url, {}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class FinanceSummaryAndExpensesAPITest(APITestCase):
+    """Tests for finance summary and expense approval workflow."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Finance Summary School")
+        self.admin = make_user(self.school, "fin_admin", role="admin")
+        self.accountant = make_user(self.school, "fin_acc", role="accountant")
+        self.cls = make_class(self.school)
+        self.student = make_student(self.school, self.cls, username="fin_sum_stu", student_number="FINSUM001")
+
+        SchoolSettings.objects.create(
+            school=self.school,
+            current_academic_year="2026",
+            current_term="Term 1",
+            term_1_start=datetime.date(2026, 1, 1),
+            term_1_end=datetime.date(2026, 4, 30),
+        )
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="Term 1",
+            total_amount_due=Decimal("1000.00"),
+            amount_paid=Decimal("650.00"),
+            payment_status="partial",
+            recorded_by=self.admin,
+        )
+        SchoolExpense.objects.create(
+            school=self.school,
+            title="Internet",
+            amount=Decimal("120.00"),
+            expense_frequency="monthly",
+            start_date=datetime.date(2026, 1, 1),
+            status="approved",
+            created_by=self.admin,
+            approved_by=self.admin,
+            approved_at=datetime.datetime.now(),
+        )
+
+    def test_finance_summary_as_accountant_returns_200(self):
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.get("/api/v1/finances/summary/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("monthly_salary_total", response.data)
+        self.assertIn("term_revenue", response.data)
+        self.assertIn("term_profit", response.data)
+
+    def test_accountant_can_create_expense_pending(self):
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.post("/api/v1/finances/expenses/", {
+            "title": "Generator Fuel",
+            "description": "Backup power",
+            "amount": "300.00",
+            "expense_frequency": "term",
+            "start_date": "2026-02-01",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "pending")
+
+    def test_admin_can_approve_expense(self):
+        expense = SchoolExpense.objects.create(
+            school=self.school,
+            title="Transport Contract",
+            amount=Decimal("450.00"),
+            expense_frequency="term",
+            start_date=datetime.date(2026, 2, 1),
+            status="pending",
+            created_by=self.accountant,
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/v1/finances/expenses/{expense.id}/approve/", {
+            "status": "approved",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expense.refresh_from_db()
+        self.assertEqual(expense.status, "approved")

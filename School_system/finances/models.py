@@ -265,6 +265,44 @@ class FinancialReport(models.Model):
         return f"{self.title} - {self.report_type}"
 
 
+class SchoolExpense(models.Model):
+    """Recurring school expense that requires admin approval before counting."""
+    EXPENSE_FREQUENCY_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('term', 'Per Term'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='school_expenses')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    expense_frequency = models.CharField(max_length=20, choices=EXPENSE_FREQUENCY_CHOICES)
+    start_date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_school_expenses')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_school_expenses')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['school', 'expense_frequency']),
+            models.Index(fields=['school', 'start_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.school.name} - {self.title} ({self.expense_frequency})"
+
+
 class SchoolFees(models.Model):
     """Represents SchoolFees."""
     objects = TenantAwareManager()

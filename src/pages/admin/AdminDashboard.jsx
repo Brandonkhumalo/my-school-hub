@@ -9,6 +9,7 @@ import apiService from "../../services/apiService";
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
+  const [finance, setFinance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recentClasses, setRecentClasses] = useState([]);
 
@@ -23,6 +24,8 @@ export default function AdminDashboard() {
       ]);
       setStats(statsData);
       setRecentClasses(classesData.slice(0, 5));
+      const financeData = await apiService.getFinanceSummary().catch(() => null);
+      setFinance(financeData);
     } catch (error) {
       console.error("Error loading dashboard:", error);
     } finally {
@@ -169,28 +172,44 @@ export default function AdminDashboard() {
                 <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Total Revenue</span>
               </div>
               <span className="font-bold text-emerald-600 text-base">
-                ${stats?.total_revenue?.toLocaleString() || "0"}
+                ${Number(finance?.term_revenue ?? stats?.total_revenue ?? 0).toLocaleString()}
               </span>
             </div>
 
-            {/* Pending Invoices */}
+            {/* Monthly Salaries */}
             <div
               className="flex items-center justify-between p-4 rounded-xl"
               style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}
             >
               <div className="flex items-center gap-3">
                 <span className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center">
-                  <i className="fas fa-file-invoice text-orange-500 text-sm" />
+                  <i className="fas fa-money-bill-wave text-orange-500 text-sm" />
                 </span>
-                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Pending Invoices</span>
+                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Monthly Salaries</span>
               </div>
               <span className="font-bold text-orange-500 text-base">
-                {stats?.pending_invoices || 0}
+                ${Number(finance?.monthly_salary_total ?? 0).toLocaleString()}
+              </span>
+            </div>
+
+            {/* Term Profit */}
+            <div
+              className="flex items-center justify-between p-4 rounded-xl"
+              style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <i className="fas fa-chart-line text-blue-500 text-sm" />
+                </span>
+                <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Term Profit</span>
+              </div>
+              <span className="font-bold text-blue-600 text-base">
+                ${Number(finance?.term_profit ?? 0).toLocaleString()}
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Link
               to="/admin/payments"
               className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm text-white transition hover:opacity-90"
@@ -204,6 +223,13 @@ export default function AdminDashboard() {
               style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)", textDecoration: "none" }}
             >
               <i className="fas fa-file-invoice text-xs" /> Invoices
+            </Link>
+            <Link
+              to="/admin/accounting"
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm text-white transition hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #4f46e5, #4338ca)", textDecoration: "none" }}
+            >
+              <i className="fas fa-calculator text-xs" /> Accounting
             </Link>
           </div>
         </div>

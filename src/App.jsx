@@ -257,6 +257,8 @@ function App() {
         <Route path="/admin/parent-requests" element={<RequireAuth allowedRoles={['admin']}><AdminParentLinkRequests /></RequireAuth>} />
         <Route path="/admin/extras" element={<RequireAuth allowedRoles={['admin']}><AdminExtras /></RequireAuth>} />
         <Route path="/admin/staff" element={<RequireAuth allowedRoles={['admin']}><AdminStaff /></RequireAuth>} />
+        <Route path="/admin/payroll" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
+        <Route path="/admin/accounting" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
         <Route path="/admin/settings" element={<RequireAuth allowedRoles={['admin']}><AdminSettings /></RequireAuth>} />
         <Route path="/admin/permissions" element={<RequireAuth allowedRoles={['admin']}><AdminPermissions /></RequireAuth>} />
         <Route path="/admin/report-config" element={<RequireAuth allowedRoles={['admin']}><AdminReportConfig /></RequireAuth>} />
@@ -337,6 +339,7 @@ function App() {
         <Route path="/hr/reports" element={<RequireAuth allowedRoles={['hr']}><AdminReports /></RequireAuth>} />
         <Route path="/hr/leaves" element={<RequireAuth allowedRoles={['hr']}><HRLeaves /></RequireAuth>} />
         <Route path="/hr/payroll" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
+        <Route path="/hr/accounting" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
         <Route path="/hr/attendance" element={<RequireAuth allowedRoles={['hr']}><HRAttendance /></RequireAuth>} />
         <Route path="/hr/meetings" element={<RequireAuth allowedRoles={['hr']}><HRMeetings /></RequireAuth>} />
         <Route path="/hr/users" element={<RequireAuth allowedRoles={['hr']}><AdminUsers /></RequireAuth>} />
@@ -367,6 +370,8 @@ function App() {
         <Route path="/accountant/payments" element={<RequireAuth allowedRoles={['accountant']}><AccountantPayments /></RequireAuth>} />
         <Route path="/accountant/invoices" element={<RequireAuth allowedRoles={['accountant']}><AccountantInvoices /></RequireAuth>} />
         <Route path="/accountant/reports" element={<RequireAuth allowedRoles={['accountant']}><AccountantReports /></RequireAuth>} />
+        <Route path="/accountant/payroll" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll /></RequireAuth>} />
+        <Route path="/accountant/accounting" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll /></RequireAuth>} />
         <Route path="/accountant/profile" element={<RequireAuth allowedRoles={['accountant']}><ProfilePage /></RequireAuth>} />
 
         {/* Librarian Routes */}

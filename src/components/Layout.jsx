@@ -31,6 +31,8 @@ const ALL_MENU_ITEMS = {
       { path: "/admin/invoices", icon: "fa-file-invoice", title: "Invoices" },
       { path: "/admin/fees",     icon: "fa-tags",          title: "Fees" },
       { path: "/admin/payments", icon: "fa-credit-card",   title: "Payments" },
+      { path: "/admin/payroll",  icon: "fa-money-bill-wave", title: "Payroll" },
+      { path: "/admin/accounting", icon: "fa-calculator",  title: "Accounting" },
       { path: "/admin/reports",  icon: "fa-chart-pie",     title: "Reports" },
     ]},
     { section: "COMMUNICATION", items: [
@@ -105,6 +107,8 @@ const ALL_MENU_ITEMS = {
       { path: "/accountant/fees",     icon: "fa-money-bill",   title: "Fees" },
       { path: "/accountant/payments", icon: "fa-credit-card",  title: "Payments" },
       { path: "/accountant/invoices", icon: "fa-file-invoice", title: "Invoices" },
+      { path: "/accountant/payroll",  icon: "fa-money-bill-wave", title: "Payroll" },
+      { path: "/accountant/accounting", icon: "fa-calculator", title: "Accounting" },
       { path: "/accountant/reports",  icon: "fa-chart-bar",    title: "Reports" },
       { path: "/my/leaves",           icon: "fa-calendar-minus", title: "My Leave" },
     ]},
@@ -160,6 +164,7 @@ const ALL_MENU_ITEMS = {
       { path: "/hr/payments",    icon: "fa-credit-card",      title: "Payments" },
       { path: "/hr/reports",     icon: "fa-chart-pie",        title: "Reports" },
       { path: "/hr/payroll",     icon: "fa-money-bill-wave",  title: "Payroll" },
+      { path: "/hr/accounting",  icon: "fa-calculator",       title: "Accounting" },
     ]},
     { section: "HR OPS", items: [
       { path: "/hr/leaves",      icon: "fa-calendar-minus",   title: "Leave Requests" },
@@ -223,6 +228,7 @@ const HR_PATH_TO_PERMISSION_KEY = {
   "/hr/reports": "reports",
   "/hr/leaves": "leaves",
   "/hr/payroll": "payroll",
+  "/hr/accounting": "payroll",
   "/hr/attendance": "attendance",
   "/hr/meetings": "meetings",
   "/hr/visitor-logs": "visitor_logs",

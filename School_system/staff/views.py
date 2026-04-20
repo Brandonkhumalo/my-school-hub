@@ -1,25 +1,95 @@
 import logging
 from datetime import date
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 from .models import (
-    Department, Staff, Attendance, Leave, Payroll, Meeting,
+    Department, Staff, Attendance, Leave, Payroll, PayrollPaymentRequest, Meeting,
     VisitorLog, IncidentReport, CleaningSchedule, CleaningTask
 )
 from .serializers import (
     DepartmentSerializer, StaffSerializer, CreateStaffSerializer,
     StaffAttendanceSerializer, LeaveSerializer, PayrollSerializer, MeetingSerializer,
-    VisitorLogSerializer, IncidentReportSerializer, CleaningScheduleSerializer, CleaningTaskSerializer
+    VisitorLogSerializer, IncidentReportSerializer, CleaningScheduleSerializer, CleaningTaskSerializer,
+    PayrollPaymentRequestSerializer
 )
+from users.models import Notification, CustomUser, HRPermissionProfile
 
 
 def _is_hr_or_admin(user):
     """Execute is hr or admin."""
     return user.role in ('hr', 'admin', 'superadmin')
+
+
+def _can_view_payroll(user):
+    """Payroll visibility for HR/admin and finance viewers."""
+    return user.role in ('hr', 'admin', 'superadmin', 'accountant')
+
+
+def _can_manage_payroll(user):
+    """Payroll write permissions."""
+    return user.role in ('hr', 'admin', 'superadmin')
+
+
+def _can_mark_payroll_paid(user):
+    return user.role in ('hr', 'admin', 'superadmin', 'accountant')
+
+
+def _can_signoff_payroll(user, request):
+    if user.role not in ('admin', 'superadmin'):
+        return False
+    # Root HR boss is represented as admin in middleware for request lifecycle;
+    # keep final fund sign-off restricted to real admin/superadmin accounts.
+    if getattr(request, 'is_root_hr_boss', False):
+        return False
+    return True
+
+
+def _notify_admin_and_root_hr_boss(school, title, message, link=''):
+    if not school:
+        return
+    root_hr_ids = HRPermissionProfile.objects.filter(
+        school=school,
+        is_root_boss=True,
+    ).values_list('user_id', flat=True)
+    recipients = CustomUser.objects.filter(
+        school=school,
+        is_active=True,
+    ).filter(
+        Q(role='admin') | Q(id__in=root_hr_ids)
+    ).distinct()
+    payload = [
+        Notification(
+            user=user,
+            title=title,
+            message=message,
+            notification_type='general',
+            link=link or '',
+        )
+        for user in recipients
+    ]
+    if payload:
+        Notification.objects.bulk_create(payload)
+
+
+def _notify_staff_paid(payroll_entries, month, year):
+    notifications = []
+    for entry in payroll_entries:
+        notifications.append(
+            Notification(
+                user=entry.staff.user,
+                title='Salary Paid',
+                message=f"Your salary for {month} {year} has been paid.",
+                notification_type='general',
+                link='/my/leaves',
+            )
+        )
+    if notifications:
+        Notification.objects.bulk_create(notifications)
 
 
 def _is_security_or_admin_hr(user):
@@ -490,22 +560,35 @@ class PayrollListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         """Return queryset."""
-        if not _is_hr_or_admin(self.request.user):
+        if not _can_view_payroll(self.request.user):
             return Payroll.objects.none()
         qs = Payroll.objects.filter(staff__user__school=self.request.user.school).select_related('staff__user')
         month = self.request.query_params.get('month')
         year = self.request.query_params.get('year')
+        search = self.request.query_params.get('search')
         if month:
             qs = qs.filter(month=month)
         if year:
             qs = qs.filter(year=year)
+        if search:
+            qs = qs.filter(
+                Q(staff__user__first_name__icontains=search) |
+                Q(staff__user__last_name__icontains=search) |
+                Q(staff__employee_id__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
-        if not _is_hr_or_admin(self.request.user):
+        if not _can_manage_payroll(self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Only HR/admin can create payroll entries.')
-        serializer.save()
+        entry = serializer.save()
+        _notify_admin_and_root_hr_boss(
+            school=self.request.user.school,
+            title='Payroll Entry Added',
+            message=f"{self.request.user.full_name} added payroll for {entry.staff.user.full_name} ({entry.month} {entry.year}).",
+            link='/hr/accounting',
+        )
 
 
 class PayrollDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -515,14 +598,42 @@ class PayrollDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         """Return queryset."""
+        if not _can_view_payroll(self.request.user):
+            return Payroll.objects.none()
         return Payroll.objects.filter(staff__user__school=self.request.user.school)
+
+    def update(self, request, *args, **kwargs):
+        if not _can_manage_payroll(request.user):
+            return Response({'error': 'Only HR/admin can edit payroll entries.'}, status=status.HTTP_403_FORBIDDEN)
+        response = super().update(request, *args, **kwargs)
+        obj = self.get_object()
+        _notify_admin_and_root_hr_boss(
+            school=request.user.school,
+            title='Payroll Entry Updated',
+            message=f"{request.user.full_name} updated payroll for {obj.staff.user.full_name} ({obj.month} {obj.year}).",
+            link='/hr/accounting',
+        )
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        if not _can_manage_payroll(request.user):
+            return Response({'error': 'Only HR/admin can delete payroll entries.'}, status=status.HTTP_403_FORBIDDEN)
+        obj = self.get_object()
+        response = super().destroy(request, *args, **kwargs)
+        _notify_admin_and_root_hr_boss(
+            school=request.user.school,
+            title='Payroll Entry Deleted',
+            message=f"{request.user.full_name} deleted payroll for {obj.staff.user.full_name} ({obj.month} {obj.year}).",
+            link='/hr/accounting',
+        )
+        return response
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def payroll_summary_view(request):
     """Monthly payroll summary — total gross, net, staff count."""
-    if not _is_hr_or_admin(request.user):
+    if not _can_view_payroll(request.user):
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     from django.db.models import Sum, Count
@@ -601,6 +712,143 @@ def payroll_generate_view(request):
         'created': created,
         'skipped_existing': len(existing),
         'skipped_no_salary': skipped_no_salary,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def payroll_mark_paid_view(request):
+    """Create a payroll payment request for admin sign-off."""
+    if not _can_mark_payroll_paid(request.user):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    month = request.data.get('month')
+    year = request.data.get('year')
+    staff_ids = request.data.get('staff_ids') or []
+
+    if not month or not year:
+        return Response({'error': 'month and year are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        year = int(year)
+    except (TypeError, ValueError):
+        return Response({'error': 'year must be a number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if staff_ids and not isinstance(staff_ids, list):
+        return Response({'error': 'staff_ids must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    qs = Payroll.objects.filter(
+        staff__user__school=request.user.school,
+        month=month,
+        year=year,
+        is_paid=False,
+    )
+    if staff_ids:
+        qs = qs.filter(staff_id__in=staff_ids)
+    touched = qs.count()
+    if touched == 0:
+        return Response({'error': 'No unpaid payroll records matched your selection.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    request_obj = PayrollPaymentRequest.objects.create(
+        school=request.user.school,
+        month=month,
+        year=year,
+        target_type='selected' if staff_ids else 'all',
+        staff_ids=staff_ids,
+        requested_by=request.user,
+        status='pending',
+    )
+
+    target_desc = 'selected staff' if request_obj.target_type == 'selected' else 'all staff'
+    _notify_admin_and_root_hr_boss(
+        school=request.user.school,
+        title='Payroll Payment Request',
+        message=f"{request.user.full_name} requested payroll sign-off for {target_desc} ({month} {year}).",
+        link='/hr/accounting',
+    )
+
+    return Response({
+        'request_id': request_obj.id,
+        'status': request_obj.status,
+        'matched_records': touched,
+        'month': month,
+        'year': year,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def payroll_payment_requests_view(request):
+    """List payroll payment sign-off requests."""
+    if not _can_view_payroll(request.user):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    qs = PayrollPaymentRequest.objects.filter(school=request.user.school).select_related('requested_by', 'approved_by')
+    req_status = request.query_params.get('status')
+    if req_status:
+        qs = qs.filter(status=req_status)
+    month = request.query_params.get('month')
+    if month:
+        qs = qs.filter(month=month)
+    year = request.query_params.get('year')
+    if year:
+        qs = qs.filter(year=year)
+    serializer = PayrollPaymentRequestSerializer(qs[:100], many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def payroll_payment_request_review_view(request, request_id):
+    """Admin final sign-off/rejection for payroll payment request."""
+    if not _can_signoff_payroll(request.user, request):
+        return Response({'error': 'Only admin can give final payroll sign-off.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        pay_req = PayrollPaymentRequest.objects.get(id=request_id, school=request.user.school)
+    except PayrollPaymentRequest.DoesNotExist:
+        return Response({'error': 'Payroll payment request not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if pay_req.status != 'pending':
+        return Response({'error': 'This request has already been reviewed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    decision = (request.data.get('status') or '').strip().lower()
+    note = (request.data.get('admin_note') or '').strip()
+    if decision not in ('approved', 'rejected'):
+        return Response({'error': "status must be 'approved' or 'rejected'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    pay_req.status = decision
+    pay_req.approved_by = request.user
+    pay_req.reviewed_at = timezone.now()
+    pay_req.admin_note = note
+    pay_req.save(update_fields=['status', 'approved_by', 'reviewed_at', 'admin_note'])
+
+    updated = 0
+    if decision == 'approved':
+        qs = Payroll.objects.filter(
+            staff__user__school=request.user.school,
+            month=pay_req.month,
+            year=pay_req.year,
+            is_paid=False,
+        ).select_related('staff__user')
+        if pay_req.target_type == 'selected':
+            qs = qs.filter(staff_id__in=(pay_req.staff_ids or []))
+        entries = list(qs)
+        updated = len(entries)
+        if updated:
+            qs.update(is_paid=True, pay_date=timezone.localdate())
+            _notify_staff_paid(entries, pay_req.month, pay_req.year)
+
+    _notify_admin_and_root_hr_boss(
+        school=request.user.school,
+        title=f"Payroll Request {decision.title()}",
+        message=f"{request.user.full_name} {decision} payroll request #{pay_req.id} for {pay_req.month} {pay_req.year}.",
+        link='/hr/accounting',
+    )
+
+    return Response({
+        'request_id': pay_req.id,
+        'status': pay_req.status,
+        'updated': updated,
+        'month': pay_req.month,
+        'year': pay_req.year,
     })
 
 

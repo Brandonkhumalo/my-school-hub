@@ -1,5 +1,16 @@
 from rest_framework import serializers
-from .models import FeeType, StudentFee, Payment, Invoice, FinancialReport, SchoolFees, StudentPaymentRecord, PaymentTransaction, AdditionalFee
+from .models import (
+    FeeType,
+    StudentFee,
+    Payment,
+    Invoice,
+    FinancialReport,
+    SchoolFees,
+    StudentPaymentRecord,
+    PaymentTransaction,
+    AdditionalFee,
+    SchoolExpense,
+)
 from academics.models import Student
 import uuid
 from datetime import date
@@ -96,6 +107,45 @@ class FinancialReportSerializer(serializers.ModelSerializer):
         """Return net profit."""
         return obj.total_revenue - obj.total_expenses
 
+
+class SchoolExpenseSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True)
+
+    class Meta:
+        model = SchoolExpense
+        fields = [
+            'id',
+            'title',
+            'description',
+            'amount',
+            'expense_frequency',
+            'start_date',
+            'status',
+            'is_active',
+            'created_by',
+            'created_by_name',
+            'approved_by',
+            'approved_by_name',
+            'approved_at',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'status',
+            'created_by',
+            'created_by_name',
+            'approved_by',
+            'approved_by_name',
+            'approved_at',
+            'created_at',
+            'updated_at',
+        ]
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Amount must be greater than zero.')
+        return value
 
 class CreatePaymentSerializer(serializers.ModelSerializer):
     """Represents CreatePaymentSerializer."""
