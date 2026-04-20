@@ -417,6 +417,17 @@ class StaffListAPITest(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_include_directory_lists_employee_users_without_staff_profile(self):
+        """Directory mode includes school employees without Staff rows."""
+        make_user(self.school, "sl_emp_only", role="teacher", first_name="No", last_name="Profile")
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.url, {"include_directory": "1"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        items = get_list(response.data)
+        self.assertTrue(any(item.get("has_staff_profile") is False for item in items))
+
 
 # ---------------------------------------------------------------------------
 # API tests — Create staff
@@ -440,6 +451,7 @@ class CreateStaffAPITest(APITestCase):
             "first_name": "New",
             "last_name": f"Employee{suffix}",
             "email": f"newemployee{suffix}@school.test",
+            "password": "StrongPass123!",
             "position": "teacher",
             "hire_date": "2026-01-15",
             "salary": "1500.00",
@@ -460,14 +472,22 @@ class CreateStaffAPITest(APITestCase):
         response = self.client.post(self.url, self._payload("_h"), format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_create_staff_credentials_contain_password(self):
-        """Test that create staff credentials contain password."""
+    def test_create_staff_credentials_omit_plain_password(self):
+        """Test that create response does not expose plaintext password."""
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, self._payload("_cred"), format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # The password should be provided so admin can share it with the new employee
-        self.assertIn("password", response.data["credentials"])
-        self.assertTrue(len(response.data["credentials"]["password"]) >= 8)
+        self.assertIn("credentials", response.data)
+        self.assertNotIn("password", response.data["credentials"])
+
+    def test_create_staff_requires_password(self):
+        """Test that create staff requires an explicit password."""
+        self.client.force_authenticate(user=self.admin)
+        payload = self._payload("_missingpw")
+        payload.pop("password")
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
 
     def test_create_staff_as_teacher_is_forbidden(self):
         """Test that create staff as teacher is forbidden."""

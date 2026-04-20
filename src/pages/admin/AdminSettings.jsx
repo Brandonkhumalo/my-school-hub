@@ -53,6 +53,43 @@ export default function AdminSettings() {
     };
   };
 
+  const DATE_FIELDS = [
+    "term_1_start",
+    "term_1_end",
+    "term_2_start",
+    "term_2_end",
+    "term_3_start",
+    "term_3_end",
+  ];
+
+  const PAYLOAD_FIELDS = [
+    "current_academic_year",
+    "current_term",
+    "grading_system",
+    "max_students_per_class",
+    "school_motto",
+    "currency",
+    "late_fee_percentage",
+    "timezone",
+    "paynow_integration_id",
+    "paynow_integration_key",
+    ...DATE_FIELDS,
+  ];
+
+  const buildSavePayload = (currentSettings) => {
+    const payload = {};
+    PAYLOAD_FIELDS.forEach((field) => {
+      if (!currentSettings || !(field in currentSettings)) return;
+      const value = currentSettings[field];
+      if (DATE_FIELDS.includes(field)) {
+        payload[field] = value || null;
+        return;
+      }
+      payload[field] = value;
+    });
+    return payload;
+  };
+
   useEffect(() => {
     apiService.getSchoolSettings()
       .then((data) => setSettings(normalizeSettingsDates(data)))
@@ -66,11 +103,11 @@ export default function AdminSettings() {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess("");
     try {
-      await apiService.updateSchoolSettings(settings);
+      await apiService.updateSchoolSettings(buildSavePayload(settings));
       await refreshSettings();
       setSuccess("Settings saved successfully.");
-    } catch {
-      setError("Failed to save settings.");
+    } catch (err) {
+      setError(err?.message || "Failed to save settings.");
     } finally {
       setSaving(false);
     }

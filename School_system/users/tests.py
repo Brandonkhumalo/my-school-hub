@@ -436,6 +436,23 @@ class SchoolSettingsViewTest(APITestCase):
         response = self.client.put(self.url, {"current_academic_year": "2026"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_put_settings_accepts_blank_date_strings(self):
+        """Test that blank date strings are normalized to null."""
+        self.client.force_authenticate(user=self.admin)
+        payload = {
+            "current_academic_year": "2027",
+            "term_start_date": "",
+            "term_end_date": "",
+            "term_1_start": "",
+            "term_1_end": "",
+        }
+        response = self.client.put(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["term_start_date"])
+        self.assertIsNone(response.data["term_end_date"])
+        self.assertIsNone(response.data["term_1_start"])
+        self.assertIsNone(response.data["term_1_end"])
+
     def test_settings_auto_created_on_first_get(self):
         # No SchoolSettings row should exist yet
         """Test that settings auto created on first get."""

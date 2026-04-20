@@ -177,6 +177,60 @@ class StaffListView(generics.ListAPIView):
             qs = qs.filter(department_id=dept)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        staff_data = StaffSerializer(queryset, many=True).data
+        for item in staff_data:
+            item['has_staff_profile'] = True
+
+        include_directory = str(request.query_params.get('include_directory', '')).lower() in ('1', 'true', 'yes')
+        if not include_directory:
+            return Response(staff_data)
+
+        school = request.user.school
+        if not school:
+            return Response(staff_data)
+
+        employee_roles = ('teacher', 'admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian')
+        linked_user_ids = set(queryset.values_list('user_id', flat=True))
+        missing_users = CustomUser.objects.filter(
+            school=school,
+            role__in=employee_roles,
+            is_active=True,
+        ).exclude(id__in=linked_user_ids).order_by('first_name', 'last_name', 'id')
+
+        position_filter = request.query_params.get('position')
+        if position_filter:
+            missing_users = missing_users.filter(role=position_filter)
+
+        dept_filter = request.query_params.get('department')
+        if dept_filter:
+            missing_users = CustomUser.objects.none()
+
+        for user in missing_users:
+            staff_data.append({
+                'id': f'user-{user.id}',
+                'user': {
+                    'id': user.id,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'email': user.email,
+                    'phone_number': user.phone_number,
+                    'role': user.role,
+                },
+                'full_name': user.full_name,
+                'employee_id': None,
+                'department': None,
+                'department_name': None,
+                'position': user.role,
+                'hire_date': user.date_joined.date() if user.date_joined else None,
+                'salary': None,
+                'is_active': bool(user.is_active),
+                'has_staff_profile': False,
+            })
+
+        return Response(staff_data)
+
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -193,9 +247,8 @@ def create_staff_view(request):
             'credentials': {
                 'username': staff.user.username,
                 'email': staff.user.email,
-                'password': getattr(staff, '_generated_password', ''),
             },
-            'message': 'Staff member created successfully. Share credentials with the employee.'
+            'message': 'Staff member created successfully.'
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

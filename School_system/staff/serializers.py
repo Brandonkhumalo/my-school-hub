@@ -93,6 +93,7 @@ class CreateStaffSerializer(serializers.Serializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False, allow_null=True)
     hire_date = serializers.DateField()
     salary = serializers.DecimalField(max_digits=10, decimal_places=2)
+    password = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
     def validate_email(self, value):
         """Validate email."""
@@ -105,12 +106,6 @@ class CreateStaffSerializer(serializers.Serializer):
         if value and CustomUser.objects.filter(phone_number=value).exists():
             raise serializers.ValidationError('A user with this phone number already exists.')
         return value
-
-    @staticmethod
-    def _generate_password(length=12):
-        """Execute generate password."""
-        chars = string.ascii_letters + string.digits + '!@#$%'
-        return ''.join(secrets.choice(chars) for _ in range(length))
 
     @staticmethod
     def _position_to_role(position):
@@ -143,7 +138,7 @@ class CreateStaffSerializer(serializers.Serializer):
         request = self.context.get('request')
         school = request.user.school if request else None
 
-        password = self._generate_password()
+        password = validated_data.pop('password')
         position = validated_data['position']
         role = self._position_to_role(position)
 
@@ -191,8 +186,6 @@ class CreateStaffSerializer(serializers.Serializer):
             }
         )
 
-        # Attach generated password for display (not stored)
-        staff._generated_password = password
         return staff
 
 

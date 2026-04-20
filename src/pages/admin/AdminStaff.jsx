@@ -25,6 +25,8 @@ const getInitialForm = () => ({
   last_name: "",
   email: "",
   phone_number: "",
+  password: "",
+  confirm_password: "",
   position: "teacher",
   department: "",
   hire_date: new Date().toISOString().split("T")[0],
@@ -162,11 +164,17 @@ export default function AdminStaff() {
         await apiService.updateStaff(editingStaff.id, updatePayload);
         setSuccess("Staff member updated successfully.");
       } else {
+        if (form.password !== form.confirm_password) {
+          setError("Password confirmation does not match.");
+          return;
+        }
+
         const createPayload = {
           first_name: form.first_name,
           last_name: form.last_name,
           email: form.email,
           phone_number: form.phone_number,
+          password: form.password,
           position: form.position,
           department: form.department ? parseInt(form.department, 10) : null,
           hire_date: form.hire_date,
@@ -175,8 +183,7 @@ export default function AdminStaff() {
 
         const res = await apiService.createStaff(createPayload);
         const username = res?.credentials?.username || "(generated)";
-        const password = res?.credentials?.password || "(not returned)";
-        setSuccess(`Staff created successfully. Username: ${username}, Password: ${password}`);
+        setSuccess(`Staff created successfully. Username: ${username}`);
       }
 
       closeForm();
@@ -345,6 +352,7 @@ export default function AdminStaff() {
                   ["Last Name", "last_name", "text", true],
                   ["Email", "email", "email", true],
                   ["Phone", "phone_number", "tel", false],
+                  ...(!editingStaff ? [["Password", "password", "password", true], ["Confirm Password", "confirm_password", "password", true]] : []),
                   ["Hire Date", "hire_date", "date", true],
                   ["Salary ($)", "salary", "number", !editingStaff],
                 ].map(([label, key, type, required]) => (

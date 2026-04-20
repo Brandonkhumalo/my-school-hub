@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import apiService from "../../services/apiService";
 import { useAuth } from "../../context/AuthContext";
+import SearchableSelect from "../../components/SearchableSelect";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -492,13 +493,19 @@ export default function HRPayroll() {
             <h2 className="text-lg font-bold mb-4">New Payroll Entry</h2>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <label className="text-xs text-gray-600 mb-1 block">Staff Member</label>
-                <select required className="border rounded w-full p-2 text-sm" value={form.staff} onChange={(e) => handleStaffSelect(e.target.value)}>
-                  <option value="">Select staff...</option>
-                  {staffList.map((s) => (
-                    <option key={s.id} value={s.id}>{s.user?.first_name} {s.user?.last_name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={staffList.map((s) => ({
+                    id: s.id,
+                    label: `${s.user?.first_name || ''} ${s.user?.last_name || ''}`.trim(),
+                    searchText: `${s.user?.first_name || ''} ${s.user?.last_name || ''} ${s.user?.email || ''}`.toLowerCase(),
+                  }))}
+                  value={form.staff}
+                  onChange={(staffId) => handleStaffSelect(staffId)}
+                  placeholder="Search by name or email..."
+                  label="Staff Member"
+                  required
+                  getOptionLabel={(o) => o.label}
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-600 mb-1 block">Basic Salary ($)</label>

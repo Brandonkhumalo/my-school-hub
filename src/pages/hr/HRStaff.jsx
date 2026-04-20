@@ -13,7 +13,7 @@ export default function HRStaff() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([apiService.getStaffList(), apiService.getDepartments()])
+    Promise.all([apiService.getStaffList({ include_directory: 1 }), apiService.getDepartments()])
       .then(([s, d]) => { setStaff(s); setDepartments(d); })
       .catch(() => setError("Failed to load staff"))
       .finally(() => setLoading(false));
@@ -105,8 +105,12 @@ export default function HRStaff() {
                   <td className="px-4 py-3">
                     <button onClick={() => setSelected(s)}
                       className="text-blue-600 hover:text-blue-800 mr-3 text-xs">View</button>
-                    <button onClick={() => handleDelete(s.id)}
-                      className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                    {s.has_staff_profile === false ? (
+                      <span className="text-xs text-gray-400">User account only</span>
+                    ) : (
+                      <button onClick={() => handleDelete(s.id)}
+                        className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+                    )}
                   </td>
                 </tr>
               ))}

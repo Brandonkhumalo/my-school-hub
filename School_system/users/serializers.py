@@ -617,6 +617,21 @@ class SetWhatsAppPinSerializer(serializers.Serializer):
 class SchoolSettingsSerializer(serializers.ModelSerializer):
     """Represents SchoolSettingsSerializer."""
     school_name = serializers.CharField(source='school.name', read_only=True)
+    DATE_FIELDS = (
+        'term_start_date', 'term_end_date',
+        'term_1_start', 'term_1_end',
+        'term_2_start', 'term_2_end',
+        'term_3_start', 'term_3_end',
+    )
+
+    def to_internal_value(self, data):
+        # Accept empty-string dates from browser forms by normalizing to null.
+        if hasattr(data, 'copy'):
+            data = data.copy()
+            for field in self.DATE_FIELDS:
+                if data.get(field, None) == '':
+                    data[field] = None
+        return super().to_internal_value(data)
 
     class Meta:
         """Represents Meta."""
