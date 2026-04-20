@@ -18,6 +18,7 @@ export default function AdminStudents() {
   const [showCredentials, setShowCredentials] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [residenceFilter, setResidenceFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [formData, setFormData] = useState({
@@ -81,6 +82,9 @@ export default function AdminStudents() {
       if (residenceFilter !== "all" && residence !== residenceFilter) {
         return false;
       }
+      if (classFilter !== "all" && String(student?.student_class || "") !== classFilter) {
+        return false;
+      }
       if (!query) return true;
       const firstName = student.user?.first_name?.toLowerCase() || '';
       const lastName = student.user?.last_name?.toLowerCase() || '';
@@ -89,7 +93,7 @@ export default function AdminStudents() {
       const className = student.class_name?.toLowerCase() || '';
       return fullName.includes(query) || studentNumber.includes(query) || className.includes(query);
     });
-  }, [students, searchQuery, residenceFilter]);
+  }, [students, searchQuery, residenceFilter, classFilter]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE)),
@@ -103,7 +107,7 @@ export default function AdminStudents() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, residenceFilter]);
+  }, [searchQuery, residenceFilter, classFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -138,7 +142,6 @@ export default function AdminStudents() {
           last_name: formData.last_name,
           email: formData.student_email,
           phone_number: formData.student_contact,
-          student_class: formData.student_class,
           admission_date: formData.admission_date,
           parent_contact: formData.student_contact,
           address: formData.student_address,
@@ -146,6 +149,11 @@ export default function AdminStudents() {
           gender: formData.gender,
           emergency_contact: formData.emergency_contact,
         };
+        const originalClassId = String(editingStudent.student_class || "");
+        if (String(formData.student_class || "") !== originalClassId) {
+          payload.student_class = parseInt(formData.student_class, 10);
+          payload.change_class = true;
+        }
         if (formData.residence_type) payload.residence_type = formData.residence_type;
         if (formData.password) payload.password = formData.password;
         await apiService.updateStudent(editingStudent.id, payload);
@@ -157,7 +165,7 @@ export default function AdminStudents() {
             last_name: formData.last_name,
             password: formData.password,
           },
-          student_class: formData.student_class,
+          student_class: parseInt(formData.student_class, 10),
           admission_date: formData.admission_date,
           student_email: formData.student_email,
           student_contact: formData.student_contact,
@@ -189,7 +197,7 @@ export default function AdminStudents() {
     setFormData({
       first_name: student.user?.first_name || "",
       last_name: student.user?.last_name || "",
-      student_class: student.student_class || "",
+      student_class: String(student.student_class || ""),
       residence_type: student.residence_type || "",
       admission_date: student.admission_date ? toInputDate(student.admission_date) : new Date().toISOString().split("T")[0],
       student_email: student.user?.email || "",
@@ -261,11 +269,27 @@ export default function AdminStudents() {
                 <option value="boarding">Boarders</option>
               </select>
             </div>
-            {(searchQuery || residenceFilter !== "all") && (
+            <div className="ml-4 min-w-[220px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Classes</option>
+                {Array.isArray(classes) && classes.map((cls) => (
+                  <option key={cls.id} value={String(cls.id)}>
+                    {cls.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(searchQuery || residenceFilter !== "all" || classFilter !== "all") && (
               <button
                 onClick={() => {
                   setSearchQuery("");
                   setResidenceFilter("all");
+                  setClassFilter("all");
                 }}
                 className="ml-4 mt-6 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
               >

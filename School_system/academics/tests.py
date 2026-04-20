@@ -468,6 +468,36 @@ class StudentAPITest(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_update_student_class_requires_explicit_change_confirmation(self):
+        """Student class should not change without explicit change_class flag."""
+        student = make_student(self.school, self.cls, username="stu_move_guard", student_number="MOVE001")
+        cls2 = make_class(self.school, name="Form 3B", grade_level=3)
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            f"/api/v1/academics/students/{student.id}/",
+            {"student_class": cls2.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        student.refresh_from_db()
+        self.assertEqual(student.student_class_id, self.cls.id)
+
+    def test_update_student_class_with_change_flag_succeeds(self):
+        """Student class should change only when explicitly confirmed."""
+        student = make_student(self.school, self.cls, username="stu_move_ok", student_number="MOVE002")
+        cls2 = make_class(self.school, name="Form 4A", grade_level=4)
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            f"/api/v1/academics/students/{student.id}/",
+            {"student_class": cls2.id, "change_class": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        student.refresh_from_db()
+        self.assertEqual(student.student_class_id, cls2.id)
+
 
 # ---------------------------------------------------------------------------
 # API tests — Results

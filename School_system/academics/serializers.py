@@ -691,6 +691,7 @@ class UpdateStudentSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=6, required=False, allow_blank=True)
 
     student_class = serializers.PrimaryKeyRelatedField(queryset=Class.objects.all(), required=False)
+    change_class = serializers.BooleanField(required=False, default=False)
     residence_type = serializers.ChoiceField(choices=Student.RESIDENCE_TYPE_CHOICES, required=False)
     admission_date = serializers.DateField(required=False)
     parent_contact = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -714,6 +715,11 @@ class UpdateStudentSerializer(serializers.Serializer):
         school = request.user.school if request and hasattr(request.user, 'school') else None
         if student_class and school and student_class.school_id != school.id:
             raise serializers.ValidationError({"student_class": "Invalid class for your school"})
+        if student_class and instance and student_class.id != instance.student_class_id:
+            if not data.get('change_class', False):
+                raise serializers.ValidationError({
+                    "student_class": "Class change requires explicit confirmation."
+                })
 
         if school and 'residence_type' in data:
             school_mode = getattr(school, 'accommodation_type', 'day')
@@ -727,6 +733,7 @@ class UpdateStudentSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         user = instance.user
+        validated_data.pop('change_class', None)
 
         for field in ['first_name', 'last_name', 'email', 'phone_number']:
             if field in validated_data:
