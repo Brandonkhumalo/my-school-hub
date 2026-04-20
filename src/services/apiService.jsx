@@ -243,6 +243,8 @@ const apiService = {
   deleteUser: (userId) => request(`/auth/users/${userId}/delete/`, "DELETE"),
   getHRPermissions: () => request("/auth/permissions/hr/", "GET"),
   updateHRPermissions: (userId, data) => request(`/auth/permissions/hr/${userId}/`, "PUT", data),
+  getAccountantPermissions: () => request("/auth/permissions/accountant/", "GET"),
+  updateAccountantPermissions: (userId, data) => request(`/auth/permissions/accountant/${userId}/`, "PUT", data),
 
   getDashboardStats: () => request("/auth/dashboard/stats/", "GET"),
 
@@ -329,6 +331,12 @@ const apiService = {
   publishReports: (data) => request("/academics/reports/publish/", "POST", data),
   publishAllReports: (data) => request("/academics/reports/publish-all/", "POST", data),
   getPublishedReports: () => request("/academics/reports/published/", "GET"),
+  getReportApprovalRequests: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/academics/reports/approval-requests/${q ? `?${q}` : ''}`, "GET");
+  },
+  reviewReportApprovalRequest: (requestId, data) =>
+    request(`/academics/reports/approval-requests/${requestId}/review/`, "POST", data),
 
   fetchParentChildren: () => requestAllPages("/academics/students/"),
   fetchParentResults: () => request("/academics/results/", "GET"),
@@ -617,6 +625,11 @@ const apiService = {
     return request(`/teachers/subject-feedback/${q ? '?' + q : ''}`, "GET");
   },
   saveSubjectFeedback: (data) => request("/teachers/subject-feedback/save/", "POST", data),
+  submitReportFeedbackForSignoff: (data) => request("/teachers/report-feedback/submit/", "POST", data),
+  getReportFeedbackSubmissionStatus: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/teachers/report-feedback/status/${q ? `?${q}` : ''}`, "GET");
+  },
 
   // Audit logs (admin)
   getAuditLogs: (params = {}) => {

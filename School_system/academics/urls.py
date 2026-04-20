@@ -61,6 +61,8 @@ urlpatterns = [
     path('reports/publish/', views.publish_reports, name='publish-reports'),
     path('reports/publish-all/', views.publish_all_reports, name='publish-all-reports'),
     path('reports/published/', views.list_published_reports, name='list-published-reports'),
+    path('reports/approval-requests/', views.list_report_approval_requests, name='list-report-approval-requests'),
+    path('reports/approval-requests/<int:request_id>/review/', views.review_report_approval_request, name='review-report-approval-request'),
 
     # Grade predictions
     path('students/<int:student_id>/grade-prediction/', views.student_grade_prediction, name='grade-prediction'),

@@ -394,7 +394,7 @@ class HRPermissionProfile(models.Model):
     )
     is_root_boss = models.BooleanField(
         default=False,
-        help_text='Root HR Boss has full admin-equivalent access.',
+        help_text='Root HR Head has full admin-equivalent access.',
     )
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -451,6 +451,65 @@ class HRPagePermission(models.Model):
 
     profile = models.ForeignKey(
         HRPermissionProfile,
+        on_delete=models.CASCADE,
+        related_name='page_permissions',
+    )
+    page_key = models.CharField(max_length=50, choices=PAGE_CHOICES)
+    can_read = models.BooleanField(default=False)
+    can_write = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('profile', 'page_key')
+        indexes = [
+            models.Index(fields=['page_key']),
+            models.Index(fields=['profile', 'page_key']),
+        ]
+
+    def __str__(self):
+        return f"{self.profile.user.full_name} - {self.page_key} (R:{self.can_read} W:{self.can_write})"
+
+
+class AccountantPermissionProfile(models.Model):
+    """Per-accountant permission profile managed by admin."""
+    user = models.OneToOneField(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='accountant_permission_profile',
+    )
+    school = models.ForeignKey(
+        School,
+        on_delete=models.CASCADE,
+        related_name='accountant_permission_profiles',
+    )
+    is_root_head = models.BooleanField(
+        default=False,
+        help_text='Accountant Head has full access to all accounting pages.',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['school', 'is_root_head']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.full_name} (Accountant Head: {self.is_root_head})"
+
+
+class AccountantPagePermission(models.Model):
+    """Page-level read/write grants for an accountant."""
+    PAGE_CHOICES = [
+        ('dashboard', 'Dashboard'),
+        ('fees', 'Fees'),
+        ('invoices', 'Invoices'),
+        ('payments', 'Payments'),
+        ('reports', 'Reports'),
+        ('payroll', 'Payroll'),
+        ('expenses', 'Expenses'),
+    ]
+
+    profile = models.ForeignKey(
+        AccountantPermissionProfile,
         on_delete=models.CASCADE,
         related_name='page_permissions',
     )

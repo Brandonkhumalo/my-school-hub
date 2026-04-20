@@ -42,7 +42,7 @@ def _can_mark_payroll_paid(user):
 def _can_signoff_payroll(user, request):
     if user.role not in ('admin', 'superadmin'):
         return False
-    # Root HR boss is represented as admin in middleware for request lifecycle;
+    # Root HR head is represented as admin in middleware for request lifecycle;
     # keep final fund sign-off restricted to real admin/superadmin accounts.
     if getattr(request, 'is_root_hr_boss', False):
         return False

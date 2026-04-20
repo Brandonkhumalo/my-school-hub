@@ -28,6 +28,8 @@ from academics.models import (
     Class,
     Parent,
     ParentChildLink,
+    ReportCardApprovalRequest,
+    ReportCardRelease,
     Result,
     Suspension,
     Student,
@@ -981,3 +983,110 @@ class TeacherAdminAssignmentAPITest(APITestCase):
         teacher.refresh_from_db()
         self.assertTrue(hasattr(teacher.user, "staff"))
         self.assertEqual(str(teacher.user.staff.salary), "2100.00")
+
+
+class TeacherMarksValidationAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Marks Validation School")
+        self.teacher = make_teacher(self.school, username="marks_teacher")
+        self.subject = make_subject(self.school, name="Accounting", code="ACC01")
+        self.cls = make_class(self.school, name="Form 3A", grade_level=10)
+        self.student = make_student(self.school, self.cls, username="marks_student", student_number="MRK001")
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+        self.url = "/api/v1/teachers/marks/add/"
+
+    def test_add_mark_allows_zero_score(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(self.url, {
+            "student_id": self.student.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Test",
+            "score": 0,
+            "max_score": 100,
+            "academic_term": "Term 1",
+            "academic_year": "2026",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Result.objects.filter(student=self.student, subject=self.subject).count(), 1)
+
+
+class ReportFeedbackSignoffWorkflowAPITest(APITestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Report Signoff School")
+        self.admin = make_user(self.school, "wf_admin", role="admin")
+        self.teacher = make_teacher(self.school, username="wf_teacher")
+        self.subject = make_subject(self.school, name="Biology", code="BIO01")
+        self.cls = make_class(self.school, name="Form 2A", grade_level=9)
+        self.student = make_student(self.school, self.cls, username="wf_student", student_number="WF001")
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+
+        parent_user = make_user(self.school, "wf_parent", role="parent")
+        self.parent = Parent.objects.create(user=parent_user)
+        ParentChildLink.objects.create(parent=self.parent, student=self.student, is_confirmed=True)
+
+        self.teacher_submit_url = "/api/v1/teachers/report-feedback/submit/"
+        self.teacher_status_url = "/api/v1/teachers/report-feedback/status/"
+        self.admin_list_url = "/api/v1/academics/reports/approval-requests/"
+
+    def test_teacher_submit_then_admin_reject_then_approve(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        submit_response = self.client.post(self.teacher_submit_url, {
+            "class_id": self.cls.id,
+            "year": "2026",
+            "term": "Term 1",
+        }, format="json")
+        self.assertEqual(submit_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            ReportCardApprovalRequest.objects.get(
+                school=self.school, class_obj=self.cls, academic_year="2026", academic_term="Term 1"
+            ).status,
+            "pending",
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        list_response = self.client.get(self.admin_list_url)
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        request_id = list_response.data["requests"][0]["id"]
+
+        reject_response = self.client.post(
+            f"/api/v1/academics/reports/approval-requests/{request_id}/review/",
+            {"decision": "reject", "admin_note": "Please improve comments for weaker students."},
+            format="json",
+        )
+        self.assertEqual(reject_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.teacher.user)
+        status_response = self.client.get(self.teacher_status_url, {
+            "class_id": self.cls.id,
+            "year": "2026",
+            "term": "Term 1",
+        })
+        self.assertEqual(status_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(status_response.data["status"], "rejected")
+        self.assertIn("improve comments", status_response.data["admin_note"])
+
+        resubmit_response = self.client.post(self.teacher_submit_url, {
+            "class_id": self.cls.id,
+            "year": "2026",
+            "term": "Term 1",
+        }, format="json")
+        self.assertEqual(resubmit_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.admin)
+        approve_response = self.client.post(
+            f"/api/v1/academics/reports/approval-requests/{request_id}/review/",
+            {"decision": "approve"},
+            format="json",
+        )
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            ReportCardRelease.objects.filter(
+                school=self.school, class_obj=self.cls, academic_year="2026", academic_term="Term 1"
+            ).exists()
+        )

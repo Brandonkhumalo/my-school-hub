@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from .models import (
     Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable,
-    SubjectTermFeedback, AssessmentPlan,
+    SubjectTermFeedback, AssessmentPlan, ReportCardApprovalRequest,
 )
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
@@ -165,7 +165,13 @@ def add_student_mark(request):
         component_index = request.data.get('component_index')
         
         # Validation
-        if not all([student_id, subject_id, exam_type, score, max_score]):
+        if (
+            student_id in (None, '')
+            or subject_id in (None, '')
+            or not exam_type
+            or score in (None, '')
+            or max_score in (None, '')
+        ):
             return Response({'error': 'All fields are required'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
@@ -176,6 +182,12 @@ def add_student_mark(request):
             return Response({'error': 'Score and max_score must be numbers'}, 
                            status=status.HTTP_400_BAD_REQUEST)
         
+        if max_score <= 0:
+            return Response({'error': 'max_score must be greater than 0'},
+                           status=status.HTTP_400_BAD_REQUEST)
+        if score < 0:
+            return Response({'error': 'score cannot be negative'},
+                           status=status.HTTP_400_BAD_REQUEST)
         if score > max_score:
             return Response({'error': 'Score cannot exceed max_score'}, 
                            status=status.HTTP_400_BAD_REQUEST)
@@ -1105,6 +1117,134 @@ def subject_feedback_upsert(request):
         'id': fb.id, 'student_id': student_id, 'subject_id': subject_id,
         'comment': fb.comment, 'effort_grade': fb.effort_grade,
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def report_feedback_submission_status(request):
+    """Return submission status for a class/year/term for the logged-in teacher."""
+    user = request.user
+    if user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.query_params.get('class_id')
+    year = request.query_params.get('year', '')
+    term = request.query_params.get('term', '')
+    if not (class_id and year and term):
+        return Response({'error': 'class_id, year, term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        class_id_int = int(class_id)
+    except (TypeError, ValueError):
+        return Response({'error': 'class_id must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        teacher = user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    authorised = _teacher_authorized_class_ids(teacher)
+    if class_id_int not in authorised:
+        return Response({'error': 'Not authorised for this class'}, status=status.HTTP_403_FORBIDDEN)
+
+    req = ReportCardApprovalRequest.objects.filter(
+        school=user.school,
+        class_obj_id=class_id_int,
+        academic_year=year,
+        academic_term=term,
+    ).first()
+
+    return Response({
+        'status': req.status if req else 'not_submitted',
+        'submitted_at': req.submitted_at.isoformat() if req else None,
+        'reviewed_at': req.reviewed_at.isoformat() if req and req.reviewed_at else None,
+        'admin_note': req.admin_note if req else '',
+        'requested_by': req.requested_by.full_name if req and req.requested_by else None,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def submit_report_feedback_for_signoff(request):
+    """Teacher submits a class/year/term report set for admin final sign-off."""
+    user = request.user
+    if user.role != 'teacher':
+        return Response({'error': 'Only teachers can submit reports'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.data.get('class_id')
+    year = request.data.get('year', '')
+    term = request.data.get('term', '')
+    if not (class_id and year and term):
+        return Response({'error': 'class_id, year, term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        class_id_int = int(class_id)
+    except (TypeError, ValueError):
+        return Response({'error': 'class_id must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        teacher = user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    authorised = _teacher_authorized_class_ids(teacher)
+    if class_id_int not in authorised:
+        return Response({'error': 'Not authorised for this class'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_obj = Class.objects.filter(id=class_id_int, school=user.school).first()
+    if not class_obj:
+        return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    req, created = ReportCardApprovalRequest.objects.get_or_create(
+        school=user.school,
+        class_obj=class_obj,
+        academic_year=year,
+        academic_term=term,
+        defaults={
+            'requested_by': user,
+            'status': 'pending',
+            'admin_note': '',
+            'reviewed_at': None,
+            'reviewed_by': None,
+        },
+    )
+
+    if not created:
+        req.requested_by = user
+        req.status = 'pending'
+        req.reviewed_at = None
+        req.reviewed_by = None
+        req.admin_note = ''
+        req.save(update_fields=['requested_by', 'status', 'reviewed_at', 'reviewed_by', 'admin_note'])
+
+    # Notify admins in this school
+    from users.models import CustomUser, Notification
+    admin_users = CustomUser.objects.filter(
+        school=user.school,
+        is_active=True,
+        role__in=['admin', 'superadmin'],
+    )
+    notes = [
+        Notification(
+            user=admin,
+            title='Report Sign-off Requested',
+            message=(
+                f"{user.full_name} submitted {class_obj.name} report feedback for "
+                f"{term} {year}. Please review and sign off."
+            ),
+            notification_type='general',
+            link='/admin/report-config',
+        )
+        for admin in admin_users
+    ]
+    if notes:
+        Notification.objects.bulk_create(notes)
+
+    return Response({
+        'message': 'Report feedback submitted for admin sign-off.',
+        'request_id': req.id,
+        'status': req.status,
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])

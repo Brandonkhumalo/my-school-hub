@@ -8,6 +8,7 @@ from rest_framework.authtoken.models import Token
 from .models import (
     CustomUser, School, SchoolSettings, ReportCardConfig, ReportCardTemplate, SubjectGroup,
     HRPermissionProfile, HRPagePermission,
+    AccountantPermissionProfile, AccountantPagePermission,
 )
 from academics.models import Parent
 import random
@@ -100,6 +101,8 @@ class UserSerializer(serializers.ModelSerializer):
     staff_hire_date = serializers.SerializerMethodField()
     hr_is_root_boss = serializers.SerializerMethodField()
     hr_page_permissions = serializers.SerializerMethodField()
+    accountant_is_root_head = serializers.SerializerMethodField()
+    accountant_page_permissions = serializers.SerializerMethodField()
     
     class Meta:
         """Represents Meta."""
@@ -111,6 +114,7 @@ class UserSerializer(serializers.ModelSerializer):
             'school_accommodation_type', 'student_residence_type',
             'salary', 'staff_position', 'employee_id', 'staff_department_id', 'staff_hire_date',
             'hr_is_root_boss', 'hr_page_permissions',
+            'accountant_is_root_head', 'accountant_page_permissions',
         ]
         read_only_fields = ['id', 'date_joined', 'username', 'email', 'role', 'student_number', 'full_name', 'school_name', 'school_code']
         extra_kwargs = {
@@ -181,6 +185,24 @@ class UserSerializer(serializers.ModelSerializer):
         if not profile:
             return {}
         perms = HRPagePermission.objects.filter(profile=profile)
+        return {
+            p.page_key: {'read': bool(p.can_read), 'write': bool(p.can_write)}
+            for p in perms
+        }
+
+    def get_accountant_is_root_head(self, obj):
+        if obj.role != 'accountant':
+            return False
+        profile = getattr(obj, 'accountant_permission_profile', None)
+        return bool(profile and profile.is_root_head)
+
+    def get_accountant_page_permissions(self, obj):
+        if obj.role != 'accountant':
+            return {}
+        profile = getattr(obj, 'accountant_permission_profile', None)
+        if not profile:
+            return {}
+        perms = AccountantPagePermission.objects.filter(profile=profile)
         return {
             p.page_key: {'read': bool(p.can_read), 'write': bool(p.can_write)}
             for p in perms

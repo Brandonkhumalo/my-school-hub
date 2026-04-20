@@ -29,6 +29,8 @@ urlpatterns = [
     # Subject feedback (per-subject teacher comment + effort grade for report cards)
     path('subject-feedback/', teacher_views.subject_feedback_list, name='subject-feedback-list'),
     path('subject-feedback/save/', teacher_views.subject_feedback_upsert, name='subject-feedback-save'),
+    path('report-feedback/submit/', teacher_views.submit_report_feedback_for_signoff, name='report-feedback-submit'),
+    path('report-feedback/status/', teacher_views.report_feedback_submission_status, name='report-feedback-status'),
 
     # Conference slots
     path('conference-slots/', conference_views.teacher_conference_slots, name='teacher-conference-slots'),

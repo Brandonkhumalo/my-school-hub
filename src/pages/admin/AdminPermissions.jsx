@@ -14,6 +14,11 @@ function normalizePermissions(pages, permissionMap) {
   return next;
 }
 
+const TABS = [
+  { key: "hr", label: "HR" },
+  { key: "accountant", label: "Accountant" },
+];
+
 export default function AdminPermissions() {
   const [activeTab, setActiveTab] = useState("hr");
   const [loading, setLoading] = useState(true);
@@ -22,36 +27,47 @@ export default function AdminPermissions() {
   const [success, setSuccess] = useState("");
 
   const [pages, setPages] = useState([]);
-  const [hrUsers, setHrUsers] = useState([]);
-  const [selectedHrId, setSelectedHrId] = useState(null);
-  const [isRootBoss, setIsRootBoss] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [isHead, setIsHead] = useState(false);
   const [permissions, setPermissions] = useState({});
 
-  const selectedHr = useMemo(
-    () => hrUsers.find((u) => u.id === selectedHrId) || null,
-    [hrUsers, selectedHrId]
+  const selectedUser = useMemo(
+    () => users.find((u) => u.id === selectedUserId) || null,
+    [users, selectedUserId]
   );
 
-  const load = async (preferredUserId = null) => {
+  const headFlagKey = activeTab === "hr" ? "is_root_boss" : "is_root_head";
+  const headLabel = activeTab === "hr" ? "Root HR Head (full access)" : "Accountant Head (full access)";
+  const badgeLabel = activeTab === "hr" ? "Root HR Head" : "Accountant Head";
+  const emptyMessage = activeTab === "hr" ? "No HR employees found." : "No accountants found.";
+  const panelTitle = activeTab === "hr" ? "HR Employees" : "Accountants";
+
+  const load = async (preferredUserId = null, tab = activeTab) => {
     setLoading(true);
     setError("");
     try {
-      const data = await apiService.getHRPermissions();
+      const data = tab === "hr"
+        ? await apiService.getHRPermissions()
+        : await apiService.getAccountantPermissions();
       const pagesList = Array.isArray(data?.pages) ? data.pages : [];
-      const usersList = Array.isArray(data?.hr_users) ? data.hr_users : [];
+      const usersList = Array.isArray(data?.hr_users)
+        ? data.hr_users
+        : (Array.isArray(data?.accountant_users) ? data.accountant_users : []);
       setPages(pagesList);
-      setHrUsers(usersList);
+      setUsers(usersList);
 
       const preferredId = Number(preferredUserId);
       const hasPreferred = Number.isFinite(preferredId) && usersList.some((u) => u.id === preferredId);
       const nextSelected = hasPreferred ? preferredId : (usersList.length > 0 ? usersList[0].id : null);
-      setSelectedHrId(nextSelected);
+      setSelectedUserId(nextSelected);
       if (nextSelected) {
-        const hr = usersList.find((u) => u.id === nextSelected);
-        setIsRootBoss(Boolean(hr?.is_root_boss));
-        setPermissions(normalizePermissions(pagesList, hr?.permissions || {}));
+        const u = usersList.find((x) => x.id === nextSelected);
+        const flagKey = tab === "hr" ? "is_root_boss" : "is_root_head";
+        setIsHead(Boolean(u?.[flagKey]));
+        setPermissions(normalizePermissions(pagesList, u?.permissions || {}));
       } else {
-        setIsRootBoss(false);
+        setIsHead(false);
         setPermissions({});
       }
     } catch (err) {
@@ -62,15 +78,17 @@ export default function AdminPermissions() {
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    load(null, activeTab);
+    setSuccess("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
-  const handleSelectHr = (userId) => {
+  const handleSelectUser = (userId) => {
     const id = Number(userId);
-    setSelectedHrId(id);
-    const hr = hrUsers.find((u) => u.id === id);
-    setIsRootBoss(Boolean(hr?.is_root_boss));
-    setPermissions(normalizePermissions(pages, hr?.permissions || {}));
+    setSelectedUserId(id);
+    const u = users.find((x) => x.id === id);
+    setIsHead(Boolean(u?.[headFlagKey]));
+    setPermissions(normalizePermissions(pages, u?.permissions || {}));
     setSuccess("");
     setError("");
   };
@@ -87,17 +105,20 @@ export default function AdminPermissions() {
   };
 
   const handleSave = async () => {
-    if (!selectedHrId) return;
+    if (!selectedUserId) return;
     setSaving(true);
     setError("");
     setSuccess("");
     try {
-      await apiService.updateHRPermissions(selectedHrId, {
-        is_root_boss: isRootBoss,
-        permissions,
-      });
+      const payload = { permissions };
+      payload[headFlagKey] = isHead;
+      if (activeTab === "hr") {
+        await apiService.updateHRPermissions(selectedUserId, payload);
+      } else {
+        await apiService.updateAccountantPermissions(selectedUserId, payload);
+      }
       setSuccess("Permissions updated successfully.");
-      await load(selectedHrId);
+      await load(selectedUserId, activeTab);
     } catch (err) {
       setError(err.message || "Failed to save permissions.");
     } finally {
@@ -115,12 +136,15 @@ export default function AdminPermissions() {
         </div>
 
         <div className="mb-4 flex gap-2 border-b">
-          <button
-            onClick={() => setActiveTab("hr")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === "hr" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500"}`}
-          >
-            HR
-          </button>
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === tab.key ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
@@ -128,23 +152,23 @@ export default function AdminPermissions() {
 
         {loading ? (
           <div className="text-center py-10 text-gray-500">Loading...</div>
-        ) : activeTab === "hr" ? (
+        ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="font-semibold text-gray-800 mb-3">HR Employees</h3>
-              {hrUsers.length === 0 ? (
-                <p className="text-sm text-gray-500">No HR employees found.</p>
+              <h3 className="font-semibold text-gray-800 mb-3">{panelTitle}</h3>
+              {users.length === 0 ? (
+                <p className="text-sm text-gray-500">{emptyMessage}</p>
               ) : (
                 <div className="space-y-2">
-                  {hrUsers.map((u) => (
+                  {users.map((u) => (
                     <button
                       key={u.id}
-                      onClick={() => handleSelectHr(u.id)}
-                      className={`w-full text-left p-3 rounded border ${selectedHrId === u.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
+                      onClick={() => handleSelectUser(u.id)}
+                      className={`w-full text-left p-3 rounded border ${selectedUserId === u.id ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
                     >
                       <p className="font-medium text-gray-800">{u.full_name}</p>
                       <p className="text-xs text-gray-500">{u.email}</p>
-                      {u.is_root_boss && <p className="text-xs text-purple-700 mt-1">Root HR Boss</p>}
+                      {u[headFlagKey] && <p className="text-xs text-purple-700 mt-1">{badgeLabel}</p>}
                     </button>
                   ))}
                 </div>
@@ -152,22 +176,22 @@ export default function AdminPermissions() {
             </div>
 
             <div className="lg:col-span-2 bg-white rounded-lg shadow p-4">
-              {!selectedHr ? (
-                <p className="text-sm text-gray-500">Select an HR employee to edit permissions.</p>
+              {!selectedUser ? (
+                <p className="text-sm text-gray-500">Select a user to edit permissions.</p>
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="font-semibold text-gray-800">{selectedHr.full_name}</h3>
-                      <p className="text-xs text-gray-500">{selectedHr.email}</p>
+                      <h3 className="font-semibold text-gray-800">{selectedUser.full_name}</h3>
+                      <p className="text-xs text-gray-500">{selectedUser.email}</p>
                     </div>
                     <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                       <input
                         type="checkbox"
-                        checked={isRootBoss}
-                        onChange={(e) => setIsRootBoss(e.target.checked)}
+                        checked={isHead}
+                        onChange={(e) => setIsHead(e.target.checked)}
                       />
-                      Root HR Boss (full access)
+                      {headLabel}
                     </label>
                   </div>
 
@@ -187,7 +211,7 @@ export default function AdminPermissions() {
                             <td className="px-3 py-2 text-center">
                               <input
                                 type="checkbox"
-                                disabled={isRootBoss}
+                                disabled={isHead}
                                 checked={Boolean(permissions?.[page.key]?.read)}
                                 onChange={(e) => updatePermission(page.key, "read", e.target.checked)}
                               />
@@ -195,7 +219,7 @@ export default function AdminPermissions() {
                             <td className="px-3 py-2 text-center">
                               <input
                                 type="checkbox"
-                                disabled={isRootBoss}
+                                disabled={isHead}
                                 checked={Boolean(permissions?.[page.key]?.write)}
                                 onChange={(e) => updatePermission(page.key, "write", e.target.checked)}
                               />
@@ -219,7 +243,7 @@ export default function AdminPermissions() {
               )}
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );

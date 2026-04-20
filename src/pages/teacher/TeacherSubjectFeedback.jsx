@@ -22,29 +22,45 @@ export default function TeacherSubjectFeedback() {
   const [classes, setClasses] = useState([]);
   const [subjectId, setSubjectId] = useState("");
   const [classId, setClassId] = useState("");
-  const [year, setYear] = useState(currentAcademicYear);
-  const [term, setTerm] = useState(currentTerm);
+  const [year, setYear] = useState(currentAcademicYear || "");
+  const [term, setTerm] = useState(currentTerm || "");
 
   const [rows, setRows] = useState([]);
   const [savingId, setSavingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [charLimit, setCharLimit] = useState(250);
   const [message, setMessage] = useState(null);
+  const [submissionStatus, setSubmissionStatus] = useState({
+    status: "not_submitted",
+    submitted_at: null,
+    reviewed_at: null,
+    admin_note: "",
+  });
+  const [submittingForSignoff, setSubmittingForSignoff] = useState(false);
+
+  useEffect(() => {
+    if (currentAcademicYear) setYear(currentAcademicYear);
+  }, [currentAcademicYear]);
+
+  useEffect(() => {
+    if (currentTerm) setTerm(currentTerm);
+  }, [currentTerm]);
 
   useEffect(() => {
     (async () => {
       try {
         const subs = await apiService.getTeacherSubjects();
         setSubjects(Array.isArray(subs) ? subs : subs?.results || []);
-      } catch (e) { /* noop */ }
+      } catch { /* noop */ }
       try {
         const cls = await apiService.getTeacherClasses();
-        setClasses(Array.isArray(cls) ? cls : cls?.results || []);
-      } catch (e) { /* noop */ }
+        const classList = Array.isArray(cls) ? cls : cls?.classes || cls?.results || [];
+        setClasses(classList);
+      } catch { /* noop */ }
       try {
         const cfg = await apiService.getReportCardConfig();
         if (cfg?.comment_char_limit) setCharLimit(cfg.comment_char_limit);
-      } catch (e) { /* noop */ }
+      } catch { /* noop */ }
     })();
   }, []);
 
@@ -64,6 +80,40 @@ export default function TeacherSubjectFeedback() {
   }, [classId, subjectId, year, term]);
 
   useEffect(() => { loadRows(); }, [loadRows]);
+
+  const loadSubmissionStatus = useCallback(async () => {
+    if (!classId || !year || !term) {
+      setSubmissionStatus({
+        status: "not_submitted",
+        submitted_at: null,
+        reviewed_at: null,
+        admin_note: "",
+      });
+      return;
+    }
+    try {
+      const data = await apiService.getReportFeedbackSubmissionStatus({
+        class_id: classId,
+        year,
+        term,
+      });
+      setSubmissionStatus(data || {
+        status: "not_submitted",
+        submitted_at: null,
+        reviewed_at: null,
+        admin_note: "",
+      });
+    } catch {
+      setSubmissionStatus({
+        status: "not_submitted",
+        submitted_at: null,
+        reviewed_at: null,
+        admin_note: "",
+      });
+    }
+  }, [classId, year, term]);
+
+  useEffect(() => { loadSubmissionStatus(); }, [loadSubmissionStatus]);
 
   const updateField = (studentId, key, value) => {
     setRows(rs => rs.map(r => r.student_id === studentId ? { ...r, [key]: value, _dirty: true } : r));
@@ -89,6 +139,36 @@ export default function TeacherSubjectFeedback() {
     for (const r of dirty) await saveRow(r);
     setMessage({ type: "success", text: `Saved ${dirty.length} entries` });
   };
+
+  const submitForSignoff = async () => {
+    if (!classId || !year || !term) {
+      setMessage({ type: "error", text: "Select class first." });
+      return;
+    }
+    setSubmittingForSignoff(true);
+    setMessage(null);
+    try {
+      await apiService.submitReportFeedbackForSignoff({
+        class_id: classId,
+        year,
+        term,
+      });
+      setMessage({ type: "success", text: "Submitted to admin for final sign-off." });
+      await loadSubmissionStatus();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message || "Failed to submit for sign-off" });
+    } finally {
+      setSubmittingForSignoff(false);
+    }
+  };
+
+  const statusStyle = submissionStatus.status === "approved"
+    ? "bg-green-50 text-green-700 border-green-200"
+    : submissionStatus.status === "rejected"
+      ? "bg-red-50 text-red-700 border-red-200"
+      : submissionStatus.status === "pending"
+        ? "bg-amber-50 text-amber-800 border-amber-200"
+        : "bg-gray-50 text-gray-600 border-gray-200";
 
   return (
     <div>
@@ -120,17 +200,38 @@ export default function TeacherSubjectFeedback() {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600">Year</label>
-              <input type="text" value={year} onChange={e => setYear(e.target.value)}
-                className="border rounded w-full p-2 text-sm" />
+              <input
+                type="text"
+                value={year}
+                readOnly
+                className="border rounded w-full p-2 text-sm bg-gray-100 text-gray-600 cursor-not-allowed"
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600">Term</label>
-              <select value={term} onChange={e => setTerm(e.target.value)}
-                className="border rounded w-full p-2 text-sm">
-                <option value="Term 1">Term 1</option>
-                <option value="Term 2">Term 2</option>
-                <option value="Term 3">Term 3</option>
-              </select>
+              <input
+                type="text"
+                value={term}
+                readOnly
+                className="border rounded w-full p-2 text-sm bg-gray-100 text-gray-600 cursor-not-allowed"
+              />
+            </div>
+          </div>
+          <div className={`mt-4 border rounded-lg p-3 text-sm ${statusStyle}`}>
+            <div className="font-semibold mb-1">
+              Report Status: {submissionStatus.status === "not_submitted" ? "Not submitted" : submissionStatus.status}
+            </div>
+            {submissionStatus.admin_note && (
+              <div className="text-xs">Admin note: {submissionStatus.admin_note}</div>
+            )}
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={submitForSignoff}
+                disabled={!classId || rows.length === 0 || submittingForSignoff}
+                className="px-4 py-2 text-sm font-semibold rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {submittingForSignoff ? "Submitting..." : "Submit Reports For Admin Sign-off"}
+              </button>
             </div>
           </div>
         </div>

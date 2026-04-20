@@ -2192,6 +2192,63 @@ def remove_teacher_from_subject(request, subject_id, teacher_id):
 
 # ── Report Card Publishing ─────────────────────────────────────────────────
 
+def _announce_report_release(author, class_obj, term, year):
+    """Notify class users that report cards are now available."""
+    from users.models import Notification
+    from .models import ParentChildLink
+
+    # Announcement feed entries
+    for audience in ['student', 'parent', 'teacher']:
+        Announcement.objects.create(
+            title=f'Report Cards Available — {term} {year}',
+            content=(
+                f'Report cards for {class_obj.name} ({term} {year}) are now available for download. '
+                f'Go to your Results page to download the PDF.'
+            ),
+            author=author,
+            target_audience=audience,
+            target_audiences=[audience],
+            target_class=class_obj,
+        )
+
+    student_users = [s.user for s in Student.objects.filter(student_class=class_obj).select_related('user')]
+    parent_users = [
+        link.parent.user
+        for link in ParentChildLink.objects.filter(
+            student__student_class=class_obj,
+            is_confirmed=True,
+        ).select_related('parent__user')
+    ]
+
+    unique_recipients = {u.id: u for u in [*student_users, *parent_users] if u}
+    payload = [
+        Notification(
+            user=u,
+            title=f'Report Cards Available — {term} {year}',
+            message=f'Your report card for {class_obj.name} is now available.',
+            notification_type='general',
+            link='/student/results' if u.role == 'student' else '/parent/performance',
+        )
+        for u in unique_recipients.values()
+    ]
+    if payload:
+        Notification.objects.bulk_create(payload)
+
+
+def _publish_class_reports(school, class_obj, year, term, actor):
+    from .models import ReportCardRelease
+    release, created = ReportCardRelease.objects.get_or_create(
+        school=school,
+        class_obj=class_obj,
+        academic_year=year,
+        academic_term=term,
+        defaults={'published_by': actor},
+    )
+    if created:
+        _announce_report_release(actor, class_obj, term, year)
+    return release, created
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def publish_reports(request):
@@ -2217,26 +2274,42 @@ def publish_reports(request):
     except Class.DoesNotExist:
         return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    from .models import ReportCardRelease, Announcement
-    release, created = ReportCardRelease.objects.get_or_create(
-        school=school, class_obj=class_obj, academic_year=year, academic_term=term,
-        defaults={'published_by': request.user}
-    )
+    from .models import ReportCardApprovalRequest
+    approval = ReportCardApprovalRequest.objects.filter(
+        school=school,
+        class_obj=class_obj,
+        academic_year=year,
+        academic_term=term,
+    ).first()
+    if not approval:
+        return Response(
+            {'error': 'No teacher sign-off submission exists for this class/year/term yet.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if approval.status == 'rejected':
+        return Response(
+            {'error': 'This report batch was rejected. Ask the teacher to resubmit first.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
+    release, created = _publish_class_reports(school, class_obj, year, term, request.user)
     if not created:
         return Response({'message': f'Reports for {class_obj.name} - {term} {year} were already published',
                          'already_published': True})
 
-    # Create announcements for students + parents + class teacher
-    for audience in ['student', 'parent', 'teacher']:
-        Announcement.objects.create(
-            title=f'Report Cards Available — {term} {year}',
-            content=f'Report cards for {class_obj.name} ({term} {year}) are now available for download. '
-                    f'Go to your Results page to download the PDF.',
-            author=request.user,
-            target_audience=audience,
-            target_audiences=[audience],
-            target_class=class_obj,
+    approval.status = 'approved'
+    approval.reviewed_by = request.user
+    approval.reviewed_at = timezone.now()
+    approval.admin_note = (request.data.get('admin_note') or '').strip()
+    approval.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'admin_note'])
+    if approval.requested_by:
+        from users.models import Notification
+        Notification.objects.create(
+            user=approval.requested_by,
+            title='Report Sign-off Approved',
+            message=f"{class_obj.name} ({term} {year}) has been approved and published.",
+            notification_type='general',
+            link='/teacher/results',
         )
 
     return Response({
@@ -2265,27 +2338,28 @@ def publish_all_reports(request):
     school = request.user.school
     classes = Class.objects.filter(school=school)
 
-    from .models import ReportCardRelease, Announcement
+    from .models import ReportCardApprovalRequest
     published = []
     skipped = []
 
     for class_obj in classes:
-        _, created = ReportCardRelease.objects.get_or_create(
-            school=school, class_obj=class_obj, academic_year=year, academic_term=term,
-            defaults={'published_by': request.user}
-        )
+        approval = ReportCardApprovalRequest.objects.filter(
+            school=school,
+            class_obj=class_obj,
+            academic_year=year,
+            academic_term=term,
+            status='pending',
+        ).first()
+        if not approval:
+            skipped.append(class_obj.name)
+            continue
+        _, created = _publish_class_reports(school, class_obj, year, term, request.user)
         if created:
+            approval.status = 'approved'
+            approval.reviewed_by = request.user
+            approval.reviewed_at = timezone.now()
+            approval.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
             published.append(class_obj.name)
-            for audience in ['student', 'parent', 'teacher']:
-                Announcement.objects.create(
-                    title=f'Report Cards Available — {term} {year}',
-                    content=f'Report cards for {class_obj.name} ({term} {year}) are now available for download. '
-                            f'Go to your Results page to download the PDF.',
-                    author=request.user,
-                    target_audience=audience,
-                    target_audiences=[audience],
-                    target_class=class_obj,
-                )
         else:
             skipped.append(class_obj.name)
 
@@ -2319,6 +2393,119 @@ def list_published_reports(request):
     } for r in releases]
 
     return Response({'releases': data})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def list_report_approval_requests(request):
+    """Admin list of report sign-off requests by class/year/term."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Only admins can view this'}, status=status.HTTP_403_FORBIDDEN)
+
+    from .models import ReportCardApprovalRequest
+    qs = ReportCardApprovalRequest.objects.filter(
+        school=request.user.school
+    ).select_related('class_obj', 'requested_by', 'reviewed_by').order_by('-submitted_at')
+
+    status_filter = request.query_params.get('status')
+    year = request.query_params.get('year')
+    term = request.query_params.get('term')
+    class_id = request.query_params.get('class_id')
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if year:
+        qs = qs.filter(academic_year=year)
+    if term:
+        qs = qs.filter(academic_term=term)
+    if class_id:
+        qs = qs.filter(class_obj_id=class_id)
+
+    data = [{
+        'id': r.id,
+        'class_id': r.class_obj_id,
+        'class_name': r.class_obj.name,
+        'academic_year': r.academic_year,
+        'academic_term': r.academic_term,
+        'status': r.status,
+        'submitted_at': r.submitted_at.isoformat(),
+        'requested_by': r.requested_by.full_name if r.requested_by else None,
+        'reviewed_at': r.reviewed_at.isoformat() if r.reviewed_at else None,
+        'reviewed_by': r.reviewed_by.full_name if r.reviewed_by else None,
+        'admin_note': r.admin_note,
+    } for r in qs]
+    return Response({'requests': data})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def review_report_approval_request(request, request_id):
+    """Admin approves or rejects a teacher report submission."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Only admins can review this'}, status=status.HTTP_403_FORBIDDEN)
+
+    from .models import ReportCardApprovalRequest
+    try:
+        approval = ReportCardApprovalRequest.objects.select_related('class_obj').get(
+            id=request_id, school=request.user.school
+        )
+    except ReportCardApprovalRequest.DoesNotExist:
+        return Response({'error': 'Request not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    decision = (request.data.get('decision') or '').strip().lower()
+    admin_note = (request.data.get('admin_note') or '').strip()
+    if decision not in ('approve', 'reject'):
+        return Response({'error': "decision must be 'approve' or 'reject'"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if decision == 'reject':
+        approval.status = 'rejected'
+        approval.reviewed_by = request.user
+        approval.reviewed_at = timezone.now()
+        approval.admin_note = admin_note
+        approval.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'admin_note'])
+        if approval.requested_by:
+            from users.models import Notification
+            Notification.objects.create(
+                user=approval.requested_by,
+                title='Report Sent Back For Correction',
+                message=(
+                    f"{approval.class_obj.name} ({approval.academic_term} {approval.academic_year}) "
+                    f"was sent back by admin. {admin_note or 'Please update feedback and resubmit.'}"
+                ),
+                notification_type='general',
+                link='/teacher/report-feedback',
+            )
+        return Response({'message': 'Report request sent back to teacher for corrections.', 'status': approval.status})
+
+    _, created = _publish_class_reports(
+        request.user.school,
+        approval.class_obj,
+        approval.academic_year,
+        approval.academic_term,
+        request.user,
+    )
+    approval.status = 'approved'
+    approval.reviewed_by = request.user
+    approval.reviewed_at = timezone.now()
+    approval.admin_note = admin_note
+    approval.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'admin_note'])
+    if approval.requested_by:
+        from users.models import Notification
+        Notification.objects.create(
+            user=approval.requested_by,
+            title='Report Sign-off Approved',
+            message=(
+                f"{approval.class_obj.name} ({approval.academic_term} {approval.academic_year}) "
+                "has been approved and published."
+            ),
+            notification_type='general',
+            link='/teacher/results',
+        )
+
+    return Response({
+        'message': 'Report request approved and reports are now visible to parents/students.',
+        'status': approval.status,
+        'published_now': created,
+    })
 
 
 @api_view(['GET'])

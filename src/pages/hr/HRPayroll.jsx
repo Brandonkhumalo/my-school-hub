@@ -19,11 +19,14 @@ function parseMonthInput(value) {
 
 export default function HRPayroll() {
   const { user } = useAuth();
-  const canManagePayroll = ["hr", "admin", "accountant"].includes(user?.role);
-  const isRootHrBoss = Boolean(user?.role === "hr" && user?.hr_is_root_boss);
-  const canAddExpense = Boolean(user?.role === "accountant" || isRootHrBoss);
-  const canApproveExpense = Boolean(user?.role === "admin" && !isRootHrBoss);
-  const canSignoffPayroll = Boolean(user?.role === "admin" && !isRootHrBoss);
+  const isRootHrHead = Boolean(user?.role === "hr" && user?.hr_is_root_boss);
+  const isAccountant = user?.role === "accountant";
+  const isAdmin = user?.role === "admin" && !isRootHrHead;
+  const canAddExpense = Boolean(isAccountant || isRootHrHead);
+  const canApproveExpense = Boolean(isAdmin);
+  const canSignoffPayroll = Boolean(isAdmin);
+  // Only accountants submit payroll entries / sign-off requests. Admin approves.
+  const canSubmitPayroll = Boolean(isAccountant);
 
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -32,6 +35,7 @@ export default function HRPayroll() {
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [staffList, setStaffList] = useState([]);
@@ -75,6 +79,12 @@ export default function HRPayroll() {
     () => records.filter((r) => !r.is_paid),
     [records]
   );
+
+  const visibleRecords = useMemo(() => {
+    if (statusFilter === "paid") return records.filter((r) => r.is_paid);
+    if (statusFilter === "unpaid") return records.filter((r) => !r.is_paid);
+    return records;
+  }, [records, statusFilter]);
 
   const selectedPayableCount = useMemo(
     () => records.filter((r) => !r.is_paid && selectedStaffIds.includes(r.staff)).length,
@@ -221,16 +231,14 @@ export default function HRPayroll() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Accounting</h1>
-        {canManagePayroll && (
+        {canSubmitPayroll && (
           <div className="flex gap-2">
             <button onClick={handleGenerate} className="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
               <i className="fas fa-bolt mr-2"></i>Generate for Month
             </button>
-            {["hr", "admin"].includes(user?.role) && (
-              <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-                + Add Entry
-              </button>
-            )}
+            <button onClick={() => setShowForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+              + Add Entry
+            </button>
           </div>
         )}
       </div>
@@ -269,11 +277,11 @@ export default function HRPayroll() {
         </div>
       )}
 
-      {canManagePayroll && (
+      {canSubmitPayroll && (
         <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-2 items-center">
           <button
             onClick={toggleSelectAllVisibleUnpaid}
-            className="px-3 py-2 rounded text-sm bg-slate-100 hover:bg-slate-200"
+            className="px-3 py-2 rounded text-sm bg-slate-100 text-slate-800 hover:bg-slate-200"
           >
             {selectedPayableCount === payableRecords.length && payableRecords.length > 0 ? "Clear Selection" : "Select All Unpaid"}
           </button>
@@ -289,6 +297,24 @@ export default function HRPayroll() {
           >
             Submit All for Admin Sign-off ({payableRecords.length})
           </button>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-2 items-center">
+          <label className="text-sm text-gray-600">Filter status:</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border rounded px-3 py-2 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+          <span className="text-xs text-gray-500 ml-2">
+            Unpaid entries await accountant submission / admin sign-off (see Sign-off Requests below).
+          </span>
         </div>
       )}
 
@@ -340,9 +366,9 @@ export default function HRPayroll() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {records.length === 0 ? (
+              {visibleRecords.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-8 text-gray-400">No payroll records for this month</td></tr>
-              ) : records.map((r) => (
+              ) : visibleRecords.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <input
@@ -406,7 +432,7 @@ export default function HRPayroll() {
         <div className="bg-white rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold mb-4">Add Expense (Needs Admin Approval)</h2>
           {!canAddExpense && (
-            <p className="text-sm text-gray-500">Only accountant and HR boss can submit expenses.</p>
+            <p className="text-sm text-gray-500">Only accountant and HR head can submit expenses.</p>
           )}
           {canAddExpense && (
             <form onSubmit={handleExpenseSubmit} className="space-y-3">
@@ -459,7 +485,7 @@ export default function HRPayroll() {
         </div>
       </div>
 
-      {showForm && ["hr", "admin"].includes(user?.role) && (
+      {showForm && canSubmitPayroll && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md relative">
             <button onClick={() => setShowForm(false)} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl">&times;</button>

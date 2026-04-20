@@ -151,6 +151,30 @@ class AuditMiddleware:
         return response
 
 
+ACCOUNTANT_ALWAYS_ALLOWED_PREFIXES = (
+    '/api/v1/auth/profile/',
+    '/api/v1/auth/logout/',
+    '/api/v1/auth/notifications/',
+    '/api/v1/auth/school/current-period/',
+    '/api/v1/auth/change-password/',
+    '/api/v1/auth/dashboard/stats/',
+)
+
+ACCOUNTANT_API_PAGE_PREFIXES = (
+    ('/api/v1/finances/school-fees/', 'fees'),
+    ('/api/v1/finances/student-fees/', 'fees'),
+    ('/api/v1/finances/fee-types/', 'fees'),
+    ('/api/v1/finances/additional-fees/', 'fees'),
+    ('/api/v1/finances/invoices/', 'invoices'),
+    ('/api/v1/finances/payment-records/class-report/', 'reports'),
+    ('/api/v1/finances/reports/', 'reports'),
+    ('/api/v1/finances/payment-records/', 'payments'),
+    ('/api/v1/finances/payments/', 'payments'),
+    ('/api/v1/finances/school-expenses/', 'expenses'),
+    ('/api/v1/staff/payroll/', 'payroll'),
+)
+
+
 def _hr_page_key_for_path(path):
     for prefix, page_key in HR_API_PAGE_PREFIXES:
         if path.startswith(prefix):
@@ -161,7 +185,7 @@ def _hr_page_key_for_path(path):
 class HRAccessControlMiddleware:
     """
     Enforces HR page-level read/write permissions.
-    Root HR Boss gets admin-equivalent access for the request.
+    Root HR Head gets admin-equivalent access for the request.
     """
 
     def __init__(self, get_response):
@@ -214,5 +238,70 @@ class HRAccessControlMiddleware:
         from django.http import JsonResponse
         return JsonResponse(
             {'error': 'Permission denied for this HR account.'},
+            status=403
+        )
+
+
+def _accountant_page_key_for_path(path):
+    for prefix, page_key in ACCOUNTANT_API_PAGE_PREFIXES:
+        if path.startswith(prefix):
+            return page_key
+    return None
+
+
+class AccountantAccessControlMiddleware:
+    """
+    Enforces Accountant page-level read/write permissions.
+    Accountant Head gets full access across accounting endpoints.
+    Non-head accountants are limited to pages admin has granted them.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        path = request.path or ''
+
+        if not user or not user.is_authenticated or not path.startswith('/api/v1/'):
+            return self.get_response(request)
+
+        if user.role != 'accountant':
+            return self.get_response(request)
+
+        if any(path.startswith(prefix) for prefix in ACCOUNTANT_ALWAYS_ALLOWED_PREFIXES):
+            return self.get_response(request)
+
+        from users.models import AccountantPermissionProfile, AccountantPagePermission
+
+        profile = AccountantPermissionProfile.objects.filter(user=user).first()
+        if profile and profile.is_root_head:
+            request.is_accountant_head = True
+            return self.get_response(request)
+
+        page_key = _accountant_page_key_for_path(path)
+        if not page_key:
+            # Paths outside the accountant page map are denied for non-head accountants.
+            return self._deny()
+
+        permission = AccountantPagePermission.objects.filter(
+            profile__user=user,
+            page_key=page_key,
+        ).first()
+        if not permission:
+            return self._deny()
+
+        is_read_method = request.method in ('GET', 'HEAD', 'OPTIONS')
+        if is_read_method and permission.can_read:
+            return self.get_response(request)
+        if (not is_read_method) and permission.can_write:
+            return self.get_response(request)
+        return self._deny()
+
+    @staticmethod
+    def _deny():
+        from django.http import JsonResponse
+        return JsonResponse(
+            {'error': 'Permission denied for this accountant account.'},
             status=403
         )

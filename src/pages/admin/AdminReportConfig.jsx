@@ -160,11 +160,16 @@ export default function AdminReportConfig() {
   const [publishing, setPublishing] = useState(false);
   const [publishingAll, setPublishingAll] = useState(false);
   const [publishMessage, setPublishMessage] = useState(null);
+  const [approvalRequests, setApprovalRequests] = useState([]);
+  const [loadingApprovalRequests, setLoadingApprovalRequests] = useState(false);
+  const [reviewingRequestId, setReviewingRequestId] = useState(null);
+  const [rejectionNotes, setRejectionNotes] = useState({});
 
   useEffect(() => {
     loadConfig();
     loadClasses();
     loadPublished();
+    loadApprovalRequests();
     loadTemplates();
     loadSubjects();
     loadSubjectGroups();
@@ -194,6 +199,18 @@ export default function AdminReportConfig() {
     } catch (err) { console.error(err); }
   };
 
+  const loadApprovalRequests = async () => {
+    setLoadingApprovalRequests(true);
+    try {
+      const data = await apiService.getReportApprovalRequests();
+      setApprovalRequests(data?.requests || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingApprovalRequests(false);
+    }
+  };
+
   const loadTemplates = async () => {
     try {
       setTemplates(await apiService.getReportCardTemplates());
@@ -204,7 +221,7 @@ export default function AdminReportConfig() {
     try {
       const data = await apiService.fetchSubjects ? await apiService.fetchSubjects() : [];
       setSubjects(Array.isArray(data) ? data : data?.results || []);
-    } catch (err) { /* fetchSubjects may not exist; ignore */ }
+    } catch { /* fetchSubjects may not exist; ignore */ }
   };
 
   const loadSubjectGroups = async () => {
@@ -224,7 +241,7 @@ export default function AdminReportConfig() {
     setSaving(true);
     setMessage(null);
     try {
-      const { logo_url, stamp_url, banner_url, ...data } = config;
+      const { logo_url: _LOGO, stamp_url: _STAMP, banner_url: _BANNER, ...data } = config;
       await apiService.updateReportCardConfig(data);
       setMessage({ type: "success", text: "Report card settings saved!" });
     } catch {
@@ -373,6 +390,7 @@ export default function AdminReportConfig() {
       const data = await apiService.publishReports({ class_id: selectedClassId, year: genYear, term: genTerm });
       setPublishMessage({ type: "success", text: data.message });
       await loadPublished();
+      await loadApprovalRequests();
     } catch (err) {
       setPublishMessage({ type: "error", text: err.message || "Failed" });
     } finally { setPublishing(false); }
@@ -385,14 +403,40 @@ export default function AdminReportConfig() {
       const data = await apiService.publishAllReports({ year: genYear, term: genTerm });
       setPublishMessage({ type: "success", text: data.message });
       await loadPublished();
+      await loadApprovalRequests();
     } catch (err) {
       setPublishMessage({ type: "error", text: err.message || "Failed" });
     } finally { setPublishingAll(false); }
   };
 
+  const handleReviewRequest = async (requestId, decision) => {
+    setReviewingRequestId(requestId);
+    setPublishMessage(null);
+    try {
+      const admin_note = decision === "reject" ? (rejectionNotes[requestId] || "").trim() : "";
+      const data = await apiService.reviewReportApprovalRequest(requestId, { decision, admin_note });
+      setPublishMessage({ type: "success", text: data.message || "Request updated" });
+      await loadApprovalRequests();
+      await loadPublished();
+    } catch (err) {
+      setPublishMessage({ type: "error", text: err.message || "Failed to review request" });
+    } finally {
+      setReviewingRequestId(null);
+    }
+  };
+
   const previewStudent = useMemo(
     () => students.find(s => String(s.id) === String(previewStudentId)),
     [students, previewStudentId],
+  );
+
+  const selectedRequest = useMemo(
+    () => approvalRequests.find((r) =>
+      String(r.class_id) === String(selectedClassId)
+      && String(r.academic_year) === String(genYear)
+      && String(r.academic_term) === String(genTerm)
+    ),
+    [approvalRequests, selectedClassId, genYear, genTerm],
   );
 
   if (loading) return <LoadingSpinner />;
@@ -717,15 +761,62 @@ export default function AdminReportConfig() {
 
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <button onClick={handlePublishClass}
-                  disabled={!selectedClassId || publishing || (selectedClassId && isPublished(selectedClassId))}
+                  disabled={
+                    !selectedClassId
+                    || publishing
+                    || (selectedClassId && isPublished(selectedClassId))
+                    || !selectedRequest
+                    || selectedRequest.status !== "pending"
+                  }
                   className="py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 text-sm">
                   {publishing ? "Publishing..." : (selectedClassId && isPublished(selectedClassId))
-                    ? "Already Published" : "Publish This Class"}
+                    ? "Already Published" : "Approve & Publish This Class"}
                 </button>
                 <button onClick={handlePublishAll} disabled={publishingAll}
                   className="py-2.5 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 disabled:opacity-50 text-sm">
-                  {publishingAll ? "Publishing All..." : "Publish All Classes"}
+                  {publishingAll ? "Publishing All..." : "Approve & Publish All Pending"}
                 </button>
+              </div>
+
+              <div className="mb-4 p-3 border rounded-lg bg-gray-50">
+                <p className="text-xs font-semibold text-gray-700 mb-2">Final Sign-off Queue (Current Selection)</p>
+                {!selectedClassId ? (
+                  <p className="text-xs text-gray-500">Choose a class to review sign-off status.</p>
+                ) : !selectedRequest ? (
+                  <p className="text-xs text-amber-700">No teacher submission yet for this class, year and term.</p>
+                ) : (
+                  <div>
+                    <p className="text-xs text-gray-700">
+                      Status: <span className="font-semibold">{selectedRequest.status}</span>
+                      {" · "}
+                      Submitted by: <span className="font-semibold">{selectedRequest.requested_by || "Unknown"}</span>
+                    </p>
+                    {selectedRequest.admin_note && (
+                      <p className="text-xs text-red-700 mt-1">Admin note: {selectedRequest.admin_note}</p>
+                    )}
+                    {selectedRequest.status === "pending" && (
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={rejectionNotes[selectedRequest.id] || ""}
+                          onChange={(e) => setRejectionNotes((prev) => ({ ...prev, [selectedRequest.id]: e.target.value }))}
+                          placeholder="Reason if sending back"
+                          className="sm:col-span-2 border rounded px-2 py-1 text-xs"
+                        />
+                        <button
+                          onClick={() => handleReviewRequest(selectedRequest.id, "reject")}
+                          disabled={reviewingRequestId === selectedRequest.id}
+                          className="px-3 py-1.5 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          Send Back To Teacher
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {loadingApprovalRequests && (
+                  <p className="text-xs text-gray-400 mt-2">Loading queue...</p>
+                )}
               </div>
 
               {publishMessage && (

@@ -487,7 +487,7 @@ class SchoolExpenseListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         if user.role not in ['accountant', 'admin', 'superadmin']:
             from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Only accountant or HR boss/admin can add school expenses.')
+            raise PermissionDenied('Only accountant or HR head/admin can add school expenses.')
         expense = serializer.save(
             school=user.school,
             created_by=user,

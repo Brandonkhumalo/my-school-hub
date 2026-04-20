@@ -652,6 +652,37 @@ class ReportCardRelease(models.Model):
         return f"{self.class_obj.name} - {self.academic_term} {self.academic_year}"
 
 
+class ReportCardApprovalRequest(models.Model):
+    """Teacher submission that requires admin sign-off before report visibility."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='report_approval_requests')
+    class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='report_approval_requests')
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=50)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='report_approval_requests')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_report_approval_requests')
+    admin_note = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ('school', 'class_obj', 'academic_year', 'academic_term')
+        indexes = [
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['school', 'academic_year', 'academic_term']),
+        ]
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.class_obj.name} - {self.academic_term} {self.academic_year} ({self.status})"
+
+
 class Complaint(models.Model):
     COMPLAINT_TYPE_CHOICES = [
         ('parent', 'Parent'),

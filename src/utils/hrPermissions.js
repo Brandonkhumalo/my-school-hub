@@ -1,5 +1,5 @@
 // HR page-permission helpers.
-// For non-HR roles (admin, root HR boss, etc.) both read and write default to true.
+// For non-HR roles (admin, root HR head, etc.) both read and write default to true.
 
 export function getHrPageGrant(user, permissionKey) {
   if (!user || user.role !== "hr") return { read: true, write: true };

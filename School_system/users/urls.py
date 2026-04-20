@@ -22,6 +22,8 @@ urlpatterns = [
     path('users/<int:user_id>/delete/', views.delete_user_view, name='delete-user'),
     path('permissions/hr/', views.hr_permissions_view, name='hr-permissions'),
     path('permissions/hr/<int:user_id>/', views.hr_permission_update_view, name='hr-permission-update'),
+    path('permissions/accountant/', views.accountant_permissions_view, name='accountant-permissions'),
+    path('permissions/accountant/<int:user_id>/', views.accountant_permission_update_view, name='accountant-permission-update'),
 
     # Dashboard
     path('dashboard/stats/', views.dashboard_stats_view, name='dashboard-stats'),

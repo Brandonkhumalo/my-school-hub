@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from .models import (
     CustomUser, School, AuditLog, SchoolSettings, Notification,
     HRPermissionProfile, HRPagePermission,
+    AccountantPermissionProfile, AccountantPagePermission,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
@@ -35,6 +36,11 @@ HR_PAGE_CATALOG = [
     for key, label in HRPagePermission.PAGE_CHOICES
 ]
 
+ACCOUNTANT_PAGE_CATALOG = [
+    {'key': key, 'label': label}
+    for key, label in AccountantPagePermission.PAGE_CHOICES
+]
+
 
 def _hr_profile_for_user(hr_user):
     profile, _ = HRPermissionProfile.objects.get_or_create(
@@ -43,6 +49,17 @@ def _hr_profile_for_user(hr_user):
     )
     if hr_user.school_id and profile.school_id != hr_user.school_id:
         profile.school = hr_user.school
+        profile.save(update_fields=['school'])
+    return profile
+
+
+def _accountant_profile_for_user(acct_user):
+    profile, _ = AccountantPermissionProfile.objects.get_or_create(
+        user=acct_user,
+        defaults={'school': acct_user.school},
+    )
+    if acct_user.school_id and profile.school_id != acct_user.school_id:
+        profile.school = acct_user.school
         profile.save(update_fields=['school'])
     return profile
 
@@ -495,6 +512,93 @@ def hr_permission_update_view(request, user_id):
             HRPagePermission.objects.bulk_create(to_create)
 
     return Response({'message': 'HR permissions updated successfully'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def accountant_permissions_view(request):
+    """Admin-facing endpoint to manage accountant page permissions."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    acct_users = CustomUser.objects.filter(
+        school=school,
+        role='accountant',
+        is_active=True,
+    ).order_by('first_name', 'last_name')
+
+    users_payload = []
+    for acct_user in acct_users:
+        profile = _accountant_profile_for_user(acct_user)
+        perms = AccountantPagePermission.objects.filter(profile=profile)
+        perm_map = {
+            p.page_key: {'read': bool(p.can_read), 'write': bool(p.can_write)}
+            for p in perms
+        }
+        users_payload.append({
+            'id': acct_user.id,
+            'full_name': acct_user.full_name,
+            'email': acct_user.email,
+            'is_root_head': bool(profile.is_root_head),
+            'permissions': perm_map,
+        })
+
+    return Response({
+        'pages': ACCOUNTANT_PAGE_CATALOG,
+        'accountant_users': users_payload,
+    })
+
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def accountant_permission_update_view(request, user_id):
+    """Update one accountant's permissions and head flag."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acct_user = CustomUser.objects.get(id=user_id, school=school, role='accountant')
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'Accountant not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    is_root_head = bool(request.data.get('is_root_head', False))
+    raw_permissions = request.data.get('permissions', {}) or {}
+    valid_page_keys = {key for key, _ in AccountantPagePermission.PAGE_CHOICES}
+
+    with transaction.atomic():
+        profile = _accountant_profile_for_user(acct_user)
+        profile.is_root_head = is_root_head
+        profile.save(update_fields=['is_root_head', 'updated_at'])
+
+        AccountantPagePermission.objects.filter(profile=profile).delete()
+
+        to_create = []
+        for page_key, grant in raw_permissions.items():
+            if page_key not in valid_page_keys:
+                continue
+            can_read = bool((grant or {}).get('read', False))
+            can_write = bool((grant or {}).get('write', False))
+            if can_write:
+                can_read = True
+            to_create.append(AccountantPagePermission(
+                profile=profile,
+                page_key=page_key,
+                can_read=can_read,
+                can_write=can_write,
+            ))
+
+        if to_create:
+            AccountantPagePermission.objects.bulk_create(to_create)
+
+    return Response({'message': 'Accountant permissions updated successfully'})
 
 
 @api_view(['POST'])

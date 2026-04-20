@@ -1,6 +1,6 @@
 """Assessment plan CRUD (admin / HR-boss) and read endpoints for teachers, parents, students.
 
-HR boss (HRPermissionProfile.is_root_boss=True) is rewritten to role='admin' by
+HR head (HRPermissionProfile.is_root_boss=True) is rewritten to role='admin' by
 HRAccessControlMiddleware, so the admin role check below covers them transparently.
 """
 from rest_framework import status, permissions
@@ -37,7 +37,7 @@ def assessment_plans_list_create(request):
         return Response(AssessmentPlanSerializer(qs, many=True).data)
 
     if user.role != 'admin':
-        return Response({'error': 'Only admin or HR boss can create plans'}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'error': 'Only admin or HR head can create plans'}, status=status.HTTP_403_FORBIDDEN)
 
     subject_ids = request.data.get('subject_ids', [])
     if not subject_ids:
@@ -89,7 +89,7 @@ def assessment_plan_detail(request, pk):
         return Response(AssessmentPlanSerializer(plan).data)
 
     if user.role != 'admin':
-        return Response({'error': 'Only admin or HR boss can modify plans'}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'error': 'Only admin or HR head can modify plans'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'DELETE':
         plan.delete()
