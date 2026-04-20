@@ -7,6 +7,7 @@ from .models import (
     DormRollCall, LightsOutRecord, ExeatRequest, ExeatMovementLog, MedicationSchedule, TuckWallet,
     TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn,
     AssessmentPlan, Activity, ActivityEnrollment, ActivityEvent,
+    SportsHouse, MatchSquadEntry, TrainingAttendance, HousePointEntry,
 )
 from users.serializers import UserSerializer
 from .utils import generate_unique_student_number
