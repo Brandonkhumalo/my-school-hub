@@ -111,15 +111,18 @@ def _current_term_window(user):
         year_int = today.year
 
     # Fallback to sensible calendar term windows when dates are not configured.
+    # Use today's year so that transactions made in the current calendar year
+    # are never excluded by a stale current_academic_year setting.
+    fallback_year = today.year
     if term_key == 'term_1':
-        default_start = date(year_int, 1, 1)
-        default_end = date(year_int, 4, 30)
+        default_start = date(fallback_year, 1, 1)
+        default_end = date(fallback_year, 4, 30)
     elif term_key == 'term_2':
-        default_start = date(year_int, 5, 1)
-        default_end = date(year_int, 8, 31)
+        default_start = date(fallback_year, 5, 1)
+        default_end = date(fallback_year, 8, 31)
     else:
-        default_start = date(year_int, 9, 1)
-        default_end = date(year_int, 12, 31)
+        default_start = date(fallback_year, 9, 1)
+        default_end = date(fallback_year, 12, 31)
 
     if not start:
         start = default_start
@@ -582,7 +585,8 @@ def finance_summary_view(request):
     term_revenue_records = StudentPaymentRecord.objects.filter(
         school=school,
         academic_year=current_year,
-        academic_term__in=term_labels,
+    ).filter(
+        Q(academic_term__in=term_labels) | Q(payment_plan='full_year')
     ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
 
     term_revenue_invoices = Invoice.objects.filter(

@@ -542,6 +542,10 @@ class AssessmentPlan(models.Model):
     academic_year = models.CharField(max_length=20, db_index=True)
     academic_term = models.CharField(max_length=50, db_index=True)
     subjects = models.ManyToManyField(Subject, related_name='assessment_plans')
+    grade_levels = models.JSONField(
+        default=list, blank=True,
+        help_text='Optional list of grade/form levels this plan applies to, e.g. [1,2]. Empty = all grades.'
+    )
 
     num_papers = models.PositiveSmallIntegerField(
         default=0, help_text='How many exam papers are written this term (0-6)'
@@ -640,11 +644,28 @@ class Announcement(models.Model):
     target_class = models.ForeignKey('Class', on_delete=models.CASCADE, null=True, blank=True,
         help_text='If set, only users in this class see the announcement')
     date_posted = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
         audiences = self.target_audiences or [self.target_audience]
         return f"{self.title} - {', '.join(audiences)}"
+
+
+class AnnouncementDismissal(models.Model):
+    """Per-user dismissal so users can clear announcements from their own feed only."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='dismissed_announcements')
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name='dismissals')
+    dismissed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        unique_together = ('user', 'announcement')
+        indexes = [
+            models.Index(fields=['user', 'dismissed_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.announcement_id}"
 
 
 class ReportCardRelease(models.Model):

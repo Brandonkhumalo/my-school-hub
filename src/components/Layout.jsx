@@ -97,7 +97,6 @@ const ALL_MENU_ITEMS = {
       { path: "/parent/children",  icon: "fa-child",          title: "My Children" },
       { path: "/parent/performance", icon: "fa-chart-line",   title: "Performance" },
       { path: "/parent/homework",  icon: "fa-book-open",      title: "Homework" },
-      { path: "/parent/messages",  icon: "fa-envelope",       title: "Weekly Messages" },
       { path: "/parent/fees",      icon: "fa-credit-card",    title: "School Fees" },
       { path: "/parent/conferences", icon: "fa-calendar-check", title: "Conferences" },
       { path: "/parent/chat",      icon: "fa-comments",       title: "Chat with Teachers" },

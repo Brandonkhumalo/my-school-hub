@@ -18,7 +18,7 @@ function parseMonthInput(value) {
   return { year, monthName: MONTH_NAMES[monthIndex] };
 }
 
-export default function HRPayroll() {
+export default function HRPayroll({ viewMode = "all" }) {
   const { user } = useAuth();
   const isRootHrHead = Boolean(user?.role === "hr" && user?.hr_is_root_boss);
   const isAccountant = user?.role === "accountant";
@@ -28,6 +28,9 @@ export default function HRPayroll() {
   const canSignoffPayroll = Boolean(isAdmin);
   // Accountants and HR head can submit payroll sign-off requests. Admin approves.
   const canSubmitPayroll = Boolean(isAccountant || isRootHrHead);
+  const showPayrollSection = viewMode !== "accounting";
+  const showAccountingSection = viewMode !== "payroll";
+  const pageTitle = viewMode === "payroll" ? "Payroll" : viewMode === "accounting" ? "Accounting" : "Payroll & Accounting";
 
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -231,8 +234,8 @@ export default function HRPayroll() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Accounting</h1>
-        {canSubmitPayroll && (
+        <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
+        {canSubmitPayroll && showPayrollSection && (
           <div className="flex gap-2">
             <button onClick={handleGenerate} className="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700">
               <i className="fas fa-bolt mr-2"></i>Generate for Month
@@ -263,7 +266,7 @@ export default function HRPayroll() {
         </div>
       </div>
 
-      {summary && (
+      {showPayrollSection && summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             { label: "Total Payroll", value: `$${Number(summary.total_gross ?? summary.total_net ?? 0).toLocaleString()}` },
@@ -278,7 +281,7 @@ export default function HRPayroll() {
         </div>
       )}
 
-      {canSubmitPayroll && (
+      {showPayrollSection && canSubmitPayroll && (
         <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-2 items-center">
           <button
             onClick={toggleSelectAllVisibleUnpaid}
@@ -301,7 +304,7 @@ export default function HRPayroll() {
         </div>
       )}
 
-      {isAdmin && (
+      {showPayrollSection && isAdmin && (
         <div className="bg-white rounded-lg shadow p-4 flex flex-wrap gap-2 items-center">
           <label className="text-sm text-gray-600">Filter status:</label>
           <select
@@ -319,6 +322,7 @@ export default function HRPayroll() {
         </div>
       )}
 
+      {showPayrollSection && (
       <div className="bg-white rounded-lg shadow p-5">
         <h2 className="text-lg font-semibold mb-4">Payroll Sign-off Requests</h2>
         {payRequests.length === 0 ? (
@@ -349,8 +353,9 @@ export default function HRPayroll() {
           </div>
         )}
       </div>
+      )}
 
-      {loading ? (
+      {showPayrollSection && (loading ? (
         <div className="text-center py-10 text-gray-400">Loading...</div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-x-auto">
@@ -392,8 +397,9 @@ export default function HRPayroll() {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
 
+      {showAccountingSection && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold mb-4">School Expenses</h2>
@@ -485,8 +491,9 @@ export default function HRPayroll() {
           )}
         </div>
       </div>
+      )}
 
-      {showForm && canSubmitPayroll && (
+      {showPayrollSection && showForm && canSubmitPayroll && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md relative">
             <button onClick={() => setShowForm(false)} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl">&times;</button>

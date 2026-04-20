@@ -17,7 +17,7 @@ from email_service import (
 )
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
-    Timetable, Announcement, Complaint, Suspension
+    Timetable, Announcement, AnnouncementDismissal, Complaint, Suspension
 )
 from .serializers import (
     SubjectSerializer, ClassSerializer, StudentSerializer, TeacherSerializer,
@@ -471,79 +471,73 @@ class TimetableListView(generics.ListAPIView):
 
 
 # Announcement Views
+def _announcement_feed_queryset_for_user(user, include_dismissed=False):
+    if user.school:
+        queryset = Announcement.objects.filter(
+            is_active=True, author__school=user.school
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+        ).select_related('author', 'target_class')
+    else:
+        return Announcement.objects.none()
+
+    user_role = user.role
+
+    if user_role not in ('admin', 'hr', 'superadmin'):
+        audience_aliases = {
+            user_role,
+            f"{user_role}s",
+        }
+        audience_filter = Q(target_audience='all') | Q(target_audiences__contains=['all'])
+        for audience in audience_aliases:
+            audience_filter |= Q(target_audience=audience) | Q(target_audiences__contains=[audience])
+        queryset = queryset.filter(audience_filter)
+
+    if user_role == 'student':
+        try:
+            user_class_id = user.student.student_class_id
+            queryset = queryset.filter(Q(target_class__isnull=True) | Q(target_class_id=user_class_id))
+        except Exception:
+            queryset = queryset.filter(target_class__isnull=True)
+    elif user_role == 'parent':
+        from .models import ParentChildLink
+        child_class_ids = list(
+            ParentChildLink.objects.filter(parent=user.parent, is_confirmed=True)
+            .values_list('student__student_class_id', flat=True)
+        )
+        if child_class_ids:
+            queryset = queryset.filter(Q(target_class__isnull=True) | Q(target_class_id__in=child_class_ids))
+        else:
+            queryset = queryset.filter(target_class__isnull=True)
+    elif user_role == 'teacher':
+        try:
+            teacher = user.teacher
+            teacher_class_ids = list(
+                set(Class.objects.filter(class_teacher=user).values_list('id', flat=True)) |
+                set(Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True).distinct())
+            )
+            if teacher_class_ids:
+                queryset = queryset.filter(Q(target_class__isnull=True) | Q(target_class_id__in=teacher_class_ids))
+            else:
+                queryset = queryset.filter(target_class__isnull=True)
+        except Exception:
+            queryset = queryset.filter(target_class__isnull=True)
+
+    if not include_dismissed:
+        queryset = queryset.exclude(
+            id__in=AnnouncementDismissal.objects.filter(user=user).values_list('announcement_id', flat=True)
+        )
+
+    return queryset.order_by('-date_posted')
+
+
 class AnnouncementListCreateView(generics.ListCreateAPIView):
     queryset = Announcement.objects.all()
     serializer_class = AnnouncementSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.school:
-            queryset = Announcement.objects.filter(
-                is_active=True, author__school=user.school
-            ).select_related('author', 'target_class')
-        else:
-            queryset = Announcement.objects.none()
-        user_role = user.role
-
-        if user_role not in ('admin', 'hr', 'superadmin'):
-            audience_aliases = {
-                user_role,
-                f"{user_role}s",
-            }
-            audience_filter = Q(target_audience='all') | Q(target_audiences__contains=['all'])
-            for audience in audience_aliases:
-                audience_filter |= Q(target_audience=audience) | Q(target_audiences__contains=[audience])
-            queryset = queryset.filter(
-                audience_filter
-            )
-
-        # Filter by target_class: show announcements with no class (general)
-        # or where the user belongs to that class
-        user_class_id = None
-        if user_role == 'student':
-            try:
-                user_class_id = user.student.student_class_id
-            except Exception:
-                pass
-        elif user_role == 'parent':
-            from .models import ParentChildLink
-            child_class_ids = list(
-                ParentChildLink.objects.filter(parent=user.parent, is_confirmed=True)
-                .values_list('student__student_class_id', flat=True)
-            )
-            if child_class_ids:
-                queryset = queryset.filter(
-                    Q(target_class__isnull=True) | Q(target_class_id__in=child_class_ids)
-                )
-                return queryset.order_by('-date_posted')
-        elif user_role == 'teacher':
-            from .models import Timetable
-            try:
-                teacher = user.teacher
-                teacher_class_ids = list(
-                    set(Class.objects.filter(class_teacher=user).values_list('id', flat=True)) |
-                    set(Timetable.objects.filter(teacher=teacher).values_list('class_assigned_id', flat=True).distinct())
-                )
-                if teacher_class_ids:
-                    queryset = queryset.filter(
-                        Q(target_class__isnull=True) | Q(target_class_id__in=teacher_class_ids)
-                    )
-                    return queryset.order_by('-date_posted')
-            except Exception:
-                pass
-
-        if user_class_id:
-            queryset = queryset.filter(
-                Q(target_class__isnull=True) | Q(target_class_id=user_class_id)
-            )
-        else:
-            # Admin or no class — see all
-            queryset = queryset.filter(
-                Q(target_class__isnull=True) | Q(target_class__isnull=False)
-            )
-
-        return queryset.order_by('-date_posted')
+        return _announcement_feed_queryset_for_user(self.request.user, include_dismissed=False)
 
     def perform_create(self, serializer):
         if self.request.user.role not in ('admin', 'hr'):
@@ -588,6 +582,59 @@ class AnnouncementListCreateView(generics.ListCreateAPIView):
                 )
         except Exception as exc:
             logger.error("Announcement email notification failed: %s", exc)
+
+
+class AnnouncementDetailView(generics.DestroyAPIView):
+    queryset = Announcement.objects.all()
+    serializer_class = AnnouncementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.school:
+            return Announcement.objects.none()
+        return Announcement.objects.filter(author__school=user.school).select_related('author')
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if user.role in ('admin', 'hr', 'superadmin') and user.school_id == instance.author.school_id:
+            instance.delete()
+            return
+        if instance.author_id == user.id:
+            instance.delete()
+            return
+        raise PermissionDenied('You can only delete your own announcements.')
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def dismiss_announcement(request, pk):
+    announcement = _announcement_feed_queryset_for_user(request.user, include_dismissed=True).filter(id=pk).first()
+    if not announcement:
+        return Response({'error': 'Announcement not found'}, status=status.HTTP_404_NOT_FOUND)
+    AnnouncementDismissal.objects.get_or_create(user=request.user, announcement=announcement)
+    return Response({'message': 'Announcement cleared from your page.'}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def dismiss_all_announcements(request):
+    visible_ids = list(
+        _announcement_feed_queryset_for_user(request.user, include_dismissed=True).values_list('id', flat=True)
+    )
+    if not visible_ids:
+        return Response({'dismissed': 0, 'total_visible': 0}, status=status.HTTP_200_OK)
+
+    existing = set(
+        AnnouncementDismissal.objects.filter(
+            user=request.user, announcement_id__in=visible_ids
+        ).values_list('announcement_id', flat=True)
+    )
+    new_ids = [announcement_id for announcement_id in visible_ids if announcement_id not in existing]
+    AnnouncementDismissal.objects.bulk_create(
+        [AnnouncementDismissal(user=request.user, announcement_id=announcement_id) for announcement_id in new_ids]
+    )
+    return Response({'dismissed': len(new_ids), 'total_visible': len(visible_ids)}, status=status.HTTP_200_OK)
 
 
 # Complaint Views

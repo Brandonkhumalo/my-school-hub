@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from datetime import timedelta, datetime
 from .models import (
     Student, Subject, Result, Timetable, Teacher,
-    Announcement, Assignment, SchoolEvent, ClassAttendance, SubjectAttendance
+    Announcement, AnnouncementDismissal, Assignment, SchoolEvent, ClassAttendance, SubjectAttendance
 )
 from .serializers import (
     StudentSerializer, ResultSerializer, TimetableSerializer,
@@ -351,7 +351,11 @@ def student_announcements(request):
         is_active=True,
         author__school=request.user.school,
     ).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+    ).filter(
         Q(target_class__isnull=True) | Q(target_class_id=student.student_class_id)
+    ).exclude(
+        id__in=AnnouncementDismissal.objects.filter(user=request.user).values_list('announcement_id', flat=True)
     ).select_related('author').order_by('-date_posted')
     
     data = []
@@ -368,7 +372,10 @@ def student_announcements(request):
             'title': announcement.title,
             'message': announcement.content,
             'author': announcement.author.first_name + ' ' + announcement.author.last_name,
+            'author_id': announcement.author_id,
             'date': announcement.date_posted.isoformat(),
+            'expires_at': announcement.expires_at.isoformat() if announcement.expires_at else None,
+            'can_delete': (request.user.role in ('admin', 'hr', 'superadmin') and request.user.school_id == announcement.author.school_id) or announcement.author_id == request.user.id,
             'priority': priority,
             'attachments': []
         })

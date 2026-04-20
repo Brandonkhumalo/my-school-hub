@@ -1,3 +1,5 @@
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result,
@@ -214,12 +216,16 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=False,
     )
+    duration_days = serializers.IntegerField(required=False, write_only=True, min_value=1, max_value=365)
+    is_expired = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
 
     class Meta:
         model = Announcement
         fields = ['id', 'title', 'content', 'author', 'author_name', 'target_audience',
-                  'target_audiences', 'target_class', 'class_name', 'date_posted', 'is_active']
-        read_only_fields = ['author', 'author_name', 'class_name', 'date_posted']
+                  'target_audiences', 'target_class', 'class_name', 'date_posted', 'expires_at',
+                  'duration_days', 'is_expired', 'can_delete', 'is_active']
+        read_only_fields = ['author', 'author_name', 'class_name', 'date_posted', 'is_expired', 'can_delete']
 
     def validate(self, attrs):
         target_audiences = attrs.get('target_audiences') or []
@@ -243,6 +249,30 @@ class AnnouncementSerializer(serializers.ModelSerializer):
             attrs['target_audiences'] = [attrs['target_audience']]
 
         return attrs
+
+    def create(self, validated_data):
+        duration_days = validated_data.pop('duration_days', None)
+        if duration_days:
+            validated_data['expires_at'] = timezone.now() + timedelta(days=duration_days)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        duration_days = validated_data.pop('duration_days', None)
+        if duration_days:
+            validated_data['expires_at'] = timezone.now() + timedelta(days=duration_days)
+        return super().update(instance, validated_data)
+
+    def get_is_expired(self, obj):
+        return bool(obj.expires_at and obj.expires_at <= timezone.now())
+
+    def get_can_delete(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return False
+        if user.role in ('admin', 'hr', 'superadmin') and user.school_id == obj.author.school_id:
+            return True
+        return obj.author_id == user.id
 
 
 class ComplaintSerializer(serializers.ModelSerializer):
@@ -1468,11 +1498,17 @@ class AssessmentPlanSerializer(serializers.ModelSerializer):
     subjects_detail = serializers.SerializerMethodField(read_only=True)
     effective_papers = serializers.SerializerMethodField(read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, default=None)
+    grade_levels = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = AssessmentPlan
         fields = [
             'id', 'academic_year', 'academic_term',
+            'grade_levels',
             'subject_ids', 'subjects_detail',
             'num_papers', 'paper_numbers', 'paper_weights',
             'num_tests', 'num_assignments',
@@ -1489,6 +1525,11 @@ class AssessmentPlanSerializer(serializers.ModelSerializer):
         return obj.effective_paper_numbers()
 
     def validate(self, attrs):
+        grade_levels = attrs.get('grade_levels', getattr(self.instance, 'grade_levels', []) or [])
+        if grade_levels:
+            normalized = sorted({int(g) for g in grade_levels})
+            attrs['grade_levels'] = normalized
+
         num_papers = attrs.get('num_papers', getattr(self.instance, 'num_papers', 0))
         paper_numbers = attrs.get('paper_numbers', getattr(self.instance, 'paper_numbers', []) or [])
         if num_papers and num_papers > 6:

@@ -11,6 +11,9 @@ export default function StudentAnnouncements() {
   const { user } = useAuth();
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [clearingId, setClearingId] = useState(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   useEffect(() => {
     loadAnnouncements();
@@ -29,6 +32,42 @@ export default function StudentAnnouncements() {
   };
 
   const formatDate = formatDateLong;
+
+  const handleDelete = async (announcementId) => {
+    setDeletingId(announcementId);
+    try {
+      await apiService.deleteAnnouncement(announcementId);
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error deleting announcement:", error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClear = async (announcementId) => {
+    setClearingId(announcementId);
+    try {
+      await apiService.dismissAnnouncement(announcementId);
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcement:", error);
+    } finally {
+      setClearingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    try {
+      await apiService.dismissAllAnnouncements();
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcements:", error);
+    } finally {
+      setClearingAll(false);
+    }
+  };
 
   const getPriorityColor = (priority) => {
     switch (priority?.toLowerCase()) {
@@ -77,7 +116,17 @@ export default function StudentAnnouncements() {
         </button>
         
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">School Announcements</h2>
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold text-gray-800">School Announcements</h2>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              disabled={clearingAll || announcements.length === 0}
+              className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {clearingAll ? "Clearing..." : "Clear All"}
+            </button>
+          </div>
           
           {announcements.length === 0 ? (
             <div className="text-center py-12">
@@ -113,6 +162,12 @@ export default function StudentAnnouncements() {
                               <i className="fas fa-calendar mr-1"></i>
                               {formatDate(announcement.date)}
                             </span>
+                            {announcement.expires_at && (
+                              <span>
+                                <i className="fas fa-hourglass-end mr-1"></i>
+                                Expires {formatDate(announcement.expires_at)}
+                              </span>
+                            )}
                             {announcement.priority && (
                               <span className="px-2 py-1 bg-white rounded-full text-xs font-semibold">
                                 {announcement.priority.toUpperCase()}
@@ -121,8 +176,29 @@ export default function StudentAnnouncements() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <p className="text-gray-700 mt-3 leading-relaxed">{announcement.message}</p>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleClear(announcement.id)}
+                          disabled={clearingId === announcement.id}
+                          className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          {clearingId === announcement.id ? "Clearing..." : "Clear"}
+                        </button>
+                        {announcement.can_delete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(announcement.id)}
+                            disabled={deletingId === announcement.id}
+                            className="text-xs px-3 py-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            {deletingId === announcement.id ? "Deleting..." : "Delete"}
+                          </button>
+                        )}
+                      </div>
                       
                       {announcement.attachments && announcement.attachments.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-gray-200">

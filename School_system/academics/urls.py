@@ -41,6 +41,9 @@ urlpatterns = [
     
     # Announcement endpoints
     path('announcements/', views.AnnouncementListCreateView.as_view(), name='announcement-list-create'),
+    path('announcements/dismiss-all/', views.dismiss_all_announcements, name='announcement-dismiss-all'),
+    path('announcements/<int:pk>/dismiss/', views.dismiss_announcement, name='announcement-dismiss'),
+    path('announcements/<int:pk>/', views.AnnouncementDetailView.as_view(), name='announcement-detail'),
     
     # Complaint endpoints
     path('complaints/', views.ComplaintListCreateView.as_view(), name='complaint-list-create'),

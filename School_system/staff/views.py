@@ -191,11 +191,26 @@ class StaffListView(generics.ListAPIView):
         if not school:
             return Response(staff_data)
 
+        from academics.models import Teacher as TeacherModel
+
         employee_roles = ('teacher', 'admin', 'hr', 'accountant', 'security', 'cleaner', 'librarian')
         linked_user_ids = set(queryset.values_list('user_id', flat=True))
+
+        # Collect all employee user IDs at this school:
+        # (1) users with an employee role on their CustomUser record
+        # (2) users with a Teacher profile at this school (canonical teacher source)
+        employee_user_ids = set(
+            CustomUser.objects.filter(school=school, role__in=employee_roles)
+            .values_list('id', flat=True)
+        )
+        teacher_profile_user_ids = set(
+            TeacherModel.objects.filter(user__school=school)
+            .values_list('user_id', flat=True)
+        )
+        all_employee_ids = employee_user_ids | teacher_profile_user_ids
+
         missing_users = CustomUser.objects.filter(
-            school=school,
-            role__in=employee_roles,
+            id__in=all_employee_ids,
         ).exclude(id__in=linked_user_ids).order_by('first_name', 'last_name', 'id')
 
         position_filter = request.query_params.get('position')

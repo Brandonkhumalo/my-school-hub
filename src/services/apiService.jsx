@@ -95,6 +95,15 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
       error.response = { data: errorData, status: response.status };
       throw error;
     }
+    if (response.status === 204) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return null;
+    }
+
     const data = await response.json();
 
     // Handle DRF paginated responses by following `next` links so routes receive full datasets.
@@ -290,6 +299,9 @@ const apiService = {
 
   fetchAnnouncements: () => request("/academics/announcements/", "GET"),
   createAnnouncement: (data) => request("/academics/announcements/", "POST", data),
+  deleteAnnouncement: (announcementId) => request(`/academics/announcements/${announcementId}/`, "DELETE"),
+  dismissAnnouncement: (announcementId) => request(`/academics/announcements/${announcementId}/dismiss/`, "POST"),
+  dismissAllAnnouncements: () => request("/academics/announcements/dismiss-all/", "POST"),
 
   fetchComplaints: () => request("/academics/complaints/", "GET"),
   createComplaint: (data) => request("/academics/complaints/", "POST", data),
@@ -365,12 +377,6 @@ const apiService = {
   confirmChild: (childId) => request(`/parents/children/${childId}/confirm/`, "POST"),
   getParentDashboardStats: (childId) => request(`/parents/children/${childId}/stats/`, "GET"),
   getChildPerformance: (childId) => request(`/parents/children/${childId}/performance/`, "GET"),
-  getParentWeeklyMessages: (childId = null) => {
-    if (childId) {
-      return request(`/parents/children/${childId}/messages/`, "GET");
-    }
-    return request("/parents/messages/", "GET");
-  },
   getChildFees: (childId) => request(`/parents/children/${childId}/fees/`, "GET"),
 
   // Teacher endpoints
@@ -426,8 +432,14 @@ const apiService = {
   createAssessmentPlan: (data) => request(`/academics/assessment-plans/`, "POST", data),
   updateAssessmentPlan: (planId, data) => request(`/academics/assessment-plans/${planId}/`, "PATCH", data),
   deleteAssessmentPlan: (planId) => request(`/academics/assessment-plans/${planId}/`, "DELETE"),
-  getAssessmentPlanForTeacher: (subjectId, year, term) =>
-    request(`/academics/assessment-plans/for-teacher/?subject=${subjectId}&year=${encodeURIComponent(year)}&term=${encodeURIComponent(term)}`, "GET"),
+  getAssessmentPlanForTeacher: (subjectId, year, term, classId = "") => {
+    const qs = new URLSearchParams();
+    qs.set("subject", subjectId);
+    qs.set("year", year);
+    qs.set("term", term);
+    if (classId) qs.set("class_id", classId);
+    return request(`/academics/assessment-plans/for-teacher/?${qs.toString()}`, "GET");
+  },
   getAssessmentPlansForStudent: (year = '', term = '') => {
     const qs = new URLSearchParams();
     if (year) qs.set('year', year);

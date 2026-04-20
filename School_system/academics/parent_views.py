@@ -9,9 +9,8 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import datetime
 from .models import (
-    Parent, Student, ParentChildLink, Result, WeeklyMessage, ClassAttendance
+    Parent, Student, ParentChildLink, Result, ClassAttendance
 )
-from .serializers import ParentChildLinkSerializer, WeeklyMessageSerializer
 from finances.models import StudentFee, Payment, StudentPaymentRecord, PaymentTransaction
 from finances.fee_calculator import build_school_fee_breakdown, get_additional_fees_for_student
 
@@ -427,92 +426,6 @@ def child_performance(request, child_id):
     except ParentChildLink.DoesNotExist:
         return Response({'error': 'Child not found or not confirmed'}, 
                        status=status.HTTP_404_NOT_FOUND)
-    except Parent.DoesNotExist:
-        return Response({'error': 'Parent profile not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def child_weekly_messages(request, child_id=None):
-    """Get weekly messages from teachers about a child or all children"""
-    if request.user.role != 'parent':
-        return Response({'error': 'Only parents can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
-    
-    try:
-        parent = request.user.parent
-        
-        if child_id:
-            # Get messages for specific child
-            link = ParentChildLink.objects.get(parent=parent, student_id=child_id, is_confirmed=True)
-            messages = WeeklyMessage.objects.filter(student=link.student).order_by('-date_sent')
-        else:
-            # Get messages for all confirmed children
-            confirmed_children = ParentChildLink.objects.filter(
-                parent=parent, 
-                is_confirmed=True
-            ).values_list('student_id', flat=True)
-            messages = WeeklyMessage.objects.filter(student_id__in=confirmed_children).order_by('-date_sent')
-        
-        data = []
-        for message in messages:
-            data.append({
-                'id': message.id,
-                'subject': message.subject.name,
-                'teacher': f"{message.teacher.user.first_name} {message.teacher.user.last_name}",
-                'message': message.message,
-                'date': message.date_sent.strftime('%Y-%m-%d'),
-                'week_number': message.week_number,
-                'performance_rating': message.performance_rating,
-                'areas_of_improvement': message.areas_of_improvement or [],
-                'strengths': message.strengths or []
-            })
-        
-        return Response(data)
-    except ParentChildLink.DoesNotExist:
-        return Response({'error': 'Child not found or not confirmed'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-    except Parent.DoesNotExist:
-        return Response({'error': 'Parent profile not found'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def all_weekly_messages(request):
-    """Get all weekly messages for all confirmed children"""
-    if request.user.role != 'parent':
-        return Response({'error': 'Only parents can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
-    
-    try:
-        parent = request.user.parent
-        
-        # Get messages for all confirmed children
-        confirmed_children = ParentChildLink.objects.filter(
-            parent=parent, 
-            is_confirmed=True
-        ).values_list('student_id', flat=True)
-        messages = WeeklyMessage.objects.filter(student_id__in=confirmed_children).order_by('-date_sent')
-        
-        data = []
-        for message in messages:
-            data.append({
-                'id': message.id,
-                'subject': message.subject.name,
-                'teacher': f"{message.teacher.user.first_name} {message.teacher.user.last_name}",
-                'message': message.message,
-                'date': message.date_sent.strftime('%Y-%m-%d'),
-                'week_number': message.week_number,
-                'performance_rating': message.performance_rating,
-                'areas_of_improvement': message.areas_of_improvement or [],
-                'strengths': message.strengths or [],
-                'student_name': f"{message.student.user.first_name} {message.student.user.last_name}",
-                'student_id': message.student.id
-            })
-        
-        return Response(data)
     except Parent.DoesNotExist:
         return Response({'error': 'Parent profile not found'}, 
                        status=status.HTTP_404_NOT_FOUND)

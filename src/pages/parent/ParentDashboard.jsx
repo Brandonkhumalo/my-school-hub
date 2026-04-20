@@ -12,8 +12,10 @@ export default function ParentDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedChild, setSelectedChild] = useState(null);
   const [children, setChildren] = useState([]);
-  const [recentMessages, setRecentMessages] = useState([]);
   const [recentAnnouncements, setRecentAnnouncements] = useState([]);
+  const [deletingAnnouncementId, setDeletingAnnouncementId] = useState(null);
+  const [clearingAnnouncementId, setClearingAnnouncementId] = useState(null);
+  const [clearingAllAnnouncements, setClearingAllAnnouncements] = useState(false);
   const [complaints, setComplaints] = useState([]);
   const [complaintForm, setComplaintForm] = useState({
     student: "",
@@ -30,15 +32,13 @@ export default function ParentDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [childrenData, messagesData, complaintsData, announcementsData] = await Promise.all([
+      const [childrenData, complaintsData, announcementsData] = await Promise.all([
         apiService.getParentChildren(),
-        apiService.getParentWeeklyMessages(),
         apiService.fetchComplaints(),
         apiService.fetchAnnouncements(),
       ]);
       
       setChildren(childrenData);
-      setRecentMessages(messagesData.slice(0, 3));
       setComplaints(Array.isArray(complaintsData) ? complaintsData.slice(0, 5) : []);
       setRecentAnnouncements(Array.isArray(announcementsData) ? announcementsData.slice(0, 3) : []);
       
@@ -55,6 +55,45 @@ export default function ParentDashboard() {
       console.error("Error loading dashboard:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (announcementId) => {
+    setDeletingAnnouncementId(announcementId);
+    try {
+      await apiService.deleteAnnouncement(announcementId);
+      const announcementsData = await apiService.fetchAnnouncements();
+      setRecentAnnouncements(Array.isArray(announcementsData) ? announcementsData.slice(0, 3) : []);
+    } catch (error) {
+      console.error("Error deleting announcement:", error);
+    } finally {
+      setDeletingAnnouncementId(null);
+    }
+  };
+
+  const handleClearAnnouncement = async (announcementId) => {
+    setClearingAnnouncementId(announcementId);
+    try {
+      await apiService.dismissAnnouncement(announcementId);
+      const announcementsData = await apiService.fetchAnnouncements();
+      setRecentAnnouncements(Array.isArray(announcementsData) ? announcementsData.slice(0, 3) : []);
+    } catch (error) {
+      console.error("Error clearing announcement:", error);
+    } finally {
+      setClearingAnnouncementId(null);
+    }
+  };
+
+  const handleClearAllAnnouncements = async () => {
+    setClearingAllAnnouncements(true);
+    try {
+      await apiService.dismissAllAnnouncements();
+      const announcementsData = await apiService.fetchAnnouncements();
+      setRecentAnnouncements(Array.isArray(announcementsData) ? announcementsData.slice(0, 3) : []);
+    } catch (error) {
+      console.error("Error clearing announcements:", error);
+    } finally {
+      setClearingAllAnnouncements(false);
     }
   };
 
@@ -223,7 +262,7 @@ export default function ParentDashboard() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="grid grid-cols-1 gap-6 mb-8">
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -235,17 +274,6 @@ export default function ParentDashboard() {
                     <div>
                       <p className="font-semibold text-gray-800">View Performance</p>
                       <p className="text-sm text-gray-600">Academic results</p>
-                    </div>
-                  </Link>
-
-                  <Link
-                    to="/parent/messages"
-                    className="flex items-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition"
-                  >
-                    <i className="fas fa-envelope text-green-500 text-2xl mr-3"></i>
-                    <div>
-                      <p className="font-semibold text-gray-800">Weekly Messages</p>
-                      <p className="text-sm text-gray-600">Teacher updates</p>
                     </div>
                   </Link>
 
@@ -273,53 +301,52 @@ export default function ParentDashboard() {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Recent Weekly Messages</h3>
-                  <Link to="/parent/messages" className="text-blue-500 hover:text-blue-600 text-sm">
-                    View All
-                  </Link>
-                </div>
-                <div className="space-y-3">
-                  {recentMessages.length > 0 ? (
-                    recentMessages.map((message) => (
-                      <div key={message.id} className="p-3 bg-gray-50 rounded hover:bg-gray-100 transition">
-                        <div className="flex items-start">
-                          <i className="fas fa-envelope text-blue-500 text-lg mr-3 mt-1"></i>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <p className="font-semibold text-gray-800">{message.subject}</p>
-                              <span className="text-xs text-gray-500">
-                                {formatDate(message.date)}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">{message.message}</p>
-                            <p className="text-xs text-gray-500 mt-1">From: {message.teacher}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">No recent messages</p>
-                  )}
-                </div>
-              </div>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow mb-8">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                <i className="fas fa-bullhorn mr-2 text-blue-600"></i>
-                Recent Announcements
-              </h3>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  <i className="fas fa-bullhorn mr-2 text-blue-600"></i>
+                  Recent Announcements
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleClearAllAnnouncements}
+                  disabled={clearingAllAnnouncements || recentAnnouncements.length === 0}
+                  className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {clearingAllAnnouncements ? "Clearing..." : "Clear All"}
+                </button>
+              </div>
               {recentAnnouncements.length > 0 ? (
                 <div className="space-y-3">
                   {recentAnnouncements.map((announcement) => (
                     <div key={announcement.id} className="p-3 bg-gray-50 rounded hover:bg-gray-100 transition">
                       <div className="flex justify-between items-start gap-3">
                         <p className="font-semibold text-gray-800">{announcement.title}</p>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          {formatDate(announcement.date_posted)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">
+                            {formatDate(announcement.date_posted)}
+                          </span>
+                          {announcement.can_delete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAnnouncement(announcement.id)}
+                              disabled={deletingAnnouncementId === announcement.id}
+                              className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                            >
+                              {deletingAnnouncementId === announcement.id ? "Deleting..." : "Delete"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleClearAnnouncement(announcement.id)}
+                            disabled={clearingAnnouncementId === announcement.id}
+                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                          >
+                            {clearingAnnouncementId === announcement.id ? "Clearing..." : "Clear"}
+                          </button>
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mt-1 line-clamp-2">{announcement.content}</p>
                     </div>
@@ -356,12 +383,12 @@ export default function ParentDashboard() {
                 </Link>
 
                 <Link
-                  to="/parent/messages"
+                  to="/parent/chat"
                   className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition"
                 >
                   <div className="flex items-center">
                     <i className="fas fa-envelope text-purple-500 text-xl mr-3"></i>
-                    <span className="text-gray-700">Weekly Messages</span>
+                    <span className="text-gray-700">Chat with Teachers</span>
                   </div>
                   <i className="fas fa-chevron-right text-gray-400"></i>
                 </Link>

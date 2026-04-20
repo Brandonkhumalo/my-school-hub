@@ -8,18 +8,58 @@ import { formatDateShort } from "../../utils/dateFormat";
 export default function TeacherDashboard() {
   const { user } = useAuth();
   const [announcements, setAnnouncements] = useState([]);
+  const [deletingId, setDeletingId] = useState(null);
+  const [clearingId, setClearingId] = useState(null);
+  const [clearingAll, setClearingAll] = useState(false);
+
+  const loadAnnouncements = async () => {
+    try {
+      const data = await apiService.fetchAnnouncements();
+      setAnnouncements(Array.isArray(data) ? data.slice(0, 3) : []);
+    } catch (error) {
+      console.error("Error loading announcements:", error);
+    }
+  };
 
   useEffect(() => {
-    const loadAnnouncements = async () => {
-      try {
-        const data = await apiService.fetchAnnouncements();
-        setAnnouncements(Array.isArray(data) ? data.slice(0, 3) : []);
-      } catch (error) {
-        console.error("Error loading announcements:", error);
-      }
-    };
     loadAnnouncements();
   }, []);
+
+  const handleDeleteAnnouncement = async (announcementId) => {
+    setDeletingId(announcementId);
+    try {
+      await apiService.deleteAnnouncement(announcementId);
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error deleting announcement:", error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAnnouncement = async (announcementId) => {
+    setClearingId(announcementId);
+    try {
+      await apiService.dismissAnnouncement(announcementId);
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcement:", error);
+    } finally {
+      setClearingId(null);
+    }
+  };
+
+  const handleClearAllAnnouncements = async () => {
+    setClearingAll(true);
+    try {
+      await apiService.dismissAllAnnouncements();
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcements:", error);
+    } finally {
+      setClearingAll(false);
+    }
+  };
 
   const features = [
     {
@@ -132,17 +172,45 @@ export default function TeacherDashboard() {
         </div>
 
         <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
-          <div className="mb-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="text-lg font-semibold text-gray-800">
               <i className="fas fa-bullhorn mr-2 text-blue-600"></i>
               Recent Announcements
             </h3>
+            <button
+              type="button"
+              onClick={handleClearAllAnnouncements}
+              disabled={clearingAll || announcements.length === 0}
+              className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {clearingAll ? "Clearing..." : "Clear All"}
+            </button>
           </div>
           {announcements.length > 0 ? (
             <div className="space-y-3">
               {announcements.map((announcement) => (
                 <div key={announcement.id} className="border rounded-lg p-3 bg-gray-50">
-                  <p className="font-semibold text-gray-800">{announcement.title}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold text-gray-800">{announcement.title}</p>
+                    {announcement.can_delete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAnnouncement(announcement.id)}
+                        disabled={deletingId === announcement.id}
+                        className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {deletingId === announcement.id ? "Deleting..." : "Delete"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleClearAnnouncement(announcement.id)}
+                      disabled={clearingId === announcement.id}
+                      className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {clearingId === announcement.id ? "Clearing..." : "Clear"}
+                    </button>
+                  </div>
                   <p className="text-sm text-gray-600 mt-1 line-clamp-2">{announcement.content}</p>
                   <p className="text-xs text-gray-500 mt-1">{formatDateShort(announcement.date_posted)}</p>
                 </div>

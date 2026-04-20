@@ -16,17 +16,31 @@ const AUDIENCE_OPTIONS = [
   { value: "cleaner", label: "Cleaners" },
 ];
 
+const DURATION_OPTIONS = [
+  { value: 1, label: "1 day" },
+  { value: 2, label: "2 days" },
+  { value: 3, label: "3 days" },
+  { value: 7, label: "7 days" },
+  { value: 14, label: "14 days" },
+  { value: 30, label: "30 days" },
+  { value: 0, label: "No expiry" },
+];
+
 export default function AdminAnnouncements() {
   const [announcements, setAnnouncements] = useState([]);
   const [classes, setClasses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearingId, setClearingId] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [form, setForm] = useState({
     title: "",
     content: "",
     target_audiences: ["all"],
     target_class: "",
+    duration_days: 7,
   });
 
   const loadAnnouncements = async () => {
@@ -85,6 +99,7 @@ export default function AdminAnnouncements() {
         target_audiences: form.target_audiences,
         target_audience: form.target_audiences[0] || "all",
         target_class: form.target_class ? parseInt(form.target_class, 10) : null,
+        ...(Number(form.duration_days) > 0 ? { duration_days: Number(form.duration_days) } : {}),
       };
       await apiService.createAnnouncement(payload);
       setForm({
@@ -92,6 +107,7 @@ export default function AdminAnnouncements() {
         content: "",
         target_audiences: ["all"],
         target_class: "",
+        duration_days: 7,
       });
       setFeedback({ type: "success", text: "Announcement posted successfully." });
       await loadAnnouncements();
@@ -100,6 +116,51 @@ export default function AdminAnnouncements() {
       setFeedback({ type: "error", text: error.message || "Failed to create announcement." });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (announcementId) => {
+    setDeletingId(announcementId);
+    setFeedback(null);
+    try {
+      await apiService.deleteAnnouncement(announcementId);
+      setFeedback({ type: "success", text: "Announcement deleted." });
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error deleting announcement:", error);
+      setFeedback({ type: "error", text: error.message || "Failed to delete announcement." });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAnnouncement = async (announcementId) => {
+    setClearingId(announcementId);
+    setFeedback(null);
+    try {
+      await apiService.dismissAnnouncement(announcementId);
+      setFeedback({ type: "success", text: "Announcement cleared from your page." });
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcement:", error);
+      setFeedback({ type: "error", text: error.message || "Failed to clear announcement." });
+    } finally {
+      setClearingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    setFeedback(null);
+    try {
+      await apiService.dismissAllAnnouncements();
+      setFeedback({ type: "success", text: "All announcements cleared from your page." });
+      await loadAnnouncements();
+    } catch (error) {
+      console.error("Error clearing announcements:", error);
+      setFeedback({ type: "error", text: error.message || "Failed to clear announcements." });
+    } finally {
+      setClearingAll(false);
     }
   };
 
@@ -191,6 +252,21 @@ export default function AdminAnnouncements() {
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                <select
+                  value={form.duration_days}
+                  onChange={(e) => onChangeForm("duration_days", Number(e.target.value))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {DURATION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flex justify-end">
@@ -206,7 +282,17 @@ export default function AdminAnnouncements() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Announcements</h3>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">Recent Announcements</h3>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              disabled={clearingAll || announcements.length === 0}
+              className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {clearingAll ? "Clearing..." : "Clear All From My Page"}
+            </button>
+          </div>
           {announcements.length > 0 ? (
             <ul className="space-y-4">
               {announcements.map((announcement) => (
@@ -223,11 +309,36 @@ export default function AdminAnnouncements() {
                         {announcement.class_name}
                       </span>
                     )}
+                    {announcement.expires_at && (
+                      <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-800">
+                        Expires {formatDate(announcement.expires_at)}
+                      </span>
+                    )}
                   </div>
                   <p className="text-gray-700 whitespace-pre-line">{announcement.content}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Posted by {announcement.author_name || "System"} on {formatDate(announcement.date_posted)}
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-gray-500">
+                      Posted by {announcement.author_name || "System"} on {formatDate(announcement.date_posted)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleClearAnnouncement(announcement.id)}
+                      disabled={clearingId === announcement.id}
+                      className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {clearingId === announcement.id ? "Clearing..." : "Clear"}
+                    </button>
+                    {announcement.can_delete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(announcement.id)}
+                        disabled={deletingId === announcement.id}
+                        className="text-xs px-3 py-1.5 rounded border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      >
+                        {deletingId === announcement.id ? "Deleting..." : "Delete"}
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -16,12 +16,14 @@ import datetime
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
 from users.models import CustomUser, School
 from academics.models import (
     Announcement,
+    AnnouncementDismissal,
     Assignment,
     AssignmentSubmission,
     ClassAttendance,
@@ -715,6 +717,91 @@ class AnnouncementSuspensionPermissionAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         announcement = Announcement.objects.get(id=response.data["id"])
         self.assertEqual(announcement.target_audiences, ["student", "parent", "teacher"])
+
+    def test_hr_can_create_announcement_with_duration_days(self):
+        self.client.force_authenticate(user=self.hr)
+        response = self.client.post(self.announcements_url, {
+            "title": "Limited Notice",
+            "content": "This announcement expires soon.",
+            "target_audience": "all",
+            "duration_days": 2,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        announcement = Announcement.objects.get(id=response.data["id"])
+        self.assertIsNotNone(announcement.expires_at)
+        self.assertGreater(announcement.expires_at, timezone.now())
+
+    def test_author_can_delete_own_announcement(self):
+        announcement = Announcement.objects.create(
+            title="Own Notice",
+            content="Delete me",
+            author=self.hr,
+            target_audience="all",
+            target_audiences=["all"],
+        )
+        self.client.force_authenticate(user=self.hr)
+        response = self.client.delete(f"{self.announcements_url}{announcement.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Announcement.objects.filter(id=announcement.id).exists())
+
+    def test_non_author_teacher_cannot_delete_announcement(self):
+        announcement = Announcement.objects.create(
+            title="School Notice",
+            content="Cannot delete",
+            author=self.hr,
+            target_audience="all",
+            target_audiences=["all"],
+        )
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.delete(f"{self.announcements_url}{announcement.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Announcement.objects.filter(id=announcement.id).exists())
+
+    def test_teacher_can_clear_announcement_from_own_feed(self):
+        announcement = Announcement.objects.create(
+            title="General Notice",
+            content="Visible to everyone",
+            author=self.hr,
+            target_audience="all",
+            target_audiences=["all"],
+        )
+        self.client.force_authenticate(user=self.teacher.user)
+        list_before = self.client.get(self.announcements_url, format="json")
+        ids_before = [item["id"] for item in get_list(list_before.data)]
+        self.assertIn(announcement.id, ids_before)
+
+        dismiss_response = self.client.post(f"{self.announcements_url}{announcement.id}/dismiss/", {}, format="json")
+        self.assertEqual(dismiss_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            AnnouncementDismissal.objects.filter(user=self.teacher.user, announcement=announcement).exists()
+        )
+
+        list_after = self.client.get(self.announcements_url, format="json")
+        ids_after = [item["id"] for item in get_list(list_after.data)]
+        self.assertNotIn(announcement.id, ids_after)
+
+    def test_teacher_can_clear_all_announcements_from_own_feed(self):
+        Announcement.objects.create(
+            title="Notice 1",
+            content="One",
+            author=self.hr,
+            target_audience="all",
+            target_audiences=["all"],
+        )
+        Announcement.objects.create(
+            title="Notice 2",
+            content="Two",
+            author=self.hr,
+            target_audience="all",
+            target_audiences=["all"],
+        )
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(f"{self.announcements_url}dismiss-all/", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(response.data.get("dismissed", 0), 2)
+
+        list_after = self.client.get(self.announcements_url, format="json")
+        self.assertEqual(len(get_list(list_after.data)), 0)
 
     def test_teacher_cannot_issue_suspension(self):
         self.client.force_authenticate(user=self.teacher.user)

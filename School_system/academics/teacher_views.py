@@ -125,6 +125,8 @@ def subject_students(request, subject_id):
                 'name': student.user.first_name,
                 'surname': student.user.last_name,
                 'class': student.student_class.name if student.student_class else 'Not Assigned',
+                'class_id': student.student_class_id,
+                'grade_level': student.student_class.grade_level if student.student_class else None,
                 'latest_score': latest_result.score if latest_result else None,
                 'latest_max_score': latest_result.max_score if latest_result else None,
                 'latest_exam_type': latest_result.exam_type if latest_result else None

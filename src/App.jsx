@@ -154,7 +154,6 @@ const StudentBoarding = lazy(() => import("./pages/student/StudentBoarding"));
 const ParentDashboard = lazy(() => import("./pages/parent/ParentDashboard"));
 const ParentChildren = lazy(() => import("./pages/parent/ParentChildren"));
 const ParentPerformance = lazy(() => import("./pages/parent/ParentPerformance"));
-const ParentWeeklyMessages = lazy(() => import("./pages/parent/ParentWeeklyMessages"));
 const ParentFees = lazy(() => import("./pages/parent/ParentFees"));
 const ParentMessages = lazy(() => import("./pages/parent/ParentMessages"));
 const ParentHomework = lazy(() => import("./pages/parent/ParentHomework"));
@@ -264,8 +263,8 @@ function App() {
         <Route path="/admin/parent-requests" element={<RequireAuth allowedRoles={['admin']}><AdminParentLinkRequests /></RequireAuth>} />
         <Route path="/admin/extras" element={<RequireAuth allowedRoles={['admin']}><AdminExtras /></RequireAuth>} />
         <Route path="/admin/staff" element={<RequireAuth allowedRoles={['admin']}><AdminStaff /></RequireAuth>} />
-        <Route path="/admin/payroll" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
-        <Route path="/admin/accounting" element={<RequireAuth allowedRoles={['admin']}><HRPayroll /></RequireAuth>} />
+        <Route path="/admin/payroll" element={<RequireAuth allowedRoles={['admin']}><HRPayroll viewMode="payroll" /></RequireAuth>} />
+        <Route path="/admin/accounting" element={<RequireAuth allowedRoles={['admin']}><HRPayroll viewMode="accounting" /></RequireAuth>} />
         <Route path="/admin/settings" element={<RequireAuth allowedRoles={['admin']}><AdminSettings /></RequireAuth>} />
         <Route path="/admin/customization" element={<RequireAuth allowedRoles={['admin']}><Customization /></RequireAuth>} />
         <Route path="/admin/permissions" element={<RequireAuth allowedRoles={['admin']}><AdminPermissions /></RequireAuth>} />
@@ -321,7 +320,6 @@ function App() {
         <Route path="/parent/children" element={<RequireAuth allowedRoles={['parent']}><ParentChildren /></RequireAuth>} />
         <Route path="/parent/performance" element={<RequireAuth allowedRoles={['parent']}><ParentPerformance /></RequireAuth>} />
         <Route path="/parent/homework" element={<RequireAuth allowedRoles={['parent']}><ParentHomework /></RequireAuth>} />
-        <Route path="/parent/messages" element={<RequireAuth allowedRoles={['parent']}><ParentWeeklyMessages /></RequireAuth>} />
         <Route path="/parent/fees" element={<RequireAuth allowedRoles={['parent']}><ParentFees /></RequireAuth>} />
         <Route path="/parent/chat" element={<RequireAuth allowedRoles={['parent']}><ParentMessages /></RequireAuth>} />
         <Route path="/parent/results" element={<RequireAuth allowedRoles={['parent']}><ParentResults /></RequireAuth>} />
@@ -346,8 +344,8 @@ function App() {
         <Route path="/hr/payments" element={<RequireAuth allowedRoles={['hr']}><AdminPayments /></RequireAuth>} />
         <Route path="/hr/reports" element={<RequireAuth allowedRoles={['hr']}><AdminReports /></RequireAuth>} />
         <Route path="/hr/leaves" element={<RequireAuth allowedRoles={['hr']}><HRLeaves /></RequireAuth>} />
-        <Route path="/hr/payroll" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
-        <Route path="/hr/accounting" element={<RequireAuth allowedRoles={['hr']}><HRPayroll /></RequireAuth>} />
+        <Route path="/hr/payroll" element={<RequireAuth allowedRoles={['hr']}><HRPayroll viewMode="payroll" /></RequireAuth>} />
+        <Route path="/hr/accounting" element={<RequireAuth allowedRoles={['hr']}><HRPayroll viewMode="accounting" /></RequireAuth>} />
         <Route path="/hr/attendance" element={<RequireAuth allowedRoles={['hr']}><HRAttendance /></RequireAuth>} />
         <Route path="/hr/meetings" element={<RequireAuth allowedRoles={['hr']}><HRMeetings /></RequireAuth>} />
         <Route path="/hr/users" element={<RequireAuth allowedRoles={['hr']}><AdminUsers /></RequireAuth>} />
@@ -379,8 +377,8 @@ function App() {
         <Route path="/accountant/payments" element={<RequireAuth allowedRoles={['accountant']}><AccountantPayments /></RequireAuth>} />
         <Route path="/accountant/invoices" element={<RequireAuth allowedRoles={['accountant']}><AccountantInvoices /></RequireAuth>} />
         <Route path="/accountant/reports" element={<RequireAuth allowedRoles={['accountant']}><AccountantReports /></RequireAuth>} />
-        <Route path="/accountant/payroll" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll /></RequireAuth>} />
-        <Route path="/accountant/accounting" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll /></RequireAuth>} />
+        <Route path="/accountant/payroll" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll viewMode="payroll" /></RequireAuth>} />
+        <Route path="/accountant/accounting" element={<RequireAuth allowedRoles={['accountant']}><HRPayroll viewMode="accounting" /></RequireAuth>} />
         <Route path="/accountant/profile" element={<RequireAuth allowedRoles={['accountant']}><ProfilePage /></RequireAuth>} />
 
         {/* Librarian Routes */}

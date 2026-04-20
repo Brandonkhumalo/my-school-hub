@@ -3,12 +3,14 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { useAuth } from "../../context/AuthContext";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import { canWritePage, isForbiddenError } from "../../utils/hrPermissions";
 
 const DEFAULT_TERMS = ["Term 1", "Term 2", "Term 3"];
 const emptyForm = {
-  academic_year: new Date().getFullYear().toString(),
+  academic_year: "",
   academic_term: "Term 1",
+  grade_levels: [],
   subject_ids: [],
   num_papers: 0,
   paper_numbers: [],
@@ -23,30 +25,45 @@ const emptyForm = {
 
 export default function AdminAssessmentPlans() {
   const { user } = useAuth();
+  const { currentAcademicYear } = useSchoolSettings();
   const canWrite = canWritePage(user, "results");
   const [plans, setPlans] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [forbidden, setForbidden] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [filter, setFilter] = useState({ year: "", term: "" });
+  const [filter, setFilter] = useState({ year: "", term: "", grade: "" });
+
+  useEffect(() => {
+    if (!currentAcademicYear) return;
+    setForm((prev) => ({ ...prev, academic_year: String(currentAcademicYear) }));
+    const nextFilter = { year: String(currentAcademicYear), term: "", grade: "" };
+    setFilter(nextFilter);
+    loadPlans(nextFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentAcademicYear]);
 
   useEffect(() => {
     loadPlans();
     loadSubjects();
+    loadClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadPlans = async () => {
+  const loadPlans = async (overrideFilter = null) => {
     setLoading(true);
     setForbidden(false);
     setLoadError("");
     try {
+      const activeFilter = overrideFilter || filter;
       const params = {};
-      if (filter.year) params.year = filter.year;
-      if (filter.term) params.term = filter.term;
+      if (activeFilter.year) params.year = activeFilter.year;
+      if (activeFilter.term) params.term = activeFilter.term;
+      if (activeFilter.grade) params.grade = activeFilter.grade;
       const data = await apiService.listAssessmentPlans(params);
       setPlans(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -69,17 +86,32 @@ export default function AdminAssessmentPlans() {
     }
   };
 
+  const loadClasses = async () => {
+    try {
+      const data = await apiService.fetchClasses();
+      setClasses(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load classes", err);
+    }
+  };
+
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      academic_year: String(currentAcademicYear || ""),
+      academic_term: "Term 1",
+      grade_levels: [],
+    });
     setShowForm(true);
   };
 
   const openEdit = (plan) => {
     setEditingId(plan.id);
     setForm({
-      academic_year: plan.academic_year,
+      academic_year: String(currentAcademicYear || plan.academic_year || ""),
       academic_term: plan.academic_term,
+      grade_levels: (plan.grade_levels || []).map((g) => Number(g)),
       subject_ids: (plan.subjects_detail || []).map((s) => s.id),
       num_papers: plan.num_papers || 0,
       paper_numbers: plan.paper_numbers || [],
@@ -92,6 +124,15 @@ export default function AdminAssessmentPlans() {
       notes: plan.notes || "",
     });
     setShowForm(true);
+  };
+
+  const toggleGradeLevel = (level) => {
+    setForm((f) => ({
+      ...f,
+      grade_levels: f.grade_levels.includes(level)
+        ? f.grade_levels.filter((g) => g !== level)
+        : [...f.grade_levels, level].sort((a, b) => a - b),
+    }));
   };
 
   const toggleSubject = (id) => {
@@ -156,7 +197,12 @@ export default function AdminAssessmentPlans() {
       );
       return;
     }
-    const payload = { ...form, paper_weights: weights };
+    const payload = {
+      ...form,
+      academic_year: String(currentAcademicYear || form.academic_year || ""),
+      grade_levels: (form.grade_levels || []).map((g) => Number(g)).sort((a, b) => a - b),
+      paper_weights: weights,
+    };
     try {
       if (editingId) {
         await apiService.updateAssessmentPlan(editingId, payload);
@@ -165,7 +211,7 @@ export default function AdminAssessmentPlans() {
       }
       setShowForm(false);
       setEditingId(null);
-      setForm(emptyForm);
+      setForm((prev) => ({ ...emptyForm, academic_year: String(currentAcademicYear || prev.academic_year || "") }));
       loadPlans();
     } catch (err) {
       alert("Failed to save plan: " + (err.message || "Unknown error"));
@@ -182,10 +228,10 @@ export default function AdminAssessmentPlans() {
     }
   };
 
-  const years = useMemo(() => {
-    const y = new Date().getFullYear();
-    return [y - 1, y, y + 1].map(String);
-  }, []);
+  const availableGrades = useMemo(() => {
+    return [...new Set((classes || []).map((c) => Number(c.grade_level)).filter((g) => Number.isInteger(g) && g > 0))]
+      .sort((a, b) => a - b);
+  }, [classes]);
 
   if (forbidden) {
     return (
@@ -214,16 +260,9 @@ export default function AdminAssessmentPlans() {
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-600">Year</label>
-            <select
-              value={filter.year}
-              onChange={(e) => setFilter({ ...filter, year: e.target.value })}
-              className="px-3 py-2 border rounded"
-            >
-              <option value="">All</option>
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <div className="px-3 py-2 border rounded bg-gray-50 text-sm text-gray-700">
+              {currentAcademicYear || "Not set"}
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600">Term</label>
@@ -235,6 +274,19 @@ export default function AdminAssessmentPlans() {
               <option value="">All</option>
               {DEFAULT_TERMS.map((t) => (
                 <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600">Form/Grade</label>
+            <select
+              value={filter.grade}
+              onChange={(e) => setFilter({ ...filter, grade: e.target.value })}
+              className="px-3 py-2 border rounded"
+            >
+              <option value="">All</option>
+              {availableGrades.map((g) => (
+                <option key={g} value={String(g)}>Grade {g}</option>
               ))}
             </select>
           </div>
@@ -264,6 +316,7 @@ export default function AdminAssessmentPlans() {
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Term</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Year</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Forms/Grades</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Subjects</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Papers</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Tests</th>
@@ -277,6 +330,11 @@ export default function AdminAssessmentPlans() {
                   <tr key={p.id}>
                     <td className="px-4 py-2">{p.academic_term}</td>
                     <td className="px-4 py-2">{p.academic_year}</td>
+                    <td className="px-4 py-2 text-sm">
+                      {(p.grade_levels || []).length > 0
+                        ? p.grade_levels.map((g) => `Grade ${g}`).join(", ")
+                        : "All Grades"}
+                    </td>
                     <td className="px-4 py-2 text-sm">
                       {(p.subjects_detail || []).map((s) => s.name).join(", ")}
                     </td>
@@ -337,9 +395,10 @@ export default function AdminAssessmentPlans() {
                     type="text"
                     required
                     value={form.academic_year}
-                    onChange={(e) => setForm({ ...form, academic_year: e.target.value })}
-                    className="w-full px-3 py-2 border rounded"
+                    readOnly
+                    className="w-full px-3 py-2 border rounded bg-gray-50 text-gray-700"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Taken from School Settings.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Term</label>
@@ -354,6 +413,30 @@ export default function AdminAssessmentPlans() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">
+                  Forms/Grades <span className="text-gray-500 font-normal">(select one, many, or none for all)</span>
+                </label>
+                <div className="max-h-40 overflow-y-auto border rounded p-2 grid grid-cols-3 gap-1">
+                  {availableGrades.map((g) => (
+                    <label key={g} className="flex items-center gap-2 text-sm py-1">
+                      <input
+                        type="checkbox"
+                        checked={form.grade_levels.includes(g)}
+                        onChange={() => toggleGradeLevel(g)}
+                      />
+                      Grade {g}
+                    </label>
+                  ))}
+                  {availableGrades.length === 0 && (
+                    <div className="text-sm text-gray-500 col-span-3">No classes/forms available</div>
+                  )}
+                </div>
+                {(form.grade_levels || []).length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">No selection means this plan applies to all grades.</p>
+                )}
               </div>
 
               <div className="mb-4">

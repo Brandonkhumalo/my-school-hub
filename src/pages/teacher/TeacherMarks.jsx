@@ -63,7 +63,7 @@ export default function TeacherMarks() {
   const [submitting, setSubmitting] = useState(false);
 
   const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedClass, setSelectedClass] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
   const [academicYear, setAcademicYear] = useState(String(currentAcademicYear));
   const [academicTerm, setAcademicTerm] = useState(currentTerm);
   const [selectedStudent, setSelectedStudent] = useState("");
@@ -79,9 +79,9 @@ export default function TeacherMarks() {
   const [planBannerMessage, setPlanBannerMessage] = useState("");
 
   const filteredStudents = useMemo(() => {
-    if (!selectedClass) return students;
-    return students.filter((s) => s.class === selectedClass);
-  }, [students, selectedClass]);
+    if (!selectedClassId) return students;
+    return students.filter((s) => String(s.class_id) === String(selectedClassId));
+  }, [students, selectedClassId]);
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -111,15 +111,27 @@ export default function TeacherMarks() {
         const data = await apiService.getSubjectStudents(selectedSubject);
         const rows = Array.isArray(data) ? data : [];
         setStudents(rows);
-        const uniqueClasses = [...new Set(rows.map((s) => s.class).filter(Boolean))];
+        const classMap = new Map();
+        rows.forEach((s) => {
+          if (!s.class_id) return;
+          if (!classMap.has(String(s.class_id))) {
+            classMap.set(String(s.class_id), {
+              id: String(s.class_id),
+              name: s.class || "Not Assigned",
+              grade_level: s.grade_level,
+            });
+          }
+        });
+        const uniqueClasses = Array.from(classMap.values());
         setClasses(uniqueClasses);
-        if (uniqueClasses.length > 0 && !uniqueClasses.includes(selectedClass)) {
-          setSelectedClass(uniqueClasses[0]);
-        }
+        setSelectedClassId((prev) => (
+          uniqueClasses.some((c) => c.id === String(prev)) ? String(prev) : (uniqueClasses[0]?.id || "")
+        ));
       } catch (error) {
         console.error("Error loading students:", error);
         setStudents([]);
         setClasses([]);
+        setSelectedClassId("");
       } finally {
         setLoadingStudents(false);
       }
@@ -133,7 +145,12 @@ export default function TeacherMarks() {
       setLoadingPlan(true);
       setPlanBannerMessage("");
       try {
-        const payload = await apiService.getAssessmentPlanForTeacher(selectedSubject, academicYear, academicTerm);
+        const payload = await apiService.getAssessmentPlanForTeacher(
+          selectedSubject,
+          academicYear,
+          academicTerm,
+          selectedClassId
+        );
         const plan = payload?.plan || null;
         setAssessmentPlan(plan);
         const options = buildComponentOptions(plan);
@@ -161,7 +178,7 @@ export default function TeacherMarks() {
       }
     };
     loadPlan();
-  }, [selectedSubject, academicYear, academicTerm]);
+  }, [selectedSubject, academicYear, academicTerm, selectedClassId]);
 
   const selectedOption = componentOptions.find((opt) => opt.value === selectedComponent) || null;
   const isAdHocEntry = !assessmentPlan || selectedComponent === "other";
@@ -273,7 +290,7 @@ export default function TeacherMarks() {
                   value={selectedSubject}
                   onChange={(e) => {
                     setSelectedSubject(e.target.value);
-                    setSelectedClass("");
+                    setSelectedClassId("");
                     setSelectedStudent("");
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -291,16 +308,18 @@ export default function TeacherMarks() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Class</label>
                 <select
-                  value={selectedClass}
+                  value={selectedClassId}
                   onChange={(e) => {
-                    setSelectedClass(e.target.value);
+                    setSelectedClassId(e.target.value);
                     setSelectedStudent("");
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Classes</option>
                   {classes.map((cls) => (
-                    <option key={cls} value={cls}>{cls}</option>
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name}{cls.grade_level ? ` (Grade ${cls.grade_level})` : ""}
+                    </option>
                   ))}
                 </select>
               </div>
