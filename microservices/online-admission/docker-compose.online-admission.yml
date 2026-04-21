@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  admissions-api:
+    build:
+      context: ./go-admissions-api
+      dockerfile: Dockerfile
+    environment:
+      ADMISSIONS_PORT: "8091"
+    ports:
+      - "8091:8091"
+
+  admissions-ops:
+    build:
+      context: ./django-admissions-ops
+      dockerfile: Dockerfile
+    environment:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "admissions-local-secret"
+    ports:
+      - "8092:8092"

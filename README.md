@@ -47,6 +47,7 @@
 
 ### Developer / Platform
 - **Go + Django microservices** — Go Gateway, Workers, and Services for performance-critical paths
+- **Online Admission stack** — Go Echo admissions intake + Django admissions ops for templates/compliance
 - OpenAPI docs at `/api/v1/docs/` (drf-spectacular / Swagger UI)
 - Progressive Web App (PWA) — installable, offline-capable
 - Celery + Redis for async tasks, with Go goroutine fallback for email/WhatsApp
@@ -81,6 +82,8 @@ Internet → Nginx (SSL) → Go Gateway (:8080)
                           ├─→ Django API (:8000)        — core business logic
                           ├─→ Go Workers (:8081)        — bulk CSV imports
                           └─→ Go Services (:8082)       — PDF, PayNow, email, WhatsApp
+                          ├─→ Go Admissions (:8091)     — online application intake/workflow
+                          └─→ Django Admissions Ops (:8092) — form templates/compliance
 ```
 
 **Why Go + Django?** Django handles the ORM, admin, and business logic. Go handles the performance-critical parts:
@@ -173,6 +176,7 @@ my-school-hub/
 │
 ├── docker-compose.yml            # Dev: builds all services with local Redis
 └── docker-compose.prod.yml       # Prod: ECR images, external RDS/Redis
+└── microservices/online-admission/ # New admission microservice stack
 ```
 
 ---

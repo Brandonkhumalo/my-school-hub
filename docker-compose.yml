@@ -7,6 +7,8 @@ version: "3.9"
 #   Internet → Go Gateway (:8080) → Django (:8000)
 #                                 → Go Workers (:8081)   — bulk CSV imports
 #                                 → Go Services (:8082)  — PDF, PayNow, email, WhatsApp
+#                                 → Go Admissions (:8091) — online application intake/workflow
+#                                 → Django Admissions Ops (:8092) — form templates/compliance
 #
 # Start everything:   docker compose up --build
 # Run in background:  docker compose up -d --build
@@ -46,12 +48,18 @@ services:
       DJANGO_UPSTREAM: "http://web:8000"
       GO_WORKERS_UPSTREAM: "http://workers:8081"
       GO_SERVICES_UPSTREAM: "http://services:8082"
+      GO_ADMISSIONS_UPSTREAM: "http://admissions-api:8091"
+      DJANGO_ADMISSIONS_OPS_UPSTREAM: "http://admissions-ops:8092"
     depends_on:
       web:
         condition: service_started
       workers:
         condition: service_started
       services:
+        condition: service_started
+      admissions-api:
+        condition: service_started
+      admissions-ops:
         condition: service_started
 
   # ── Django API (Gunicorn) — now internal only ──────────────
@@ -105,6 +113,31 @@ services:
       - ./School_system/.env
     environment:
       SERVICES_PORT: "8082"
+
+  # ── Go Admissions API (~12MB RAM) ─────────────────────────
+  # Handles: per-school online submissions, workflow statuses, reviewer assignment
+  admissions-api:
+    build:
+      context: ./microservices/online-admission/go-admissions-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8091"
+    environment:
+      ADMISSIONS_PORT: "8091"
+
+  # ── Django Admissions Ops ──────────────────────────────────
+  # Handles: form templates, field metadata, compliance/retention policies
+  admissions-ops:
+    build:
+      context: ./microservices/online-admission/django-admissions-ops
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "8092"
+    environment:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "admissions-local-secret-key"
 
   # ── Celery Worker ───────────────────────────────────────────
   celery:

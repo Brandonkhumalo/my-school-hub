@@ -19,9 +19,11 @@ import (
 type routeTarget string
 
 const (
-	targetDjango   routeTarget = "django"
-	targetWorkers  routeTarget = "workers"
-	targetServices routeTarget = "services"
+	targetDjango        routeTarget = "django"
+	targetWorkers       routeTarget = "workers"
+	targetServices      routeTarget = "services"
+	targetAdmissions    routeTarget = "admissions"
+	targetAdmissionsOps routeTarget = "admissions_ops"
 )
 
 // selectRouteTarget decides which upstream receives a request path.
@@ -33,6 +35,10 @@ func selectRouteTarget(path string) routeTarget {
 		return targetServices
 	case strings.HasPrefix(path, "/api/v1/services/"):
 		return targetServices
+	case strings.HasPrefix(path, "/api/v1/admissions/admin/"):
+		return targetAdmissionsOps
+	case strings.HasPrefix(path, "/api/v1/admissions/"):
+		return targetAdmissions
 	default:
 		return targetDjango
 	}
@@ -83,6 +89,18 @@ func main() {
 	}
 	servicesProxy := httputil.NewSingleHostReverseProxy(servicesURL)
 
+	admissionsURL, err := url.Parse(cfg.AdmissionsUpstream)
+	if err != nil {
+		log.Fatalf("FATAL: invalid GO_ADMISSIONS_UPSTREAM: %v", err)
+	}
+	admissionsProxy := httputil.NewSingleHostReverseProxy(admissionsURL)
+
+	admissionsOpsURL, err := url.Parse(cfg.AdmissionsOpsUpstream)
+	if err != nil {
+		log.Fatalf("FATAL: invalid DJANGO_ADMISSIONS_OPS_UPSTREAM: %v", err)
+	}
+	admissionsOpsProxy := httputil.NewSingleHostReverseProxy(admissionsOpsURL)
+
 	// Route requests to the appropriate backend:
 	//   /api/v1/bulk/*                              → Go Workers  (CSV imports)
 	//   /api/v1/finances/payments/paynow/*            → Go Services (PayNow API)
@@ -94,6 +112,10 @@ func main() {
 			workersProxy.ServeHTTP(w, r)
 		case targetServices:
 			servicesProxy.ServeHTTP(w, r)
+		case targetAdmissions:
+			admissionsProxy.ServeHTTP(w, r)
+		case targetAdmissionsOps:
+			admissionsOpsProxy.ServeHTTP(w, r)
 		default:
 			djangoProxy.ServeHTTP(w, r)
 		}
@@ -137,6 +159,7 @@ func main() {
 
 	log.Printf("Go Gateway listening on :%s → Django(%s) Workers(%s) Services(%s)",
 		cfg.Port, cfg.DjangoUpstream, cfg.WorkersUpstream, cfg.ServicesUpstream)
+	log.Printf("Admissions upstreams → Go(%s) DjangoOps(%s)", cfg.AdmissionsUpstream, cfg.AdmissionsOpsUpstream)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("FATAL: %v", err)
 	}
@@ -145,13 +168,15 @@ func main() {
 // ─── Config ─────────────────────────────────────────────────
 
 type Config struct {
-	Port             string
-	SecretKey        string
-	DatabaseURL      string
-	DjangoUpstream   string
-	WorkersUpstream  string
-	ServicesUpstream string
-	CORSOrigins      []string
+	Port                  string
+	SecretKey             string
+	DatabaseURL           string
+	DjangoUpstream        string
+	WorkersUpstream       string
+	ServicesUpstream      string
+	AdmissionsUpstream    string
+	AdmissionsOpsUpstream string
+	CORSOrigins           []string
 }
 
 // LoadConfig reads required/optional environment variables and returns normalized config.
@@ -168,6 +193,8 @@ func LoadConfig() Config {
 	upstream := getEnv("DJANGO_UPSTREAM", "http://localhost:8000")
 	workers := getEnv("GO_WORKERS_UPSTREAM", "http://localhost:8081")
 	services := getEnv("GO_SERVICES_UPSTREAM", "http://localhost:8082")
+	admissions := getEnv("GO_ADMISSIONS_UPSTREAM", "http://localhost:8091")
+	admissionsOps := getEnv("DJANGO_ADMISSIONS_OPS_UPSTREAM", "http://localhost:8092")
 	corsRaw := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5000")
 	origins := strings.Split(corsRaw, ",")
 	for i := range origins {
@@ -175,13 +202,15 @@ func LoadConfig() Config {
 	}
 
 	return Config{
-		Port:             port,
-		SecretKey:        secret,
-		DatabaseURL:      dbURL,
-		DjangoUpstream:   upstream,
-		WorkersUpstream:  workers,
-		ServicesUpstream: services,
-		CORSOrigins:      origins,
+		Port:                  port,
+		SecretKey:             secret,
+		DatabaseURL:           dbURL,
+		DjangoUpstream:        upstream,
+		WorkersUpstream:       workers,
+		ServicesUpstream:      services,
+		AdmissionsUpstream:    admissions,
+		AdmissionsOpsUpstream: admissionsOps,
+		CORSOrigins:           origins,
 	}
 }
 
