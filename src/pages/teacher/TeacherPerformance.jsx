@@ -263,6 +263,13 @@ export default function TeacherPerformance() {
       .sort((a, b) => a.subject_name.localeCompare(b.subject_name));
   }, [filteredBreakdownResults]);
 
+  const closeBreakdownModal = () => {
+    setSelectedMarksStudent(null);
+    setStudentBreakdown(null);
+    setBreakdownError("");
+    setBreakdownTermFilter("");
+  };
+
   const getGradeColor = (grade) => {
     switch (grade) {
       case "A": return "bg-green-100 text-green-800 border-green-300";
@@ -580,123 +587,141 @@ export default function TeacherPerformance() {
                     </div>
                   </div>
 
-                  {selectedMarksStudent && (
-                    <div className="bg-white rounded-lg shadow-lg p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-800">
-                            {selectedMarksStudent.name} {selectedMarksStudent.surname} - Marks Breakdown
-                          </h3>
-                          <p className="text-sm text-gray-600">
-                            #{selectedMarksStudent.student_number} | {selectedMarksStudent.class}
-                          </p>
-                        </div>
-                        {studentBreakdown?.scope && (
-                          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
-                            studentBreakdown.scope === "all_subjects"
-                              ? "bg-indigo-100 text-indigo-700"
-                              : "bg-blue-100 text-blue-700"
-                          }`}>
-                            {studentBreakdown.scope === "all_subjects"
-                              ? "Class Teacher View: All Subjects"
-                              : "Subject Teacher View: Selected Subject"}
-                          </span>
-                        )}
-                      </div>
-
-                      {loadingBreakdown && (
-                        <div className="py-6 text-sm text-gray-600">
-                          <i className="fas fa-spinner fa-spin mr-2"></i>Loading detailed results...
-                        </div>
-                      )}
-
-                      {!loadingBreakdown && breakdownError && (
-                        <div className="p-3 mb-3 rounded border border-red-200 bg-red-50 text-sm text-red-700">
-                          {breakdownError}
-                        </div>
-                      )}
-
-                      {!loadingBreakdown && !breakdownError && studentBreakdown && (
-                        <>
-                          <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Term</label>
-                            <select
-                              value={breakdownTermFilter}
-                              onChange={(e) => setBreakdownTermFilter(e.target.value)}
-                              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">All Terms</option>
-                              {breakdownTermOptions.map((term) => (
-                                <option key={term} value={term}>{term}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                            <div className="p-3 rounded bg-gray-50 border">
-                              <p className="text-xs text-gray-500">Total Results{breakdownTermFilter ? ` (${breakdownTermFilter})` : ""}</p>
-                              <p className="text-xl font-semibold text-gray-800">{filteredBreakdownResults.length || 0}</p>
-                            </div>
-                            {filteredBreakdownSummaries.slice(0, 2).map((summary) => (
-                              <div key={summary.subject_name} className="p-3 rounded bg-gray-50 border">
-                                <p className="text-xs text-gray-500">{summary.subject_name}</p>
-                                <p className="text-sm font-medium text-gray-700">
-                                  {summary.result_count} results | Avg {summary.average_percentage}%
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="overflow-x-auto border rounded-lg">
-                            <table className="w-full">
-                              <thead className="bg-gray-100 border-b">
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Subject</th>
-                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Assessment</th>
-                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Term / Year</th>
-                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Score</th>
-                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Out Of</th>
-                                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">%</th>
-                                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Grade</th>
-                                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Teacher</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {filteredBreakdownResults.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                                      No results found for this student in the selected term.
-                                    </td>
-                                  </tr>
-                                ) : filteredBreakdownResults.map((result) => (
-                                  <tr key={result.id} className="border-b hover:bg-gray-50">
-                                    <td className="px-4 py-2 text-sm text-gray-700">{result.subject_name}</td>
-                                    <td className="px-4 py-2 text-sm text-gray-700">{result.exam_type}</td>
-                                    <td className="px-4 py-2 text-sm text-gray-600">{result.academic_term} / {result.academic_year}</td>
-                                    <td className="px-4 py-2 text-right text-sm">{result.score}</td>
-                                    <td className="px-4 py-2 text-right text-sm">{result.max_score}</td>
-                                    <td className="px-4 py-2 text-right text-sm font-medium">{result.percentage}%</td>
-                                    <td className="px-4 py-2 text-center">
-                                      <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((result.grade || '').charAt(0))}`}>
-                                        {result.grade}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-gray-700">{result.teacher_name}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               )
             )}
           </div>
         )}
       </div>
+
+      {selectedMarksStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">
+                  {selectedMarksStudent.name} {selectedMarksStudent.surname} - Marks Breakdown
+                </h3>
+                <p className="text-sm text-gray-600">
+                  #{selectedMarksStudent.student_number} | {selectedMarksStudent.class}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBreakdownModal}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100"
+                aria-label="Close breakdown"
+                title="Close"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto max-h-[calc(90vh-72px)]">
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                <div />
+                {studentBreakdown?.scope && (
+                  <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                    studentBreakdown.scope === "all_subjects"
+                      ? "bg-indigo-100 text-indigo-700"
+                      : "bg-blue-100 text-blue-700"
+                  }`}>
+                    {studentBreakdown.scope === "all_subjects"
+                      ? "Class Teacher View: All Subjects"
+                      : "Subject Teacher View: Selected Subject"}
+                  </span>
+                )}
+              </div>
+
+              {loadingBreakdown && (
+                <div className="py-6 text-sm text-gray-600">
+                  <i className="fas fa-spinner fa-spin mr-2"></i>Loading detailed results...
+                </div>
+              )}
+
+              {!loadingBreakdown && breakdownError && (
+                <div className="p-3 mb-3 rounded border border-red-200 bg-red-50 text-sm text-red-700">
+                  {breakdownError}
+                </div>
+              )}
+
+              {!loadingBreakdown && !breakdownError && studentBreakdown && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Term</label>
+                    <select
+                      value={breakdownTermFilter}
+                      onChange={(e) => setBreakdownTermFilter(e.target.value)}
+                      className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All Terms</option>
+                      {breakdownTermOptions.map((term) => (
+                        <option key={term} value={term}>{term}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div className="p-3 rounded bg-gray-50 border">
+                      <p className="text-xs text-gray-500">Total Results{breakdownTermFilter ? ` (${breakdownTermFilter})` : ""}</p>
+                      <p className="text-xl font-semibold text-gray-800">{filteredBreakdownResults.length || 0}</p>
+                    </div>
+                    {filteredBreakdownSummaries.slice(0, 2).map((summary) => (
+                      <div key={summary.subject_name} className="p-3 rounded bg-gray-50 border">
+                        <p className="text-xs text-gray-500">{summary.subject_name}</p>
+                        <p className="text-sm font-medium text-gray-700">
+                          {summary.result_count} results | Avg {summary.average_percentage}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full">
+                      <thead className="bg-gray-100 border-b">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Subject</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Assessment</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Term / Year</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Score</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Out Of</th>
+                          <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">%</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Grade</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Teacher</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBreakdownResults.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
+                              No results found for this student in the selected term.
+                            </td>
+                          </tr>
+                        ) : filteredBreakdownResults.map((result) => (
+                          <tr key={result.id} className="border-b hover:bg-gray-50">
+                            <td className="px-4 py-2 text-sm text-gray-700">{result.subject_name}</td>
+                            <td className="px-4 py-2 text-sm text-gray-700">{result.exam_type}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{result.academic_term} / {result.academic_year}</td>
+                            <td className="px-4 py-2 text-right text-sm">{result.score}</td>
+                            <td className="px-4 py-2 text-right text-sm">{result.max_score}</td>
+                            <td className="px-4 py-2 text-right text-sm font-medium">{result.percentage}%</td>
+                            <td className="px-4 py-2 text-center">
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getGradeColor((result.grade || '').charAt(0))}`}>
+                                {result.grade}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-700">{result.teacher_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
