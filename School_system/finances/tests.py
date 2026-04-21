@@ -22,6 +22,7 @@ from rest_framework.test import APITestCase, APIClient
 
 from users.models import CustomUser, School, SchoolSettings
 from academics.models import Class, Student, Teacher
+from staff.models import Staff, Payroll
 from finances.models import (
     AdditionalFee,
     FeeType,
@@ -1058,6 +1059,53 @@ class FinanceSummaryAndExpensesAPITest(APITestCase):
         self.assertEqual(float(response.data["term_expected_revenue"]), 900.0)
         self.assertEqual(float(response.data["term_collected_revenue"]), 410.0)
         self.assertEqual(float(response.data["term_outstanding_revenue"]), 490.0)
+
+    def test_finance_summary_uses_four_month_salary_cost_per_term(self):
+        today = datetime.date.today()
+        month_name = today.strftime('%B')
+
+        salary_user = make_user(self.school, "salary_staff_user", role="teacher")
+        staff_member = Staff.objects.create(
+            user=salary_user,
+            employee_id="SAL001",
+            position="teacher",
+            hire_date=datetime.date(2025, 1, 1),
+            salary=Decimal("1750.00"),
+            is_active=True,
+        )
+        Payroll.objects.create(
+            staff=staff_member,
+            month=month_name,
+            year=today.year,
+            basic_salary=Decimal("1750.00"),
+            allowances=Decimal("0.00"),
+            deductions=Decimal("0.00"),
+            net_salary=Decimal("1750.00"),
+            is_paid=False,
+        )
+
+        StudentPaymentRecord.objects.filter(school=self.school).delete()
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year=str(today.year),
+            academic_term="term_1",
+            total_amount_due=Decimal("10000.00"),
+            amount_paid=Decimal("10000.00"),
+            payment_status="paid",
+            recorded_by=self.admin,
+        )
+
+        self.client.force_authenticate(user=self.accountant)
+        response = self.client.get("/api/v1/finances/summary/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(float(response.data["monthly_salary_total"]), 1750.0)
+        self.assertEqual(float(response.data["term_salary_expenses"]), 7000.0)
+        # Existing approved expense in setUp adds 4 months x 120 = 480 for term window.
+        self.assertEqual(float(response.data["term_total_expenses"]), 7480.0)
+        self.assertEqual(float(response.data["term_profit"]), 2520.0)
 
 
 class PaymentTransactionRecordingAPITest(APITestCase):

@@ -66,22 +66,6 @@ from .serializers import (
 )
 
 
-MONTH_INDEX = {
-    'January': 1,
-    'February': 2,
-    'March': 3,
-    'April': 4,
-    'May': 5,
-    'June': 6,
-    'July': 7,
-    'August': 8,
-    'September': 9,
-    'October': 10,
-    'November': 11,
-    'December': 12,
-}
-
-
 def _normalize_term(term_value):
     key = normalize_term_key(term_value)
     return key or 'term_1'
@@ -848,20 +832,8 @@ def finance_summary_view(request):
     if term_revenue > 0:
         term_collection_rate = (term_collected_revenue / term_revenue) * Decimal('100')
 
-    term_payroll_total = Decimal('0')
-    payroll_rows = Payroll.objects.filter(
-        staff__user__school=school,
-        year__gte=term_start.year,
-        year__lte=term_end.year,
-        is_paid=True,
-    )
-    for row in payroll_rows:
-        month_num = MONTH_INDEX.get(row.month)
-        if not month_num:
-            continue
-        row_date = date(row.year, month_num, 1)
-        if term_start <= row_date <= term_end:
-            term_payroll_total += row.net_salary
+    # Business rule: one term carries 4 months of salary cost.
+    term_salary_expenses = monthly_salary_total * Decimal('4')
 
     approved_expenses = SchoolExpense.objects.filter(
         school=school,
@@ -873,7 +845,7 @@ def finance_summary_view(request):
         (_expense_value_in_window(expense, term_start, term_end) for expense in approved_expenses),
         Decimal('0'),
     )
-    term_total_expenses = term_payroll_total + term_other_expenses
+    term_total_expenses = term_salary_expenses + term_other_expenses
     term_profit = term_revenue - term_total_expenses
     term_cash_profit = term_collected_revenue - term_total_expenses
 
@@ -892,7 +864,7 @@ def finance_summary_view(request):
         'term_outstanding_revenue': term_outstanding_revenue,
         'term_collection_rate': term_collection_rate,
         'term_other_expenses': term_other_expenses,
-        'term_salary_expenses': term_payroll_total,
+        'term_salary_expenses': term_salary_expenses,
         'term_total_expenses': term_total_expenses,
         'term_profit': term_profit,
         'term_cash_profit': term_cash_profit,
@@ -1076,7 +1048,7 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
                         school_name=school_name,
                         student_name=student_name,
                         class_name=class_name,
-                        grade_level=str(fee.grade_level),
+                        grade_level=fee.grade_name or str(fee.grade_level),
                         academic_year=fee.academic_year or "",
                         academic_term=fee.academic_term or "",
                         tuition_fee=str(fee.tuition_fee or 0),

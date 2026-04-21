@@ -386,14 +386,14 @@ def send_grade_fee_notice_email(*, parent_email: str, parent_name: str,
         Dear <strong>{parent_name}</strong>, {school_name} has published the fees for
         <strong>{academic_term}</strong>, <strong>{academic_year}</strong>.
         Your child <strong>{student_name}</strong> ({class_name}) is in
-        <strong>Grade {grade_level}</strong>.
+        <strong>{grade_level}</strong>.
       </p>
 
       {_section("Fee Breakdown", [
           ("School",         school_name),
           ("Student",        student_name),
           ("Class",          class_name),
-          ("Grade Level",    f"Grade {grade_level}"),
+          ("Grade Level",    grade_level),
           ("Academic Year",  academic_year),
           ("Term",           academic_term),
           ("Tuition Fee",    f"${tuition_fee} USD"),
@@ -411,13 +411,13 @@ def send_grade_fee_notice_email(*, parent_email: str, parent_name: str,
 
     html = _base_html(
         title="School Fees Notice",
-        preview=f"{school_name} fees for Grade {grade_level} — {academic_term} {academic_year}",
+        preview=f"{school_name} fees for {grade_level} — {academic_term} {academic_year}",
         body=body,
         school_name=school_name,
     )
     return _send(
         to=[parent_email],
-        subject=f"School Fees — Grade {grade_level} {academic_term} {academic_year} | {school_name}",
+        subject=f"School Fees — {grade_level} {academic_term} {academic_year} | {school_name}",
         html=html,
     )
 
