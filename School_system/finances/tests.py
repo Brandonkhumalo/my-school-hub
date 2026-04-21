@@ -630,6 +630,16 @@ class PayNowInitiateAPITest(APITestCase):
             payment_status="unpaid",
             recorded_by=self.admin,
         )
+        self.invoice = Invoice.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_record=self.payment_record,
+            invoice_number="INV-PAYNOW-001",
+            total_amount=Decimal("300.00"),
+            amount_paid=Decimal("0.00"),
+            due_date=datetime.date(2026, 3, 31),
+            is_paid=False,
+        )
         self.url = "/api/v1/finances/payments/paynow/initiate/"
 
     @patch("finances.paynow_service.initiate_web_payment")
@@ -644,6 +654,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "250.00",
             "description": "School Fees Term 1",
             "method": "web",
@@ -668,6 +679,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "150.00",
             "description": "Term 1 Fees",
             "method": "ecocash",
@@ -683,6 +695,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "100.00",
             "method": "ecocash",
             # mobile_number intentionally omitted
@@ -697,6 +710,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "0",
             "method": "web",
         }, format="json")
@@ -715,6 +729,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "100.00",
             "method": "web",
         }, format="json")
@@ -746,6 +761,7 @@ class PayNowInitiateAPITest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(self.url, {
             "payment_record_id": self.payment_record.id,
+            "invoice_number": self.invoice.invoice_number,
             "amount": "999.00",
             "method": "web",
         }, format="json")
