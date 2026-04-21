@@ -836,10 +836,11 @@ class TwoFactorLoginTest(APITestCase):
         )
 
     def _get_otp_session_token(self):
-        response = self.client.post("/api/v1/auth/login/", {
-            "username": "twofa_login_user",
-            "password": "testpass123",
-        }, format="json")
+        with patch("users.views._check_rate_limit", return_value=False):
+            response = self.client.post("/api/v1/auth/login/", {
+                "identifier": "twofa_login_user",
+                "password": "testpass123",
+            }, format="json")
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.data.get("requires_2fa"))
         return response.data["otp_session_token"]
@@ -973,10 +974,11 @@ class TwoFactorEnforcementTest(APITestCase):
         settings.save()
 
         self.client.force_authenticate(user=None)
-        response = self.client.post("/api/v1/auth/login/", {
-            "username": "enforce_teacher",
-            "password": "testpass123",
-        }, format="json")
+        with patch("users.views._check_rate_limit", return_value=False):
+            response = self.client.post("/api/v1/auth/login/", {
+                "identifier": "enforce_teacher",
+                "password": "testpass123",
+            }, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("requires_2fa_setup"))
 
@@ -991,10 +993,11 @@ class TwoFactorEnforcementTest(APITestCase):
         settings.save()
 
         self.client.force_authenticate(user=None)
-        response = self.client.post("/api/v1/auth/login/", {
-            "username": "enforce_teacher",
-            "password": "testpass123",
-        }, format="json")
+        with patch("users.views._check_rate_limit", return_value=False):
+            response = self.client.post("/api/v1/auth/login/", {
+                "identifier": "enforce_teacher",
+                "password": "testpass123",
+            }, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("2fa_warning"))
         self.assertIn("token", response.data)
