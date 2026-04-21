@@ -1092,6 +1092,24 @@ def get_timetable_stats(request):
 # Report Card PDF Generation
 # ---------------------------------------------------------------
 
+def _normalize_report_year(year):
+    return str(year or '').strip()
+
+
+def _normalize_report_term(term):
+    raw = str(term or '').strip()
+    lowered = raw.lower().replace('_', ' ')
+    compact = lowered.replace(' ', '')
+    mapping = {
+        'term1': 'Term 1',
+        'term2': 'Term 2',
+        'term3': 'Term 3',
+        '1': 'Term 1',
+        '2': 'Term 2',
+        '3': 'Term 3',
+    }
+    return mapping.get(compact, raw)
+
 def _student_has_approved_plan_for_term(student, school, year, term_key):
     """
     Interpret an approved payment plan as an installment record with a next due date.
@@ -1162,8 +1180,8 @@ def generate_report_card(request, student_id):
 
     user = request.user
     school = user.school
-    year = request.query_params.get('year', '')
-    term = request.query_params.get('term', '')
+    year = _normalize_report_year(request.query_params.get('year', ''))
+    term = _normalize_report_term(request.query_params.get('term', ''))
 
     try:
         student = Student.objects.select_related('user', 'student_class').get(id=student_id, user__school=school)
@@ -2436,8 +2454,8 @@ def generate_reports_for_teachers(request):
         return Response({'error': 'Only admins can generate report batches'}, status=status.HTTP_403_FORBIDDEN)
 
     class_id = request.data.get('class_id')
-    year = request.data.get('year')
-    term = request.data.get('term')
+    year = _normalize_report_year(request.data.get('year'))
+    term = _normalize_report_term(request.data.get('term'))
     if not all([class_id, year, term]):
         return Response({'error': 'class_id, year, and term are required'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2485,8 +2503,8 @@ def publish_reports(request):
         return Response({'error': 'Only admins can publish reports'}, status=status.HTTP_403_FORBIDDEN)
 
     class_id = request.data.get('class_id')
-    year = request.data.get('year')
-    term = request.data.get('term')
+    year = _normalize_report_year(request.data.get('year'))
+    term = _normalize_report_term(request.data.get('term'))
 
     access_scope = (request.data.get('access_scope') or 'all').strip().lower()
     if access_scope not in ('all', 'fully_paid'):
@@ -2569,8 +2587,8 @@ def publish_all_reports(request):
     if request.user.role != 'admin':
         return Response({'error': 'Only admins can publish reports'}, status=status.HTTP_403_FORBIDDEN)
 
-    year = request.data.get('year')
-    term = request.data.get('term')
+    year = _normalize_report_year(request.data.get('year'))
+    term = _normalize_report_term(request.data.get('term'))
 
     access_scope = (request.data.get('access_scope') or 'all').strip().lower()
     if access_scope not in ('all', 'fully_paid'):
@@ -2669,8 +2687,8 @@ def list_report_approval_requests(request):
     ).select_related('class_obj', 'requested_by', 'reviewed_by').order_by('-submitted_at')
 
     status_filter = request.query_params.get('status')
-    year = request.query_params.get('year')
-    term = request.query_params.get('term')
+    year = _normalize_report_year(request.query_params.get('year'))
+    term = _normalize_report_term(request.query_params.get('term'))
     class_id = request.query_params.get('class_id')
     if status_filter:
         qs = qs.filter(status=status_filter)

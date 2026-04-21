@@ -1252,6 +1252,53 @@ class TeacherMarksValidationAPITest(APITestCase):
         self.assertAlmostEqual(result.max_score, 100.0)
         self.assertEqual(response.data.get("score"), result.score)
 
+    def test_add_mark_detects_duplicate_without_override(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        payload = {
+            "student_id": self.student.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Test 1",
+            "score": 72,
+            "max_score": 100,
+            "academic_term": "Term 1",
+            "academic_year": "2026",
+        }
+        first_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+
+        second_response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(second_response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(second_response.data.get("duplicate"))
+        self.assertIn("already entered", second_response.data.get("error", "").lower())
+        self.assertEqual(Result.objects.filter(student=self.student, subject=self.subject, exam_type="Test 1").count(), 1)
+
+    def test_add_mark_overrides_duplicate_when_confirmed(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        initial_payload = {
+            "student_id": self.student.id,
+            "subject_id": self.subject.id,
+            "exam_type": "Assignment 1",
+            "score": 40,
+            "max_score": 50,
+            "academic_term": "Term 2",
+            "academic_year": "2026",
+        }
+        create_response = self.client.post(self.url, initial_payload, format="json")
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+
+        override_payload = {
+            **initial_payload,
+            "score": 45,
+            "override_existing": True,
+        }
+        override_response = self.client.post(self.url, override_payload, format="json")
+        self.assertEqual(override_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(override_response.data.get("overridden"))
+
+        qs = Result.objects.filter(student=self.student, subject=self.subject, exam_type="Assignment 1")
+        self.assertEqual(qs.count(), 1)
+        self.assertAlmostEqual(qs.first().score, 45.0)
+
 
 class ReportFeedbackSignoffWorkflowAPITest(APITestCase):
 

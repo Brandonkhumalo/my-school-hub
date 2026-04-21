@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import Header from "../../components/Header";
@@ -77,11 +77,55 @@ export default function TeacherMarks() {
   const [assessmentPlan, setAssessmentPlan] = useState(null);
   const [componentOptions, setComponentOptions] = useState([]);
   const [planBannerMessage, setPlanBannerMessage] = useState("");
+  const [addedMarks, setAddedMarks] = useState([]);
+  const [loadingAddedMarks, setLoadingAddedMarks] = useState(false);
 
   const filteredStudents = useMemo(() => {
     if (!selectedClassId) return students;
     return students.filter((s) => String(s.class_id) === String(selectedClassId));
   }, [students, selectedClassId]);
+
+  const studentsById = useMemo(() => {
+    const byId = new Map();
+    students.forEach((student) => {
+      byId.set(String(student.id), student);
+    });
+    return byId;
+  }, [students]);
+
+  const loadAddedMarks = useCallback(async () => {
+    if (!selectedSubject) {
+      setAddedMarks([]);
+      return;
+    }
+    setLoadingAddedMarks(true);
+    try {
+      const params = { subject: selectedSubject };
+      if (academicYear) params.academic_year = academicYear;
+      if (academicTerm) params.academic_term = academicTerm;
+      const data = await apiService.fetchResults(params);
+      setAddedMarks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error loading added marks:", error);
+      setAddedMarks([]);
+    } finally {
+      setLoadingAddedMarks(false);
+    }
+  }, [selectedSubject, academicYear, academicTerm]);
+
+  const visibleAddedMarks = useMemo(() => {
+    let rows = addedMarks;
+    if (selectedClassId) {
+      rows = rows.filter((row) => {
+        const mappedStudent = studentsById.get(String(row.student));
+        return String(mappedStudent?.class_id || "") === String(selectedClassId);
+      });
+    }
+    if (selectedStudent) {
+      rows = rows.filter((row) => String(row.student) === String(selectedStudent));
+    }
+    return rows;
+  }, [addedMarks, studentsById, selectedClassId, selectedStudent]);
 
   useEffect(() => {
     const loadInitial = async () => {
@@ -180,6 +224,10 @@ export default function TeacherMarks() {
     loadPlan();
   }, [selectedSubject, academicYear, academicTerm, selectedClassId]);
 
+  useEffect(() => {
+    loadAddedMarks();
+  }, [loadAddedMarks]);
+
   const selectedOption = componentOptions.find((opt) => opt.value === selectedComponent) || null;
   const isAdHocEntry = !assessmentPlan || selectedComponent === "other";
 
@@ -255,8 +303,33 @@ export default function TeacherMarks() {
       setSelectedComponent("");
       setManualExamType("");
       setScore("");
+      await loadAddedMarks();
     } catch (error) {
       console.error("Error adding mark:", error);
+      const duplicateRecord = error?.response?.data?.duplicate_record;
+      if (error?.response?.status === 409 && duplicateRecord) {
+        const currentMark = `${duplicateRecord.score}/${duplicateRecord.max_score}`;
+        const shouldOverride = window.confirm(
+          `You have already entered this mark (${duplicateRecord.exam_type}, ${duplicateRecord.academic_term} ${duplicateRecord.academic_year}, ${currentMark}). Do you want to override it?`
+        );
+        if (!shouldOverride) {
+          return;
+        }
+        try {
+          await apiService.addStudentMark({ ...payload, override_existing: true });
+          alert("Existing mark overridden successfully.");
+          setSelectedStudent("");
+          setSelectedComponent("");
+          setManualExamType("");
+          setScore("");
+          await loadAddedMarks();
+          return;
+        } catch (overrideError) {
+          console.error("Error overriding mark:", overrideError);
+          alert(overrideError.message || "Failed to override mark.");
+          return;
+        }
+      }
       alert(error.message || "Failed to add mark.");
     } finally {
       setSubmitting(false);
@@ -509,6 +582,75 @@ export default function TeacherMarks() {
               )}
             </button>
           </form>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Marks You Have Added</h3>
+              <p className="text-sm text-gray-600">
+                Showing {academicTerm} {academicYear} marks for the selected subject.
+              </p>
+            </div>
+            <button
+              onClick={loadAddedMarks}
+              className="px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
+              type="button"
+            >
+              <i className="fas fa-refresh mr-2"></i>Refresh
+            </button>
+          </div>
+
+          {loadingAddedMarks ? (
+            <div className="py-8"><LoadingSpinner /></div>
+          ) : (
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Student</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Class</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Assessment</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Term / Year</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Score</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Out Of</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">%</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Recorded</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleAddedMarks.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No marks found for the current filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleAddedMarks.map((row) => {
+                      const mappedStudent = studentsById.get(String(row.student));
+                      return (
+                        <tr key={row.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            <div className="font-medium">{row.student_name}</div>
+                            <div className="text-xs text-gray-500">#{row.student_number || ""}</div>
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{mappedStudent?.class || "-"}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.exam_type}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{row.academic_term} / {row.academic_year}</td>
+                          <td className="px-4 py-2 text-right text-sm">{row.score}</td>
+                          <td className="px-4 py-2 text-right text-sm">{row.max_score}</td>
+                          <td className="px-4 py-2 text-right text-sm font-medium">{row.percentage}%</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            {row.date_recorded ? new Date(row.date_recorded).toLocaleString() : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

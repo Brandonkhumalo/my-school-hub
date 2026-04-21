@@ -165,7 +165,18 @@ export default function TeacherPerformance() {
     setBreakdownTermFilter("");
     try {
       const payload = await apiService.getTeacherStudentMarksBreakdown(student.id, selectedSubject);
-      setStudentBreakdown(payload || null);
+      if (Array.isArray(payload)) {
+        // apiService flattens some `results` payloads; normalize so UI still renders.
+        setStudentBreakdown({
+          scope: "selected_subject",
+          is_class_teacher_view: false,
+          total_results: payload.length,
+          subject_summaries: [],
+          results: payload,
+        });
+      } else {
+        setStudentBreakdown(payload || null);
+      }
     } catch (error) {
       console.error("Error loading student mark breakdown:", error);
       setStudentBreakdown(null);

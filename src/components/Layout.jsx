@@ -82,6 +82,7 @@ const ALL_MENU_ITEMS = {
       { path: "/student/profile",       icon: "fa-user",               title: "Profile" },
       { path: "/student/submissions",   icon: "fa-tasks",              title: "Submissions" },
       { path: "/student/marks",         icon: "fa-chart-line",         title: "Marks" },
+      { path: "/student/results",       icon: "fa-file-pdf",           title: "Results" },
       { path: "/student/homework",      icon: "fa-book-open",          title: "Homework" },
       { path: "/student/calendar",      icon: "fa-calendar",           title: "School Calendar" },
       { path: "/student/timetable",     icon: "fa-clock",              title: "Timetable" },

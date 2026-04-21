@@ -16,6 +16,25 @@ from .models import (
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
 
+def _normalize_report_year(year):
+    return str(year or '').strip()
+
+
+def _normalize_report_term(term):
+    raw = str(term or '').strip()
+    lowered = raw.lower().replace('_', ' ')
+    compact = lowered.replace(' ', '')
+    mapping = {
+        'term1': 'Term 1',
+        'term2': 'Term 2',
+        'term3': 'Term 3',
+        '1': 'Term 1',
+        '2': 'Term 2',
+        '3': 'Term 3',
+    }
+    return mapping.get(compact, raw)
+
+
 def _teacher_authorized_class_ids(teacher, subject_id=None, fallback_to_school=True):
     """
     Return class IDs this teacher can teach for the given subject.
@@ -170,6 +189,7 @@ def add_student_mark(request):
         academic_year = request.data.get('academic_year', str(datetime.now().year))
         include_in_report = request.data.get('include_in_report', True)
         report_term = request.data.get('report_term', '')
+        override_existing = request.data.get('override_existing', False)
         
         # Assessment plan fields (optional, for component tracking)
         assessment_plan_id = request.data.get('assessment_plan')
@@ -288,6 +308,77 @@ def add_student_mark(request):
                 {'error': 'assessment_plan is required when component_kind is provided'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if isinstance(override_existing, str):
+            override_existing = override_existing.strip().lower() in {'1', 'true', 'yes', 'on'}
+        else:
+            override_existing = bool(override_existing)
+
+        duplicate_qs = Result.objects.filter(
+            student=student,
+            subject=subject,
+            teacher=teacher,
+            academic_term=academic_term,
+            academic_year=academic_year,
+        )
+        if component_kind and component_index is not None:
+            duplicate_qs = duplicate_qs.filter(
+                component_kind=component_kind,
+                component_index=component_index,
+            )
+            if assessment_plan_obj:
+                duplicate_qs = duplicate_qs.filter(assessment_plan=assessment_plan_obj)
+        else:
+            duplicate_qs = duplicate_qs.filter(exam_type__iexact=exam_type)
+
+        existing_result = duplicate_qs.order_by('-date_recorded', '-id').first()
+        if existing_result and not override_existing:
+            return Response({
+                'error': 'You have already entered this mark. Do you want to override it?',
+                'duplicate': True,
+                'duplicate_record': {
+                    'id': existing_result.id,
+                    'exam_type': existing_result.exam_type,
+                    'score': existing_result.score,
+                    'max_score': existing_result.max_score,
+                    'percentage': round((existing_result.score / existing_result.max_score) * 100, 2) if existing_result.max_score else 0,
+                    'academic_term': existing_result.academic_term,
+                    'academic_year': existing_result.academic_year,
+                    'component_kind': existing_result.component_kind,
+                    'component_index': existing_result.component_index,
+                },
+            }, status=status.HTTP_409_CONFLICT)
+
+        if existing_result and override_existing:
+            existing_result.exam_type = exam_type
+            existing_result.score = float(score)
+            existing_result.max_score = float(max_score)
+            existing_result.academic_term = academic_term
+            existing_result.academic_year = academic_year
+            existing_result.include_in_report = include_in_report
+            existing_result.report_term = report_term or ''
+            existing_result.assessment_plan = assessment_plan_obj
+            existing_result.component_kind = component_kind or ''
+            existing_result.component_index = component_index if component_index is not None else None
+            existing_result.save(update_fields=[
+                'exam_type', 'score', 'max_score', 'academic_term', 'academic_year',
+                'include_in_report', 'report_term', 'assessment_plan',
+                'component_kind', 'component_index',
+            ])
+            return Response({
+                'id': existing_result.id,
+                'student': f"{student.user.first_name} {student.user.last_name}",
+                'subject': subject.name,
+                'exam_type': exam_type,
+                'score': existing_result.score,
+                'max_score': existing_result.max_score,
+                'percentage': round((existing_result.score / existing_result.max_score) * 100, 2),
+                'assessment_plan': assessment_plan_obj.id if assessment_plan_obj else None,
+                'component_kind': component_kind,
+                'component_index': component_index,
+                'message': 'Existing mark overridden successfully',
+                'overridden': True,
+            }, status=status.HTTP_200_OK)
         
         # Create result
         result = Result.objects.create(
@@ -1145,8 +1236,8 @@ def subject_feedback_list(request):
 
     class_id = request.query_params.get('class_id')
     subject_id = request.query_params.get('subject_id')
-    year = request.query_params.get('year', '')
-    term = request.query_params.get('term', '')
+    year = _normalize_report_year(request.query_params.get('year', ''))
+    term = _normalize_report_term(request.query_params.get('term', ''))
     if not (class_id and subject_id and year and term):
         return Response({'error': 'class_id, subject_id, year, term are required'},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -1201,8 +1292,8 @@ def subject_feedback_upsert(request):
         subject_id = int(request.data.get('subject_id'))
     except (TypeError, ValueError):
         return Response({'error': 'student_id and subject_id must be integers'}, status=status.HTTP_400_BAD_REQUEST)
-    year = request.data.get('year', '')
-    term = request.data.get('term', '')
+    year = _normalize_report_year(request.data.get('year', ''))
+    term = _normalize_report_term(request.data.get('term', ''))
     comment = (request.data.get('comment') or '').strip()
     effort = (request.data.get('effort_grade') or '').strip().upper()
     if effort and effort not in {'A', 'B', 'C', 'D', 'E'}:
@@ -1276,8 +1367,8 @@ def report_feedback_submission_status(request):
         return Response({'error': 'Only teachers can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
 
     class_id = request.query_params.get('class_id')
-    year = request.query_params.get('year', '')
-    term = request.query_params.get('term', '')
+    year = _normalize_report_year(request.query_params.get('year', ''))
+    term = _normalize_report_term(request.query_params.get('term', ''))
     if not (class_id and year and term):
         return Response({'error': 'class_id, year, term are required'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1322,8 +1413,8 @@ def submit_report_feedback_for_signoff(request):
         return Response({'error': 'Only teachers can submit reports'}, status=status.HTTP_403_FORBIDDEN)
 
     class_id = request.data.get('class_id')
-    year = request.data.get('year', '')
-    term = request.data.get('term', '')
+    year = _normalize_report_year(request.data.get('year', ''))
+    term = _normalize_report_term(request.data.get('term', ''))
     if not (class_id and year and term):
         return Response({'error': 'class_id, year, term are required'}, status=status.HTTP_400_BAD_REQUEST)
 

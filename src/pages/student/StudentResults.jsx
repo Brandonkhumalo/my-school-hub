@@ -165,7 +165,7 @@ export default function StudentResults() {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {[...Array(5)].map((_, i) => {
-                    const y = parseInt(currentAcademicYear) - i;
+                    const y = parseInt(currentAcademicYear || new Date().getFullYear()) - i;
                     return <option key={y} value={y}>{y}</option>;
                   })}
                 </select>
@@ -247,7 +247,7 @@ export default function StudentResults() {
                 </tr>
               </thead>
               <tbody>
-                {performance.results.map((result, index) => (
+                {(performance.results || []).map((result, index) => (
                   <tr key={index}>
                     <td>{result.subject_name}</td>
                     <td>{result.teacher_name}</td>
