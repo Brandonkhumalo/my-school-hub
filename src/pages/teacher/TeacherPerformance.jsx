@@ -25,6 +25,51 @@ export default function TeacherPerformance() {
   const [breakdownError, setBreakdownError] = useState("");
   const [breakdownTermFilter, setBreakdownTermFilter] = useState("");
 
+  const buildBreakdownPayload = useCallback((payload, student, subjectId) => {
+    if (payload && !Array.isArray(payload) && typeof payload === "object") {
+      const rows = Array.isArray(payload.results) ? payload.results : [];
+      return {
+        scope: payload.scope || "selected_subject",
+        is_class_teacher_view: Boolean(payload.is_class_teacher_view),
+        total_results: Number.isFinite(payload.total_results) ? payload.total_results : rows.length,
+        subject_summaries: Array.isArray(payload.subject_summaries) ? payload.subject_summaries : [],
+        results: rows,
+      };
+    }
+
+    const rows = Array.isArray(payload) ? payload : [];
+    const bySubject = new Map();
+    rows.forEach((row) => {
+      const key = row.subject_name || "Unknown Subject";
+      if (!bySubject.has(key)) {
+        bySubject.set(key, { subject_name: key, result_count: 0, total: 0 });
+      }
+      const bucket = bySubject.get(key);
+      bucket.result_count += 1;
+      bucket.total += Number(row.percentage || 0);
+    });
+    const subjectSummaries = Array.from(bySubject.values()).map((item) => ({
+      subject_name: item.subject_name,
+      result_count: item.result_count,
+      average_percentage: item.result_count ? Number((item.total / item.result_count).toFixed(2)) : 0,
+    }));
+
+    return {
+      scope: "selected_subject",
+      is_class_teacher_view: false,
+      total_results: rows.length,
+      subject_summaries: subjectSummaries,
+      results: rows,
+      student: student ? {
+        id: student.id,
+        name: `${student.name || ""} ${student.surname || ""}`.trim(),
+        student_number: student.student_number || "",
+        class_name: student.class || "",
+      } : undefined,
+      selected_subject: subjectId ? { id: subjectId } : undefined,
+    };
+  }, []);
+
   const normalizeStudentsPayload = (payload) => {
     if (Array.isArray(payload)) {
       return {
@@ -165,22 +210,22 @@ export default function TeacherPerformance() {
     setBreakdownTermFilter("");
     try {
       const payload = await apiService.getTeacherStudentMarksBreakdown(student.id, selectedSubject);
-      if (Array.isArray(payload)) {
-        // apiService flattens some `results` payloads; normalize so UI still renders.
-        setStudentBreakdown({
-          scope: "selected_subject",
-          is_class_teacher_view: false,
-          total_results: payload.length,
-          subject_summaries: [],
-          results: payload,
-        });
-      } else {
-        setStudentBreakdown(payload || null);
-      }
+      setStudentBreakdown(buildBreakdownPayload(payload, student, selectedSubject));
     } catch (error) {
-      console.error("Error loading student mark breakdown:", error);
-      setStudentBreakdown(null);
-      setBreakdownError(error?.message || "Failed to load student breakdown.");
+      console.error("Error loading student mark breakdown from dedicated endpoint:", error);
+      try {
+        // Fallback: use teacher results list filtered by student+subject so breakdown remains usable.
+        const fallbackResults = await apiService.fetchResults({
+          student: student.id,
+          subject: selectedSubject,
+        });
+        setStudentBreakdown(buildBreakdownPayload(fallbackResults, student, selectedSubject));
+        setBreakdownError("");
+      } catch (fallbackError) {
+        console.error("Fallback breakdown loading failed:", fallbackError);
+        setStudentBreakdown(null);
+        setBreakdownError(fallbackError?.message || error?.message || "Failed to load student breakdown.");
+      }
     } finally {
       setLoadingBreakdown(false);
     }
