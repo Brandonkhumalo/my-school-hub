@@ -293,3 +293,111 @@ def ensure_three_term_invoices_for_school(school, academic_year, recorded_by=Non
             recorded_by=recorded_by,
         )
     return touched
+
+
+def recalculate_student_school_fee_records(student, school):
+    """
+    Recompute existing school-fee payment records for a student using the latest
+    transport preference state. Already-paid records remain frozen.
+    """
+    if not student or not school or not getattr(student, 'student_class_id', None):
+        return 0
+
+    grade_level = getattr(student.student_class, 'grade_level', None)
+    if grade_level is None:
+        return 0
+
+    records = list(
+        StudentPaymentRecord.objects.filter(
+            student=student,
+            school=school,
+            payment_type='school_fees',
+        ).order_by('-date_created')
+    )
+    if not records:
+        return 0
+
+    from .fee_calculator import get_transport_opt_in
+    transport_opted_in = get_transport_opt_in(student)
+    touched = 0
+
+    for record in records:
+        terms = resolve_terms_for_plan(
+            record.payment_plan,
+            record.academic_term,
+            getattr(record, 'covered_terms', []),
+        )
+        if not terms and record.payment_plan == 'full_year':
+            terms = list(TERM_SEQUENCE)
+        if not terms:
+            fallback = normalize_term_key(record.academic_term)
+            terms = [fallback] if fallback else []
+
+        normalized_terms = []
+        for value in terms:
+            key = normalize_term_key(value)
+            if key in TERM_SEQUENCE and key not in normalized_terms:
+                normalized_terms.append(key)
+        if not normalized_terms:
+            continue
+
+        fee_rows = list(
+            SchoolFees.objects.filter(
+                school=school,
+                grade_level=grade_level,
+                academic_year=str(record.academic_year),
+                academic_term__in=normalized_terms,
+            )
+        )
+        if not fee_rows:
+            continue
+
+        fee_by_term = {row.academic_term: row for row in fee_rows}
+        fallback_fee = fee_rows[0]
+
+        total_due = Decimal('0')
+        for term in normalized_terms:
+            fee_row = fee_by_term.get(term) or fallback_fee
+            total_due += _school_fee_total_for_student_term(
+                student=student,
+                school=school,
+                school_fee_row=fee_row,
+                transport_opted_in=transport_opted_in,
+            )
+
+        previously_paid = (
+            record.payment_status == 'paid' or
+            to_decimal(record.amount_paid) >= to_decimal(record.total_amount_due)
+        )
+        if previously_paid:
+            _sync_invoice_from_record(record)
+            continue
+
+        update_fields = []
+        if to_decimal(record.total_amount_due) != total_due:
+            record.total_amount_due = total_due
+            update_fields.append('total_amount_due')
+
+        target_currency = fallback_fee.currency or record.currency
+        if target_currency and record.currency != target_currency:
+            record.currency = target_currency
+            update_fields.append('currency')
+
+        if to_decimal(record.amount_paid) >= total_due:
+            status_value = 'paid'
+        elif to_decimal(record.amount_paid) > 0:
+            status_value = 'partial'
+        else:
+            status_value = 'unpaid'
+        if record.payment_status != status_value:
+            record.payment_status = status_value
+            update_fields.append('payment_status')
+
+        if update_fields:
+            update_fields.append('date_updated')
+            record.save(update_fields=update_fields)
+            touched += 1
+
+        _sync_invoice_from_record(record)
+
+    return touched

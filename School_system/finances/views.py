@@ -48,6 +48,7 @@ from .billing_service import (
     settle_additional_fees_for_record,
     recalculate_student_additional_fees,
     ensure_three_term_invoices_for_school,
+    recalculate_student_school_fee_records,
 )
 from .term_finance import (
     TERM_SEQUENCE,
@@ -1511,6 +1512,142 @@ def class_fees_report(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def transport_payment_status_report(request):
+    """
+    List students and whether transport is paid/partial/unpaid/not opted.
+
+    Filters:
+      - class_id: optional class filter
+      - academic_year: defaults to current inferred year
+      - terms or academic_term: terms to evaluate (defaults current term)
+      - transport_status: paid | partial | unpaid | not_opted
+    """
+    if request.user.role not in ['admin', 'hr', 'sports_director', 'superadmin']:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
+
+    class_id = request.query_params.get('class_id')
+    academic_year = request.query_params.get('academic_year')
+    academic_term = request.query_params.get('academic_term')
+    terms_param = request.query_params.get('terms')
+    transport_status_filter = (request.query_params.get('transport_status') or '').strip().lower()
+
+    if not academic_year:
+        _, _, inferred_year, _, _ = _current_term_window(request.user)
+        academic_year = inferred_year
+
+    if terms_param:
+        selected_terms = normalize_terms([part for part in terms_param.split(',') if part.strip()])
+    elif academic_term:
+        selected_terms = normalize_terms([academic_term])
+    else:
+        _, _, _, _, current_term = _current_term_window(request.user)
+        selected_terms = [current_term]
+
+    if not selected_terms:
+        return Response({'error': 'At least one valid term is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    students_qs = Student.objects.filter(user__school=school).select_related('user', 'student_class')
+    if class_id:
+        students_qs = students_qs.filter(student_class_id=class_id)
+    students = list(students_qs)
+
+    expected_map, collected_map = _student_term_financials(
+        students=students,
+        school=school,
+        academic_year=academic_year,
+        terms=selected_terms,
+    )
+
+    grade_levels = {
+        s.student_class.grade_level
+        for s in students
+        if s.student_class
+    }
+    fee_rows = SchoolFees.objects.filter(
+        school=school,
+        academic_year=academic_year,
+        academic_term__in=selected_terms,
+        grade_level__in=grade_levels,
+    )
+    fee_by_grade_term = {
+        (fee.grade_level, fee.academic_term): fee
+        for fee in fee_rows
+    }
+
+    status_rows = []
+    counts = {'paid': 0, 'partial': 0, 'unpaid': 0, 'not_opted': 0}
+
+    for student in students:
+        grade_level = student.student_class.grade_level if student.student_class else None
+        student_opted_in = get_transport_opt_in(student)
+
+        transport_due = Decimal('0')
+        opted_in = False
+        for term in selected_terms:
+            fee_row = fee_by_grade_term.get((grade_level, term))
+            if not fee_row:
+                continue
+            transport_fee = to_decimal(fee_row.transport_fee)
+            if transport_fee <= 0:
+                continue
+            if student_opted_in:
+                opted_in = True
+                transport_due += transport_fee
+
+        total_due = Decimal('0')
+        total_paid = Decimal('0')
+        for term in selected_terms:
+            total_due += expected_map.get((student.id, term), Decimal('0'))
+            total_paid += collected_map.get((student.id, term), Decimal('0'))
+
+        non_transport_due = max(Decimal('0'), total_due - transport_due)
+        transport_paid_amount = max(Decimal('0'), min(transport_due, total_paid - non_transport_due))
+
+        if not opted_in or transport_due <= 0:
+            transport_status = 'not_opted'
+        elif transport_paid_amount >= transport_due:
+            transport_status = 'paid'
+        elif transport_paid_amount > 0:
+            transport_status = 'partial'
+        else:
+            transport_status = 'unpaid'
+
+        if transport_status_filter and transport_status_filter != transport_status:
+            continue
+
+        counts[transport_status] += 1
+        status_rows.append({
+            'student_id': student.id,
+            'student_name': student.user.full_name,
+            'student_number': student.user.student_number,
+            'class_id': student.student_class_id,
+            'class_name': student.student_class.name if student.student_class else 'Not Assigned',
+            'academic_year': academic_year,
+            'terms': selected_terms,
+            'transport_opted_in': bool(opted_in),
+            'transport_due': float(transport_due),
+            'transport_paid': float(transport_paid_amount),
+            'transport_balance': float(max(Decimal('0'), transport_due - transport_paid_amount)),
+            'transport_status': transport_status,
+            'overall_total_due': float(total_due),
+            'overall_total_paid': float(total_paid),
+        })
+
+    return Response({
+        'academic_year': academic_year,
+        'terms': selected_terms,
+        'total_students': len(status_rows),
+        'counts': counts,
+        'students': status_rows,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def get_invoice_detail(request, invoice_id):
     """Get detailed invoice for PDF generation"""
     try:
@@ -1652,6 +1789,7 @@ def parent_transport_preference(request, child_id):
         preference.include_transport_fee = include_transport_fee
         preference.updated_by = request.user
         preference.save(update_fields=['include_transport_fee', 'updated_by', 'updated_at'])
+        recalculate_student_school_fee_records(student, request.user.school)
 
     fee_breakdown = build_school_fee_breakdown(
         student,

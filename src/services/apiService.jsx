@@ -533,6 +533,10 @@ const apiService = {
     const query = new URLSearchParams(params).toString();
     return request(`/finances/payment-records/students/${query ? '?' + query : ''}`, "GET");
   },
+  getTransportPaymentStatus: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/finances/transport-payment-status/${query ? '?' + query : ''}`, "GET");
+  },
 
   // Invoice endpoints
   getInvoices: (params = {}) => {

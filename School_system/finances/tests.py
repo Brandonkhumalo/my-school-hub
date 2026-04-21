@@ -21,7 +21,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
 from users.models import CustomUser, School, SchoolSettings
-from academics.models import Class, Student, Teacher
+from academics.models import Class, Parent, ParentChildLink, Student, Teacher
 from staff.models import Staff, Payroll
 from finances.models import (
     AdditionalFee,
@@ -34,6 +34,7 @@ from finances.models import (
     SchoolExpense,
     StudentFee,
     StudentPaymentRecord,
+    TransportFeePreference,
 )
 
 
@@ -1243,6 +1244,8 @@ class SchoolFeeInvoiceBootstrapTest(APITestCase):
     def setUp(self):
         self.client = APIClient()
         self.school = make_school("Bootstrap Fees School")
+        self.school.accommodation_type = "both"
+        self.school.save(update_fields=["accommodation_type"])
         self.admin = make_user(self.school, "bootstrap_admin", role="admin")
         self.cls = make_class(self.school, name="Form 2A", grade_level=2)
         self.student = make_student(self.school, self.cls, username="bootstrap_student", student_number="BOOT001")
@@ -1327,3 +1330,216 @@ class SchoolFeeInvoiceBootstrapTest(APITestCase):
         paid_invoice = Invoice.objects.get(payment_record=refreshed["term_1"])
         self.assertEqual(paid_invoice.total_amount, Decimal("100.00"))
         self.assertTrue(paid_invoice.is_paid)
+
+    def test_bootstrap_does_not_apply_transport_without_parent_opt_in(self):
+        self.student.residence_type = "boarding"
+        self.student.save(update_fields=["residence_type"])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.list_url, {
+            "grade_level": self.cls.grade_level,
+            "grade_name": self.cls.name,
+            "tuition_fee": "100.00",
+            "levy_fee": "0.00",
+            "sports_fee": "0.00",
+            "computer_fee": "0.00",
+            "other_fees": "0.00",
+            "boarding_fee": "30.00",
+            "transport_fee": "25.00",
+            "academic_year": "2026",
+            "academic_term": "term_1",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        record = StudentPaymentRecord.objects.get(
+            school=self.school,
+            student=self.student,
+            academic_year="2026",
+            academic_term="term_1",
+            payment_type="school_fees",
+        )
+        # Boarding applies to boarders; transport must only apply after explicit parent opt-in.
+        self.assertEqual(record.total_amount_due, Decimal("130.00"))
+
+
+class ParentTransportPreferenceSyncTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Transport Pref Sync School")
+        self.school.accommodation_type = "both"
+        self.school.save(update_fields=["accommodation_type"])
+        self.admin = make_user(self.school, "transport_admin", role="admin")
+        self.parent_user = make_user(self.school, "transport_parent", role="parent")
+        self.parent = Parent.objects.create(user=self.parent_user)
+
+        self.cls = make_class(self.school, name="Form 3A", grade_level=3)
+        self.student = make_student(self.school, self.cls, username="transport_student", student_number="TR001")
+        self.student.residence_type = "boarding"
+        self.student.save(update_fields=["residence_type"])
+        ParentChildLink.objects.create(parent=self.parent, student=self.student, is_confirmed=True)
+
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=self.cls.grade_level,
+            grade_name=self.cls.name,
+            tuition_fee=Decimal("100.00"),
+            levy_fee=Decimal("0.00"),
+            sports_fee=Decimal("0.00"),
+            computer_fee=Decimal("0.00"),
+            other_fees=Decimal("0.00"),
+            boarding_fee=Decimal("30.00"),
+            transport_fee=Decimal("25.00"),
+            academic_year="2026",
+            academic_term="term_1",
+            currency="USD",
+            created_by=self.admin,
+        )
+
+        self.record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            covered_terms=["term_1"],
+            total_amount_due=Decimal("155.00"),
+            amount_paid=Decimal("0.00"),
+            payment_status="unpaid",
+            recorded_by=self.admin,
+        )
+        self.invoice = Invoice.objects.create(
+            student=self.student,
+            school=self.school,
+            invoice_number="INV-TRANSPORT-001",
+            total_amount=Decimal("155.00"),
+            amount_paid=Decimal("0.00"),
+            due_date=datetime.date(2026, 1, 31),
+            is_paid=False,
+            payment_record=self.record,
+        )
+
+        TransportFeePreference.objects.create(
+            parent=self.parent,
+            student=self.student,
+            include_transport_fee=True,
+            updated_by=self.parent_user,
+        )
+        self.url = f"/api/v1/finances/transport-preferences/{self.student.id}/"
+
+    def test_parent_opt_out_recalculates_existing_unpaid_school_fee_records(self):
+        self.client.force_authenticate(user=self.parent_user)
+        response = self.client.put(self.url, {"include_transport_fee": False}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["include_transport_fee"])
+
+        self.record.refresh_from_db()
+        self.invoice.refresh_from_db()
+        # transport removed: 100 tuition + 30 boarding = 130
+        self.assertEqual(self.record.total_amount_due, Decimal("130.00"))
+        self.assertEqual(self.invoice.total_amount, Decimal("130.00"))
+
+
+class TransportPaymentStatusReportTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Transport Status School")
+        self.school.accommodation_type = "both"
+        self.school.save(update_fields=["accommodation_type"])
+
+        self.admin = make_user(self.school, "transport_status_admin", role="admin")
+        self.hr = make_user(self.school, "transport_status_hr", role="hr")
+        self.sports_director = make_user(self.school, "transport_status_sport", role="sports_director")
+        self.teacher = make_user(self.school, "transport_status_teacher", role="teacher")
+
+        self.cls = make_class(self.school, name="Form 4A", grade_level=4)
+
+        self.s1 = make_student(self.school, self.cls, username="ts_s1", student_number="TS001")
+        self.s2 = make_student(self.school, self.cls, username="ts_s2", student_number="TS002")
+        self.s3 = make_student(self.school, self.cls, username="ts_s3", student_number="TS003")
+        self.s4 = make_student(self.school, self.cls, username="ts_s4", student_number="TS004")
+
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=self.cls.grade_level,
+            grade_name=self.cls.name,
+            tuition_fee=Decimal("100.00"),
+            levy_fee=Decimal("0.00"),
+            sports_fee=Decimal("0.00"),
+            computer_fee=Decimal("0.00"),
+            other_fees=Decimal("0.00"),
+            boarding_fee=Decimal("0.00"),
+            transport_fee=Decimal("50.00"),
+            academic_year="2026",
+            academic_term="term_1",
+            currency="USD",
+            created_by=self.admin,
+        )
+
+        for idx, student in enumerate([self.s1, self.s2, self.s3, self.s4], start=1):
+            parent_user = make_user(self.school, f"ts_parent_{idx}", role="parent")
+            parent = Parent.objects.create(user=parent_user)
+            ParentChildLink.objects.create(parent=parent, student=student, is_confirmed=True)
+            TransportFeePreference.objects.create(
+                parent=parent,
+                student=student,
+                include_transport_fee=(student.id in {self.s1.id, self.s2.id, self.s3.id}),
+                updated_by=parent_user,
+            )
+
+        StudentPaymentRecord.objects.create(
+            student=self.s1, school=self.school, payment_type="school_fees",
+            payment_plan="one_term", academic_year="2026", academic_term="term_1",
+            covered_terms=["term_1"], total_amount_due=Decimal("150.00"),
+            amount_paid=Decimal("150.00"), payment_status="paid", recorded_by=self.admin,
+        )
+        StudentPaymentRecord.objects.create(
+            student=self.s2, school=self.school, payment_type="school_fees",
+            payment_plan="one_term", academic_year="2026", academic_term="term_1",
+            covered_terms=["term_1"], total_amount_due=Decimal("150.00"),
+            amount_paid=Decimal("0.00"), payment_status="unpaid", recorded_by=self.admin,
+        )
+        StudentPaymentRecord.objects.create(
+            student=self.s3, school=self.school, payment_type="school_fees",
+            payment_plan="one_term", academic_year="2026", academic_term="term_1",
+            covered_terms=["term_1"], total_amount_due=Decimal("150.00"),
+            amount_paid=Decimal("120.00"), payment_status="partial", recorded_by=self.admin,
+        )
+        StudentPaymentRecord.objects.create(
+            student=self.s4, school=self.school, payment_type="school_fees",
+            payment_plan="one_term", academic_year="2026", academic_term="term_1",
+            covered_terms=["term_1"], total_amount_due=Decimal("100.00"),
+            amount_paid=Decimal("100.00"), payment_status="paid", recorded_by=self.admin,
+        )
+
+        self.base_url = "/api/v1/finances/transport-payment-status/?academic_year=2026&academic_term=term_1"
+
+    def test_admin_can_view_transport_status_counts(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(self.base_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["counts"]["paid"], 1)
+        self.assertEqual(response.data["counts"]["partial"], 1)
+        self.assertEqual(response.data["counts"]["unpaid"], 1)
+        self.assertEqual(response.data["counts"]["not_opted"], 1)
+        self.assertEqual(len(response.data["students"]), 4)
+
+    def test_sports_director_can_view_transport_status(self):
+        self.client.force_authenticate(user=self.sports_director)
+        response = self.client.get(self.base_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("students", response.data)
+
+    def test_hr_can_filter_transport_unpaid_only(self):
+        self.client.force_authenticate(user=self.hr)
+        response = self.client.get(f"{self.base_url}&transport_status=unpaid")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["students"]), 1)
+        self.assertEqual(response.data["students"][0]["student_number"], "TS002")
+        self.assertEqual(response.data["students"][0]["transport_status"], "unpaid")
+
+    def test_teacher_is_denied_transport_status_report(self):
+        self.client.force_authenticate(user=self.teacher)
+        response = self.client.get(self.base_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

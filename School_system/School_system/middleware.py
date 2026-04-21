@@ -37,6 +37,7 @@ HR_API_PAGE_PREFIXES = (
     ('/api/v1/finances/additional-fees/', 'fees'),
     ('/api/v1/finances/invoices/', 'invoices'),
     ('/api/v1/finances/payment-records/class-report/', 'reports'),
+    ('/api/v1/finances/transport-payment-status/', 'reports'),
     ('/api/v1/finances/reports/', 'reports'),
     ('/api/v1/finances/payment-records/', 'payments'),
     ('/api/v1/finances/payments/', 'payments'),

@@ -21,6 +21,7 @@ urlpatterns = [
     path('invoices/<int:invoice_id>/detail/', views.get_invoice_detail, name='invoice-detail-pdf'),
     path('invoices/parent/', views.parent_invoices, name='parent-invoices'),
     path('transport-preferences/<int:child_id>/', views.parent_transport_preference, name='parent-transport-preference'),
+    path('transport-payment-status/', views.transport_payment_status_report, name='transport-payment-status'),
     
     # Financial Report endpoints
     path('reports/', views.FinancialReportListCreateView.as_view(), name='financial-report-list-create'),

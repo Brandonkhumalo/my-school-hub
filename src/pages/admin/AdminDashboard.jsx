@@ -10,22 +10,29 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [finance, setFinance] = useState(null);
+  const [feeCollection, setFeeCollection] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recentClasses, setRecentClasses] = useState([]);
 
-  useEffect(() => { loadDashboardData(); }, []);
+  useEffect(() => {
+    loadDashboardData();
+    const intervalId = setInterval(loadDashboardData, 60000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsData, classesData] = await Promise.all([
+      const [statsData, classesData, financeData, analyticsData] = await Promise.all([
         apiService.getDashboardStats(),
         apiService.fetchClasses(),
+        apiService.getFinanceSummary().catch(() => null),
+        apiService.getAdminAnalytics().catch(() => null),
       ]);
       setStats(statsData);
       setRecentClasses(classesData.slice(0, 5));
-      const financeData = await apiService.getFinanceSummary().catch(() => null);
       setFinance(financeData);
+      setFeeCollection(analyticsData?.overview || null);
     } catch (error) {
       console.error("Error loading dashboard:", error);
     } finally {
@@ -38,6 +45,15 @@ export default function AdminDashboard() {
   const schoolAccommodationType = stats?.school_accommodation_type || "day";
   const showDayStudents = schoolAccommodationType === "day" || schoolAccommodationType === "both";
   const showBoardingStudents = schoolAccommodationType === "boarding" || schoolAccommodationType === "both";
+  const totalFeesDue = Number(feeCollection?.total_fees_due ?? 0);
+  const totalFeesPaid = Number(feeCollection?.total_fees_paid ?? 0);
+  const outstandingFees = Math.max(totalFeesDue - totalFeesPaid, 0);
+  const collectionProgress = Number(
+    feeCollection?.fee_collection_rate ??
+    (totalFeesDue > 0 ? (totalFeesPaid / totalFeesDue) * 100 : 0)
+  );
+  const formatMoney = (value) =>
+    `$${Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // ── Quick Actions ────────────────────────────────────────────
   const quickActions = [
@@ -206,6 +222,47 @@ export default function AdminDashboard() {
               <span className="font-bold text-blue-600 text-base">
                 ${Number(finance?.term_profit ?? 0).toLocaleString()}
               </span>
+            </div>
+          </div>
+
+          <div
+            className="mb-5 p-4 rounded-xl"
+            style={{ background: "var(--bg-surface2)", border: "1px solid var(--border)" }}
+          >
+            <p className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
+              Fee Collection Summary
+            </p>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span style={{ color: "var(--text-muted)" }}>Total Fees Due</span>
+                <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {formatMoney(totalFeesDue)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span style={{ color: "var(--text-muted)" }}>Total Fees Paid</span>
+                <span className="font-semibold text-green-600">
+                  {formatMoney(totalFeesPaid)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span style={{ color: "var(--text-muted)" }}>Outstanding</span>
+                <span className="font-semibold text-red-600">
+                  {formatMoney(outstandingFees)}
+                </span>
+              </div>
+              <div className="pt-1">
+                <div className="flex items-center justify-between text-xs mb-1" style={{ color: "var(--text-muted)" }}>
+                  <span>Collection Progress</span>
+                  <span>{Math.round(Math.min(collectionProgress, 100))}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-green-500 transition-all duration-500"
+                    style={{ width: `${Math.min(Math.max(collectionProgress, 0), 100)}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
