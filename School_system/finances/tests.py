@@ -28,6 +28,7 @@ from finances.models import (
     Invoice,
     Payment,
     PaymentIntent,
+    PaymentTransaction,
     SchoolFees,
     SchoolExpense,
     StudentFee,
@@ -1019,7 +1020,10 @@ class FinanceSummaryAndExpensesAPITest(APITestCase):
         response = self.client.get("/api/v1/finances/summary/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["current_year"]), str(today.year))
-        self.assertEqual(float(response.data["term_revenue"]), 275.0)
+        self.assertEqual(float(response.data["term_revenue"]), 600.0)
+        self.assertEqual(float(response.data["term_expected_revenue"]), 600.0)
+        self.assertEqual(float(response.data["term_collected_revenue"]), 275.0)
+        self.assertEqual(float(response.data["term_outstanding_revenue"]), 325.0)
 
     def test_finance_summary_ignores_stale_term_window_over_one_year_old(self):
         today = datetime.date.today()
@@ -1050,4 +1054,109 @@ class FinanceSummaryAndExpensesAPITest(APITestCase):
         response = self.client.get("/api/v1/finances/summary/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["current_year"]), str(today.year))
-        self.assertEqual(float(response.data["term_revenue"]), 410.0)
+        self.assertEqual(float(response.data["term_revenue"]), 900.0)
+        self.assertEqual(float(response.data["term_expected_revenue"]), 900.0)
+        self.assertEqual(float(response.data["term_collected_revenue"]), 410.0)
+        self.assertEqual(float(response.data["term_outstanding_revenue"]), 490.0)
+
+
+class PaymentTransactionRecordingAPITest(APITestCase):
+    """Ensures local and PayNow payments both create transaction ledger rows."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Transaction Ledger School")
+        self.admin = make_user(self.school, "txn_admin", role="admin")
+        self.cls = make_class(self.school, name="Form 5A", grade_level=5)
+        self.student = make_student(self.school, self.cls, username="txn_student", student_number="TXN001")
+        self.record = StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=Decimal("500.00"),
+            amount_paid=Decimal("0.00"),
+            currency="USD",
+            payment_status="unpaid",
+            recorded_by=self.admin,
+        )
+        self.local_url = "/api/v1/finances/payment-records/add-payment/"
+        self.paynow_callback_url = "/api/v1/finances/payments/paynow/result/"
+
+    def test_local_payment_creates_transaction_row(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.local_url,
+            {
+                "payment_record_id": self.record.id,
+                "amount": "120.00",
+                "payment_method": "cash",
+                "transaction_reference": "LOCAL-TXN-001",
+                "notes": "Paid at office desk",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.record.refresh_from_db()
+        self.assertEqual(self.record.amount_paid, Decimal("120.00"))
+
+        txns = PaymentTransaction.objects.filter(payment_record=self.record)
+        self.assertEqual(txns.count(), 1)
+        txn = txns.first()
+        self.assertEqual(txn.amount, Decimal("120.00"))
+        self.assertEqual(txn.payment_method, "cash")
+        self.assertEqual(txn.transaction_reference, "LOCAL-TXN-001")
+        self.assertEqual(txn.processed_by_id, self.admin.id)
+
+    def test_paynow_callback_creates_single_transaction_and_is_idempotent(self):
+        intent = PaymentIntent.objects.create(
+            school=self.school,
+            student=self.student,
+            payment_record=self.record,
+            expected_amount=Decimal("200.00"),
+            currency="USD",
+            provider="paynow",
+            payment_method="web",
+            provider_reference="MSH-TXN-CALLBACK-001",
+            idempotency_key="idem-txn-callback-1",
+            status="pending",
+            created_by=self.admin,
+        )
+
+        first = self.client.post(
+            self.paynow_callback_url,
+            {
+                "reference": intent.provider_reference,
+                "paynowreference": "PAYNOW-TXN-001",
+                "status": "Paid",
+                "amount": "200.00",
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+
+        second = self.client.post(
+            self.paynow_callback_url,
+            {
+                "reference": intent.provider_reference,
+                "paynowreference": "PAYNOW-TXN-001",
+                "status": "Paid",
+                "amount": "200.00",
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+
+        self.record.refresh_from_db()
+        self.assertEqual(self.record.amount_paid, Decimal("200.00"))
+        self.assertEqual(self.record.payment_status, "partial")
+
+        txns = PaymentTransaction.objects.filter(payment_record=self.record)
+        self.assertEqual(txns.count(), 1)
+        txn = txns.first()
+        self.assertEqual(txn.amount, Decimal("200.00"))
+        self.assertEqual(txn.payment_method, "card")
+        self.assertEqual(txn.transaction_reference, "PAYNOW-TXN-001")
