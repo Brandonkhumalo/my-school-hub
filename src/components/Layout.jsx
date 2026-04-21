@@ -88,6 +88,7 @@ const ALL_MENU_ITEMS = {
       { path: "/student/teachers",      icon: "fa-chalkboard-teacher", title: "Teachers" },
       { path: "/student/announcements", icon: "fa-bullhorn",           title: "Announcements" },
       { path: "/student/attendance",    icon: "fa-calendar-check",     title: "Attendance" },
+      { path: "/student/results",       icon: "fa-file-pdf",           title: "Results" },
       { path: "/student/activities",    icon: "fa-running",            title: "Activities" },
       { path: "/student/library",       icon: "fa-book-reader",        title: "Library" },
     ]},

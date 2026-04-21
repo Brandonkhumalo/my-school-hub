@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -16,14 +15,6 @@ import (
 
 	"github.com/joho/godotenv"
 )
-
-// reportCardRe matches /api/v1/academics/students/{id}/report-card/
-var reportCardRe = regexp.MustCompile(`^/api/v1/academics/students/\d+/report-card/?$`)
-
-// isReportCardPath checks if a URL should be routed to go-services for PDF generation.
-func isReportCardPath(path string) bool {
-	return reportCardRe.MatchString(path)
-}
 
 type routeTarget string
 
@@ -41,8 +32,6 @@ func selectRouteTarget(path string) routeTarget {
 	case strings.HasPrefix(path, "/api/v1/finances/payments/paynow/"):
 		return targetServices
 	case strings.HasPrefix(path, "/api/v1/services/"):
-		return targetServices
-	case isReportCardPath(path):
 		return targetServices
 	default:
 		return targetDjango
@@ -96,7 +85,6 @@ func main() {
 
 	// Route requests to the appropriate backend:
 	//   /api/v1/bulk/*                              → Go Workers  (CSV imports)
-	//   /api/v1/academics/students/*/report-card/*   → Go Services (PDF generation)
 	//   /api/v1/finances/payments/paynow/*            → Go Services (PayNow API)
 	//   /api/v1/services/*                            → Go Services (email, WhatsApp)
 	//   everything else                               → Django
