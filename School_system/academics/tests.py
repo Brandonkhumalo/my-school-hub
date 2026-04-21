@@ -15,6 +15,7 @@ Covers:
 import datetime
 from unittest.mock import patch
 
+from django.core.signing import TimestampSigner
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -1482,3 +1483,52 @@ class ReportCardFullyPaidAccessAPITest(APITestCase):
         response = self.client.get(self.report_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/pdf")
+
+
+class ReportQrVerificationAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="QR Verify School")
+        self.admin = make_user(self.school, "qr_admin", role="admin")
+        self.teacher = make_teacher(self.school, username="qr_teacher")
+        self.subject = make_subject(self.school, name="English", code="ENG01")
+        self.cls = make_class(self.school, name="Form 2A", grade_level=9, year="2026")
+        self.student = make_student(self.school, self.cls, username="qr_student", student_number="QR001")
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+
+        Result.objects.create(
+            student=self.student,
+            subject=self.subject,
+            teacher=self.teacher,
+            exam_type="Exam",
+            score=84,
+            max_score=100,
+            academic_term="Term 1",
+            academic_year="2026",
+            include_in_report=True,
+        )
+
+        signer = TimestampSigner(salt="report-card")
+        self.v2_token = signer.sign(f"v2|{self.school.id}|{self.student.id}|2026|Term 1")
+        self.legacy_token = signer.sign(f"{self.student.id}|2026|Term 1")
+        self.v2_url = f"/api/v1/auth/reports/verify/{self.v2_token}/"
+        self.legacy_url = f"/api/v1/auth/reports/verify/{self.legacy_token}/"
+
+    def test_verify_qr_returns_html_page_by_default(self):
+        response = self.client.get(self.v2_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("text/html", response["Content-Type"])
+        self.assertIn("Authentic School Report Card", response.content.decode("utf-8"))
+
+    def test_verify_qr_download_returns_pdf(self):
+        response = self.client.get(f"{self.v2_url}?download=1")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_verify_qr_supports_legacy_signed_token(self):
+        response = self.client.get(f"{self.legacy_url}?format=json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["valid"])
+        self.assertEqual(response.data["student_number"], "QR001")

@@ -1994,9 +1994,9 @@ def _build_report_card_pdf(student, results, school, year, term):
             from django.core.signing import TimestampSigner
             import qrcode
             signer = TimestampSigner(salt='report-card')
-            token = signer.sign(f'{student.id}|{year}|{term}')
+            token = signer.sign(f'v2|{school.id}|{student.id}|{year}|{term}')
             base_url = getattr(school, 'website', '') or 'https://tishanyq.co.zw'
-            verify_url = f'{base_url.rstrip("/")}/api/auth/reports/verify/{token}/'
+            verify_url = f'{base_url.rstrip("/")}/api/v1/auth/reports/verify/{token}/'
             qr = qrcode.QRCode(box_size=4, border=1)
             qr.add_data(verify_url)
             qr.make(fit=True)

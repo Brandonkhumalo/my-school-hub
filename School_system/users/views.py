@@ -1080,33 +1080,114 @@ def subject_group_detail_view(request, group_id):
 # Report card QR verification (public)
 # ---------------------------------------------------------------
 
+def _is_html_request(request):
+    accept = (request.headers.get('Accept') or '').lower()
+    if 'application/json' in accept and 'text/html' not in accept:
+        return False
+    return request.query_params.get('format') != 'json'
+
+
+def _parse_report_token_payload(payload):
+    """
+    Supported payload formats:
+      - v2|<school_id>|<student_id>|<year>|<term>
+      - <student_id>|<year>|<term> (legacy)
+    """
+    parts = payload.split('|')
+    if len(parts) >= 5 and parts[0] == 'v2':
+        _, school_id, student_id, year, term = parts[:5]
+        return int(school_id), int(student_id), year, term
+    if len(parts) >= 3:
+        student_id, year, term = parts[:3]
+        return None, int(student_id), year, term
+    raise ValueError('Malformed token payload')
+
+
+def _report_verify_response(request, payload, http_status=status.HTTP_200_OK):
+    if _is_html_request(request):
+        from django.http import HttpResponse
+        from django.utils.html import escape
+
+        title = 'Report Verification'
+        body = f"<h2>{escape(payload.get('error', 'Verification failed'))}</h2>"
+        if payload.get('valid'):
+            title = 'Verified Report Card'
+            report_url = escape(payload.get('report_url', ''))
+            school_name = escape(payload.get('school_name', ''))
+            student_name = escape(payload.get('student_name', ''))
+            year = escape(payload.get('academic_year', ''))
+            term = escape(payload.get('academic_term', ''))
+            avg = escape(str(payload.get('overall_average', 0)))
+            body = (
+                "<h1 style='margin:0 0 8px;color:#0f5132;'>Authentic School Report Card</h1>"
+                f"<p style='margin:0 0 16px;color:#555;'>{school_name} has verified this report for "
+                f"<strong>{student_name}</strong> ({term} {year}).</p>"
+                "<div style='margin:0 0 16px;padding:12px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;'>"
+                f"<strong>Overall Average:</strong> {avg}%"
+                "</div>"
+                f"<p style='margin:0 0 14px;'><a href='{report_url}?download=1' "
+                "style='display:inline-block;padding:10px 14px;background:#0d6efd;color:#fff;text-decoration:none;border-radius:6px;'>"
+                "Open Report PDF</a></p>"
+                f"<iframe title='Report PDF' src='{report_url}?download=1' "
+                "style='width:100%;height:72vh;border:1px solid #ddd;border-radius:8px;'></iframe>"
+            )
+
+        html = (
+            "<!doctype html><html><head><meta charset='utf-8'/>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'/>"
+            f"<title>{escape(title)}</title>"
+            "</head><body style='font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:16px;'>"
+            "<div style='max-width:900px;margin:0 auto;background:#fff;padding:20px;border-radius:12px;"
+            "box-shadow:0 10px 25px rgba(0,0,0,0.06);'>"
+            f"{body}"
+            "</div></body></html>"
+        )
+        return HttpResponse(html, status=http_status)
+    return Response(payload, status=http_status)
+
+
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def verify_report_card(request, token):
-    """Public endpoint — decodes a signed token from a QR code and returns basic
-    authenticity info (school, student, term, overall grade). Used to verify
-    printed report cards are genuine."""
+    """Public endpoint for report-card QR verification and public PDF display."""
     from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
+    from django.db.models import Case, When, F, CharField
+    from django.http import HttpResponse
     from academics.models import Student, Result
-    from .models import School
+    from academics.views import _build_report_card_pdf
 
     signer = TimestampSigner(salt='report-card')
     try:
-        data = signer.unsign(token, max_age=60 * 60 * 24 * 365 * 5)  # 5-year validity
+        payload = signer.unsign(token, max_age=60 * 60 * 24 * 365 * 5)  # 5-year validity
     except SignatureExpired:
-        return Response({'valid': False, 'error': 'Token expired'}, status=status.HTTP_200_OK)
+        return _report_verify_response(request, {'valid': False, 'error': 'Token expired'})
     except BadSignature:
-        return Response({'valid': False, 'error': 'Invalid token'}, status=status.HTTP_200_OK)
+        return _report_verify_response(request, {'valid': False, 'error': 'Invalid token'})
 
     try:
-        sid, year, term = data.split('|', 2)
-        student = Student.objects.select_related('user', 'student_class', 'user__school').get(id=int(sid))
+        school_id_from_token, student_id, year, term = _parse_report_token_payload(payload)
+        student = Student.objects.select_related('user', 'student_class', 'user__school').get(id=student_id)
     except Exception:
-        return Response({'valid': False, 'error': 'Malformed token'}, status=status.HTTP_200_OK)
+        return _report_verify_response(request, {'valid': False, 'error': 'Malformed token'})
+
+    if (
+        school_id_from_token is not None
+        and student.user.school_id != school_id_from_token
+    ):
+        return _report_verify_response(
+            request,
+            {'valid': False, 'error': 'School mismatch in token'},
+        )
 
     results = Result.objects.filter(
-        student=student, academic_year=year, academic_term=term, include_in_report=True,
-    )
+        student=student, academic_year=year, include_in_report=True,
+    ).annotate(
+        effective_term=Case(
+            When(report_term='', then=F('academic_term')),
+            default=F('report_term'),
+            output_field=CharField(),
+        )
+    ).filter(effective_term=term)
     total_pct = 0.0
     count = 0
     for r in results:
@@ -1115,7 +1196,8 @@ def verify_report_card(request, token):
             count += 1
     avg = round(total_pct / count, 1) if count else 0.0
 
-    return Response({
+    report_url = request.build_absolute_uri(request.path)
+    response_payload = {
         'valid': True,
         'student_name': student.user.full_name,
         'student_number': student.user.student_number,
@@ -1125,7 +1207,33 @@ def verify_report_card(request, token):
         'academic_term': term,
         'overall_average': avg,
         'subject_count': count,
-    })
+        'report_url': report_url,
+    }
+
+    if request.query_params.get('download') == '1':
+        pdf_results = Result.objects.filter(
+            student=student, academic_year=year, include_in_report=True,
+        ).annotate(
+            effective_term=Case(
+                When(report_term='', then=F('academic_term')),
+                default=F('report_term'),
+                output_field=CharField(),
+            )
+        ).filter(effective_term=term).select_related('subject').order_by('subject__name')
+        buffer = _build_report_card_pdf(
+            student=student,
+            results=pdf_results,
+            school=student.user.school,
+            year=year,
+            term=term,
+        )
+        response = HttpResponse(buffer.read(), content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="verified_report_{student.user.student_number}_{term}_{year}.pdf"'
+        )
+        return response
+
+    return _report_verify_response(request, response_payload)
 
 
 # ---------------------------------------------------------------
