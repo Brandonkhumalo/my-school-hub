@@ -47,6 +47,7 @@ from .billing_service import (
     compute_record_totals,
     settle_additional_fees_for_record,
     recalculate_student_additional_fees,
+    ensure_three_term_invoices_for_school,
 )
 from .term_finance import (
     TERM_SEQUENCE,
@@ -1033,6 +1034,12 @@ class SchoolFeesListCreateView(generics.ListCreateAPIView):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can create school fees")
         fee = serializer.save(created_by=self.request.user, school=self.request.user.school)
+        ensure_three_term_invoices_for_school(
+            school=self.request.user.school,
+            academic_year=fee.academic_year,
+            recorded_by=self.request.user,
+            grade_level=fee.grade_level,
+        )
         # Notify parents of all students in this grade
         try:
             from academics.models import Student
@@ -1083,7 +1090,13 @@ class SchoolFeesDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.user.role != 'admin':
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only admins can update school fees")
-        serializer.save()
+        fee = serializer.save()
+        ensure_three_term_invoices_for_school(
+            school=self.request.user.school,
+            academic_year=fee.academic_year,
+            recorded_by=self.request.user,
+            grade_level=fee.grade_level,
+        )
     
     def perform_destroy(self, instance):
         """Execute perform destroy."""

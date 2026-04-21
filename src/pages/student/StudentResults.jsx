@@ -17,6 +17,9 @@ export default function StudentResults() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const [studentId, setStudentId] = useState(null);
+  const [reportError, setReportError] = useState("");
   const [reportYear, setReportYear] = useState(currentAcademicYear);
   const [reportTerm, setReportTerm] = useState(currentTerm);
 
@@ -24,7 +27,10 @@ export default function StudentResults() {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const data = await apiService.fetchStudentPerformance(user.id);
+        const profile = await apiService.getStudentProfile();
+        const resolvedStudentId = profile?.id || user.id;
+        setStudentId(resolvedStudentId);
+        const data = await apiService.fetchStudentPerformance(resolvedStudentId);
         setPerformance(data);
       } catch (error) {
         console.error("Error fetching performance:", error);
@@ -52,14 +58,19 @@ export default function StudentResults() {
     fetchPlans();
   }, [reportYear, reportTerm]);
 
+  const fetchReportBlob = async () => {
+    const resolvedStudentId = studentId || performance?.student_id || user.id;
+    return apiService.downloadReportCard(resolvedStudentId, {
+      year: reportYear,
+      term: reportTerm,
+    });
+  };
+
   const handleDownloadReport = async () => {
     setDownloading(true);
+    setReportError("");
     try {
-      const studentId = performance?.student_id || user.id;
-      const blob = await apiService.downloadReportCard(studentId, {
-        year: reportYear,
-        term: reportTerm,
-      });
+      const blob = await fetchReportBlob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -69,9 +80,24 @@ export default function StudentResults() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      alert(error.message || 'Failed to download report card');
+      setReportError(error.message || "Failed to download report card");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleViewReport = async () => {
+    setViewing(true);
+    setReportError("");
+    try {
+      const blob = await fetchReportBlob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      setReportError(error.message || "Failed to open report card");
+    } finally {
+      setViewing(false);
     }
   };
 
@@ -123,8 +149,13 @@ export default function StudentResults() {
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">
               <i className="fas fa-file-pdf text-red-500 mr-2"></i>
-              Download Report Card
+              View & Download Report Card
             </h3>
+            {reportError && (
+              <div className="mb-3 rounded-md bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
+                {reportError}
+              </div>
+            )}
             <div className="flex flex-wrap items-end gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">Year</label>
@@ -151,6 +182,30 @@ export default function StudentResults() {
                   <option value="Term 3">Term 3</option>
                 </select>
               </div>
+              <button
+                onClick={handleViewReport}
+                disabled={viewing}
+                className={`flex items-center space-x-2 px-5 py-2 rounded-lg font-medium text-white transition-all ${
+                  viewing
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                }`}
+              >
+                {viewing ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Opening...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-eye"></i>
+                    <span>View PDF</span>
+                  </>
+                )}
+              </button>
               <button
                 onClick={handleDownloadReport}
                 disabled={downloading}

@@ -536,6 +536,20 @@ class CreateStudentSerializer(serializers.Serializer):
             emergency_contact=emergency_contact or student_contact
         )
 
+        # Automatically bootstrap one-term invoices/payment records for Terms 1-3
+        # when school fees exist for this grade/year.
+        try:
+            from finances.billing_service import ensure_three_term_invoices_for_student
+            ensure_three_term_invoices_for_student(
+                student=student,
+                school=school,
+                academic_year=str(admission_date.year),
+                recorded_by=created_by,
+            )
+        except Exception:
+            # Student creation should not fail if billing sync fails.
+            pass
+
         return student
 
 class CreateTeacherSerializer(serializers.Serializer):

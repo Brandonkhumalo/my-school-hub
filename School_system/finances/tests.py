@@ -1235,3 +1235,95 @@ class PaymentTransactionRecordingAPITest(APITestCase):
         self.assertEqual(txn.amount, Decimal("200.00"))
         self.assertEqual(txn.payment_method, "card")
         self.assertEqual(txn.transaction_reference, "PAYNOW-TXN-001")
+
+
+class SchoolFeeInvoiceBootstrapTest(APITestCase):
+    """Auto-create 3 term invoices/records and protect already-paid terms on fee updates."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school("Bootstrap Fees School")
+        self.admin = make_user(self.school, "bootstrap_admin", role="admin")
+        self.cls = make_class(self.school, name="Form 2A", grade_level=2)
+        self.student = make_student(self.school, self.cls, username="bootstrap_student", student_number="BOOT001")
+        self.list_url = "/api/v1/finances/school-fees/"
+
+    def _create_term_fee(self, tuition):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.list_url, {
+            "grade_level": self.cls.grade_level,
+            "grade_name": self.cls.name,
+            "tuition_fee": str(tuition),
+            "levy_fee": "0.00",
+            "sports_fee": "0.00",
+            "computer_fee": "0.00",
+            "other_fees": "0.00",
+            "boarding_fee": "0.00",
+            "transport_fee": "0.00",
+            "academic_year": "2026",
+            "academic_term": "term_1",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return response.data["id"]
+
+    def test_school_fee_create_bootstraps_three_term_invoices_per_student(self):
+        self._create_term_fee(Decimal("100.00"))
+
+        records = StudentPaymentRecord.objects.filter(
+            school=self.school,
+            student=self.student,
+            payment_type="school_fees",
+            academic_year="2026",
+        )
+        self.assertEqual(records.count(), 3)
+        self.assertSetEqual(
+            set(records.values_list("academic_term", flat=True)),
+            {"term_1", "term_2", "term_3"},
+        )
+
+        invoices = Invoice.objects.filter(school=self.school, student=self.student)
+        self.assertEqual(invoices.count(), 3)
+        self.assertTrue(all(invoice.payment_record_id for invoice in invoices))
+
+    def test_fee_update_refreshes_unpaid_terms_but_not_paid_term(self):
+        fee_id = self._create_term_fee(Decimal("100.00"))
+        records = {
+            r.academic_term: r
+            for r in StudentPaymentRecord.objects.filter(
+                school=self.school,
+                student=self.student,
+                academic_year="2026",
+                payment_type="school_fees",
+            )
+        }
+        paid_record = records["term_1"]
+        paid_record.amount_paid = Decimal("100.00")
+        paid_record.payment_status = "paid"
+        paid_record.save(update_fields=["amount_paid", "payment_status", "date_updated"])
+
+        self.client.force_authenticate(user=self.admin)
+        patch_response = self.client.patch(
+            f"/api/v1/finances/school-fees/{fee_id}/",
+            {"tuition_fee": "120.00"},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+
+        refreshed = {
+            r.academic_term: r
+            for r in StudentPaymentRecord.objects.filter(
+                school=self.school,
+                student=self.student,
+                academic_year="2026",
+                payment_type="school_fees",
+            )
+        }
+        self.assertEqual(refreshed["term_1"].total_amount_due, Decimal("100.00"))
+        self.assertEqual(refreshed["term_1"].payment_status, "paid")
+        self.assertEqual(refreshed["term_2"].total_amount_due, Decimal("120.00"))
+        self.assertEqual(refreshed["term_3"].total_amount_due, Decimal("120.00"))
+
+        paid_invoice = Invoice.objects.get(payment_record=refreshed["term_1"])
+        self.assertEqual(paid_invoice.total_amount, Decimal("100.00"))
+        self.assertTrue(paid_invoice.is_paid)
