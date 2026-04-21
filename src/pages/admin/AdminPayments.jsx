@@ -26,9 +26,9 @@ export default function AdminPayments() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
-  const canEditPayments = user?.role === "admin" || user?.role === "accountant";
-
   const termMap = { 'Term 1': 'term_1', 'Term 2': 'term_2', 'Term 3': 'term_3' };
+  const [termFilter, setTermFilter] = useState(termMap[currentTerm] || "term_1");
+  const canEditPayments = user?.role === "admin" || user?.role === "accountant";
   const academicYears = [currentAcademicYear, `${parseInt(currentAcademicYear) - 1}`, `${parseInt(currentAcademicYear) + 1}`];
 
   const [formData, setFormData] = useState({
@@ -37,6 +37,7 @@ export default function AdminPayments() {
     payment_plan: "one_term",
     academic_year: currentAcademicYear,
     academic_term: termMap[currentTerm] || "term_1",
+    covered_terms: [termMap[currentTerm] || "term_1"],
     total_amount_due: "",
     amount_paid: "",
     currency: currency || "USD",
@@ -57,7 +58,7 @@ export default function AdminPayments() {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+  }, [currentAcademicYear, termFilter]);
 
   useEffect(() => {
     if (activeTab === "records") {
@@ -67,14 +68,17 @@ export default function AdminPayments() {
     } else if (activeTab === "invoices") {
       loadInvoices();
     }
-  }, [activeTab, selectedClass, statusFilter]);
+  }, [activeTab, selectedClass, statusFilter, termFilter]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
       const [classesData, studentsData] = await Promise.all([
         apiService.fetchClasses(),
-        apiService.getStudentsForPayment()
+        apiService.getStudentsForPayment({
+          academic_year: currentAcademicYear,
+          academic_term: termFilter,
+        })
       ]);
       setClasses(classesData || []);
       setStudents(studentsData?.students || []);
@@ -90,6 +94,8 @@ export default function AdminPayments() {
       const params = {};
       if (selectedClass) params.class_id = selectedClass;
       if (statusFilter) params.status = statusFilter;
+      if (currentAcademicYear) params.academic_year = currentAcademicYear;
+      if (termFilter) params.academic_term = termFilter;
       const data = await apiService.getPaymentRecords(params);
       setPaymentRecords(data || []);
     } catch (error) {
@@ -101,6 +107,8 @@ export default function AdminPayments() {
     try {
       const params = {};
       if (selectedClass) params.class_id = selectedClass;
+      if (currentAcademicYear) params.academic_year = currentAcademicYear;
+      if (termFilter) params.academic_term = termFilter;
       const data = await apiService.getClassFeesReport(params);
       setClassReport(data?.reports || []);
     } catch (error) {
@@ -128,6 +136,19 @@ export default function AdminPayments() {
       const cleanData = { ...formData };
       if (!cleanData.due_date) delete cleanData.due_date;
       if (!cleanData.next_payment_due) delete cleanData.next_payment_due;
+      if (cleanData.payment_plan !== "specific_terms") {
+        if (cleanData.payment_plan === "full_year") {
+          cleanData.covered_terms = ["term_1", "term_2", "term_3"];
+        } else if (cleanData.payment_plan === "two_terms" && cleanData.academic_term === "term_2") {
+          cleanData.covered_terms = ["term_2", "term_3"];
+        } else if (cleanData.payment_plan === "two_terms" && cleanData.academic_term === "term_1") {
+          cleanData.covered_terms = ["term_1", "term_2"];
+        } else if (cleanData.academic_term) {
+          cleanData.covered_terms = [cleanData.academic_term];
+        } else {
+          delete cleanData.covered_terms;
+        }
+      }
       await apiService.createPaymentRecord(cleanData);
       setShowAddModal(false);
       setFormData({
@@ -136,6 +157,7 @@ export default function AdminPayments() {
         payment_plan: "one_term",
         academic_year: currentAcademicYear,
         academic_term: termMap[currentTerm] || "term_1",
+        covered_terms: [termMap[currentTerm] || "term_1"],
         total_amount_due: "",
         amount_paid: "",
         currency: currency || "USD",
@@ -247,6 +269,8 @@ export default function AdminPayments() {
         ? 3
         : formData.payment_plan === "two_terms"
         ? 2
+        : formData.payment_plan === "specific_terms"
+        ? Math.max(1, formData.covered_terms?.length || 0)
         : 1;
       const calculatedDue = (baseDue * multiplier).toFixed(2);
       setSelectedStudentFee(student.school_fee);
@@ -266,9 +290,38 @@ export default function AdminPayments() {
 
   const handlePaymentPlanChange = (paymentPlan) => {
     const nextData = { ...formData, payment_plan: paymentPlan };
+    if (paymentPlan === "specific_terms" && (!nextData.covered_terms || nextData.covered_terms.length === 0)) {
+      nextData.covered_terms = [nextData.academic_term || "term_1"];
+    }
+    if (paymentPlan === "full_year") {
+      nextData.covered_terms = ["term_1", "term_2", "term_3"];
+      nextData.academic_term = "";
+    } else if (paymentPlan === "two_terms") {
+      const startTerm = nextData.academic_term || "term_1";
+      if (startTerm === "term_3") {
+        nextData.academic_term = "term_2";
+        nextData.covered_terms = ["term_2", "term_3"];
+      } else if (startTerm === "term_2") {
+        nextData.covered_terms = ["term_2", "term_3"];
+      } else {
+        nextData.academic_term = "term_1";
+        nextData.covered_terms = ["term_1", "term_2"];
+      }
+    } else if (paymentPlan === "one_term") {
+      const selectedTerm = nextData.academic_term || "term_1";
+      nextData.academic_term = selectedTerm;
+      nextData.covered_terms = [selectedTerm];
+    }
+
     if (selectedStudentFee && formData.payment_type === "school_fees") {
       const baseDue = Number(selectedStudentFee.total_fee || 0);
-      const multiplier = paymentPlan === "full_year" ? 3 : paymentPlan === "two_terms" ? 2 : 1;
+      const multiplier = paymentPlan === "full_year"
+        ? 3
+        : paymentPlan === "two_terms"
+        ? 2
+        : paymentPlan === "specific_terms"
+        ? Math.max(1, nextData.covered_terms?.length || 0)
+        : 1;
       nextData.total_amount_due = (baseDue * multiplier).toFixed(2);
     }
     setFormData(nextData);
@@ -355,6 +408,7 @@ export default function AdminPayments() {
               <tr><td>Payment Plan</td><td>${inv.payment_details.payment_plan || ''}</td></tr>
               <tr><td>Academic Year</td><td>${inv.payment_details.academic_year || ''}</td></tr>
               ${inv.payment_details.academic_term ? `<tr><td>Term</td><td>${inv.payment_details.academic_term}</td></tr>` : ''}
+              ${Array.isArray(inv.payment_details.covered_terms) && inv.payment_details.covered_terms.length > 0 ? `<tr><td>Covered Terms</td><td>${inv.payment_details.covered_terms.map((t) => t.replace('_', ' ')).join(', ')}</td></tr>` : ''}
             </tbody>
           </table>
         ` : ''}
@@ -587,6 +641,15 @@ export default function AdminPayments() {
                 <option key={cls.id} value={cls.id}>{cls.name}</option>
               ))}
             </select>
+            <select
+              value={termFilter}
+              onChange={(e) => setTermFilter(e.target.value)}
+              className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="term_1">Term 1</option>
+              <option value="term_2">Term 2</option>
+              <option value="term_3">Term 3</option>
+            </select>
             {activeTab === "records" && (
               <select
                 value={statusFilter}
@@ -628,7 +691,14 @@ export default function AdminPayments() {
                         </td>
                         <td className="px-4 py-3 text-gray-700">{record.class_name}</td>
                         <td className="px-4 py-3 text-gray-700 capitalize">{record.payment_type?.replace('_', ' ')}</td>
-                        <td className="px-4 py-3 text-gray-700 capitalize">{record.payment_plan?.replace('_', ' ')}</td>
+                        <td className="px-4 py-3 text-gray-700 capitalize">
+                          <div>{record.payment_plan?.replace('_', ' ')}</div>
+                          {Array.isArray(record.included_terms) && record.included_terms.length > 0 && (
+                            <div className="text-xs text-gray-500 normal-case">
+                              {record.included_terms.map((t) => t.label).join(", ")}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right font-medium">{record.currency}{parseFloat(record.total_amount_due).toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-green-600 font-medium">{record.currency}{parseFloat(record.amount_paid).toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-red-600 font-medium">{record.currency}{parseFloat(record.balance).toFixed(2)}</td>
@@ -882,6 +952,8 @@ export default function AdminPayments() {
                           ? 3
                           : formData.payment_plan === "two_terms"
                           ? 2
+                          : formData.payment_plan === "specific_terms"
+                          ? Math.max(1, formData.covered_terms?.length || 0)
                           : 1;
                         nextData.total_amount_due = (baseDue * multiplier).toFixed(2);
                       }
@@ -906,6 +978,7 @@ export default function AdminPayments() {
                     <option value="full_year">Full Year Payment</option>
                     <option value="two_terms">Two Terms Payment</option>
                     <option value="one_term">One Term Payment</option>
+                    <option value="specific_terms">Specific Terms</option>
                     <option value="batch">Batch Payment</option>
                   </select>
                 </div>
@@ -928,8 +1001,26 @@ export default function AdminPayments() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
                   <select
                     value={formData.academic_term}
-                    onChange={(e) => setFormData({ ...formData, academic_term: e.target.value })}
+                    onChange={(e) => {
+                      const selectedTerm = e.target.value;
+                      const nextData = { ...formData, academic_term: selectedTerm };
+                      if (formData.payment_plan === "one_term") {
+                        nextData.covered_terms = selectedTerm ? [selectedTerm] : [];
+                      } else if (formData.payment_plan === "two_terms") {
+                        if (selectedTerm === "term_2") {
+                          nextData.covered_terms = ["term_2", "term_3"];
+                        } else if (selectedTerm === "term_1") {
+                          nextData.covered_terms = ["term_1", "term_2"];
+                        }
+                      } else if (formData.payment_plan === "specific_terms" && selectedTerm) {
+                        const terms = new Set(nextData.covered_terms || []);
+                        terms.add(selectedTerm);
+                        nextData.covered_terms = Array.from(terms);
+                      }
+                      setFormData(nextData);
+                    }}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    disabled={formData.payment_plan === "full_year"}
                   >
                     <option value="">N/A (Full Year)</option>
                     <option value="term_1">Term 1</option>
@@ -951,6 +1042,40 @@ export default function AdminPayments() {
                     <option value="ZAR">ZAR (R)</option>
                   </select>
                 </div>
+
+                {formData.payment_plan === "specific_terms" && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Terms *</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["term_1", "term_2", "term_3"].map((termKey) => (
+                        <label key={termKey} className="flex items-center gap-2 p-2 border rounded-lg">
+                          <input
+                            type="checkbox"
+                            checked={formData.covered_terms?.includes(termKey)}
+                            onChange={(e) => {
+                              const current = new Set(formData.covered_terms || []);
+                              if (e.target.checked) current.add(termKey);
+                              else current.delete(termKey);
+                              const nextCovered = Array.from(current).sort();
+                              const nextData = {
+                                ...formData,
+                                covered_terms: nextCovered,
+                                academic_term: nextCovered[0] || "",
+                              };
+                              if (selectedStudentFee && formData.payment_type === "school_fees") {
+                                const baseDue = Number(selectedStudentFee.total_fee || 0);
+                                const multiplier = Math.max(1, nextCovered.length);
+                                nextData.total_amount_due = (baseDue * multiplier).toFixed(2);
+                              }
+                              setFormData(nextData);
+                            }}
+                          />
+                          <span className="text-sm">{termKey.replace("_", " ").toUpperCase()}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount Due *</label>
@@ -1201,6 +1326,14 @@ export default function AdminPayments() {
                         <tr className="border-b">
                           <td className="py-2 text-gray-600">Term:</td>
                           <td className="py-2 font-medium">{selectedInvoice.payment_details.academic_term}</td>
+                        </tr>
+                      )}
+                      {Array.isArray(selectedInvoice.payment_details.covered_terms) && selectedInvoice.payment_details.covered_terms.length > 0 && (
+                        <tr className="border-b">
+                          <td className="py-2 text-gray-600">Covered Terms:</td>
+                          <td className="py-2 font-medium">
+                            {selectedInvoice.payment_details.covered_terms.map((term) => term.replace("_", " ")).join(", ")}
+                          </td>
                         </tr>
                       )}
                     </tbody>

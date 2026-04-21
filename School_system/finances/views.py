@@ -2,6 +2,7 @@ import logging
 import uuid
 from decimal import Decimal, InvalidOperation
 from datetime import date
+from collections import defaultdict
 
 from django.db import transaction
 from django.db.models import Sum, Q, Count
@@ -39,12 +40,20 @@ from .fee_calculator import (
     build_school_fee_breakdown,
     get_additional_fees_for_student,
     get_unpaid_additional_fees_for_record,
+    get_transport_opt_in,
 )
 from .billing_service import (
     to_decimal,
     compute_record_totals,
     settle_additional_fees_for_record,
     recalculate_student_additional_fees,
+)
+from .term_finance import (
+    TERM_SEQUENCE,
+    normalize_term_key,
+    normalize_terms,
+    resolve_terms_for_plan,
+    allocate_paid_across_terms,
 )
 from .paynow_security import verify_paynow_callback_signature
 from .serializers import (
@@ -74,14 +83,8 @@ MONTH_INDEX = {
 
 
 def _normalize_term(term_value):
-    raw = (term_value or '').strip().lower().replace(' ', '_')
-    if raw in {'term1', 'term_1', '1', 't1'}:
-        return 'term_1'
-    if raw in {'term2', 'term_2', '2', 't2'}:
-        return 'term_2'
-    if raw in {'term3', 'term_3', '3', 't3'}:
-        return 'term_3'
-    return raw or 'term_1'
+    key = normalize_term_key(term_value)
+    return key or 'term_1'
 
 
 def _current_term_window(user):
@@ -177,6 +180,222 @@ def _expense_value_in_window(expense, window_start, window_end):
 
     # term frequency: once per term if active in the period.
     return expense.amount
+
+
+def _school_fee_total_for_student(fee_row, student, school, transport_opt_in_cache=None):
+    if not fee_row or not student:
+        return Decimal('0')
+
+    total = (
+        fee_row.tuition_fee +
+        fee_row.levy_fee +
+        fee_row.sports_fee +
+        fee_row.computer_fee +
+        fee_row.other_fees
+    )
+
+    school_supports_boarding = bool(
+        school and getattr(school, 'accommodation_type', 'day') in ('boarding', 'both')
+    )
+    if school_supports_boarding and student.residence_type == 'boarding':
+        total += fee_row.boarding_fee
+
+    transport_opted_in = False
+    if fee_row.transport_fee and fee_row.transport_fee > 0:
+        if transport_opt_in_cache is None:
+            transport_opted_in = get_transport_opt_in(student)
+        else:
+            if student.id not in transport_opt_in_cache:
+                transport_opt_in_cache[student.id] = get_transport_opt_in(student)
+            transport_opted_in = transport_opt_in_cache[student.id]
+        if transport_opted_in:
+            total += fee_row.transport_fee
+
+    return total
+
+
+def _build_school_fees_map(school, academic_year, terms, grade_levels=None):
+    fees = SchoolFees.objects.filter(
+        school=school,
+        academic_year=academic_year,
+        academic_term__in=terms,
+    )
+    if grade_levels:
+        fees = fees.filter(grade_level__in=grade_levels)
+    return {(fee.grade_level, fee.academic_term): fee for fee in fees}
+
+
+def _record_included_terms(record):
+    terms = resolve_terms_for_plan(
+        getattr(record, 'payment_plan', ''),
+        getattr(record, 'academic_term', ''),
+        getattr(record, 'covered_terms', []),
+    )
+    if terms:
+        return terms
+    fallback = normalize_term_key(getattr(record, 'academic_term', ''))
+    if fallback in TERM_SEQUENCE:
+        return [fallback]
+    return []
+
+
+def _record_terms_label(record):
+    terms = _record_included_terms(record)
+    if not terms:
+        return (record.academic_term or '').strip()
+    return ', '.join(term.replace('_', ' ').title() for term in terms)
+
+
+def _record_due_by_term(record, school, school_fees_map, transport_opt_in_cache=None):
+    terms = _record_included_terms(record)
+    if not terms:
+        return {}
+
+    if record.payment_type != 'school_fees':
+        split_due = to_decimal(record.total_amount_due) / Decimal(str(len(terms)))
+        return {term: split_due for term in terms}
+
+    student = record.student
+    if not student or not student.student_class:
+        return {}
+
+    due_by_term = {}
+    for term in terms:
+        fee_row = school_fees_map.get((student.student_class.grade_level, term))
+        if not fee_row:
+            continue
+        due_by_term[term] = _school_fee_total_for_student(
+            fee_row,
+            student,
+            school,
+            transport_opt_in_cache=transport_opt_in_cache,
+        )
+    if due_by_term:
+        return due_by_term
+
+    # Legacy fallback: when fee tables are missing, allocate from record snapshot.
+    split_due = to_decimal(record.total_amount_due) / Decimal(str(len(terms)))
+    return {term: split_due for term in terms}
+
+
+def _aggregate_additional_fee_maps(school, academic_year, terms):
+    fees = AdditionalFee.objects.filter(
+        school=school,
+        academic_year=academic_year,
+        academic_term__in=terms,
+    )
+
+    expected_by_student = defaultdict(Decimal)
+    expected_by_class = defaultdict(Decimal)
+    expected_global = defaultdict(Decimal)
+
+    collected_by_student = defaultdict(Decimal)
+    collected_by_class = defaultdict(Decimal)
+    collected_global = defaultdict(Decimal)
+
+    for fee in fees:
+        amount = to_decimal(fee.amount)
+        term = normalize_term_key(fee.academic_term)
+        if term not in terms:
+            continue
+
+        if fee.student_id:
+            expected_by_student[(fee.student_id, term)] += amount
+            if fee.is_paid:
+                collected_by_student[(fee.student_id, term)] += amount
+            continue
+
+        if fee.student_class_id:
+            expected_by_class[(fee.student_class_id, term)] += amount
+            if fee.is_paid:
+                collected_by_class[(fee.student_class_id, term)] += amount
+            continue
+
+        expected_global[term] += amount
+        if fee.is_paid:
+            collected_global[term] += amount
+
+    return {
+        'expected_by_student': expected_by_student,
+        'expected_by_class': expected_by_class,
+        'expected_global': expected_global,
+        'collected_by_student': collected_by_student,
+        'collected_by_class': collected_by_class,
+        'collected_global': collected_global,
+    }
+
+
+def _student_term_financials(students, school, academic_year, terms):
+    term_set = set(terms)
+    transport_opt_in_cache = {}
+    grade_levels = {
+        student.student_class.grade_level
+        for student in students
+        if getattr(student, 'student_class', None)
+    }
+    school_fees_map = _build_school_fees_map(
+        school=school,
+        academic_year=academic_year,
+        terms=terms,
+        grade_levels=grade_levels,
+    )
+
+    expected_map = defaultdict(Decimal)
+    collected_map = defaultdict(Decimal)
+
+    additional_maps = _aggregate_additional_fee_maps(school, academic_year, terms)
+
+    students_by_id = {student.id: student for student in students}
+    for student in students:
+        if not student.student_class:
+            continue
+        class_id = student.student_class_id
+        grade_level = student.student_class.grade_level
+        for term in terms:
+            fee_row = school_fees_map.get((grade_level, term))
+            if fee_row:
+                expected_map[(student.id, term)] += _school_fee_total_for_student(
+                    fee_row,
+                    student,
+                    school,
+                    transport_opt_in_cache=transport_opt_in_cache,
+                )
+            expected_map[(student.id, term)] += additional_maps['expected_by_student'].get((student.id, term), Decimal('0'))
+            expected_map[(student.id, term)] += additional_maps['expected_by_class'].get((class_id, term), Decimal('0'))
+            expected_map[(student.id, term)] += additional_maps['expected_global'].get(term, Decimal('0'))
+
+            collected_map[(student.id, term)] += additional_maps['collected_by_student'].get((student.id, term), Decimal('0'))
+            collected_map[(student.id, term)] += additional_maps['collected_by_class'].get((class_id, term), Decimal('0'))
+            collected_map[(student.id, term)] += additional_maps['collected_global'].get(term, Decimal('0'))
+
+    records = StudentPaymentRecord.objects.filter(
+        school=school,
+        academic_year=academic_year,
+        student_id__in=students_by_id.keys(),
+    ).select_related('student__student_class')
+
+    for record in records:
+        if record.student_id not in students_by_id:
+            continue
+        due_by_term = _record_due_by_term(
+            record,
+            school=school,
+            school_fees_map=school_fees_map,
+            transport_opt_in_cache=transport_opt_in_cache,
+        )
+        if not due_by_term:
+            continue
+
+        for term, due in due_by_term.items():
+            if term in term_set and expected_map.get((record.student_id, term), Decimal('0')) <= 0:
+                expected_map[(record.student_id, term)] += to_decimal(due)
+
+        paid_by_term = allocate_paid_across_terms(due_by_term, to_decimal(record.amount_paid))
+        for term, paid in paid_by_term.items():
+            if term in term_set:
+                collected_map[(record.student_id, term)] += to_decimal(paid)
+
+    return expected_map, collected_map
 
 
 def _notify_admin_and_root_hr_boss(school, title, message, link=''):
@@ -576,7 +795,7 @@ def finance_summary_view(request):
     month_name = today.strftime('%B')
     year = today.year
     school = user.school
-    term_start, term_end, current_year, term_labels, term_key = _current_term_window(user)
+    term_start, term_end, current_year, _term_labels, term_key = _current_term_window(user)
 
     monthly_salary_total = Payroll.objects.filter(
         staff__user__school=school,
@@ -584,26 +803,50 @@ def finance_summary_view(request):
         year=year,
     ).aggregate(total=Sum('net_salary'))['total'] or Decimal('0')
 
-    term_revenue_transactions = PaymentTransaction.objects.filter(
-        payment_record__school=school,
-        payment_date__date__gte=term_start,
-        payment_date__date__lte=term_end,
-    ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-
-    term_revenue_records = StudentPaymentRecord.objects.filter(
+    selected_terms = [term_key]
+    students = list(
+        Student.objects.filter(
+            user__school=school,
+            user__is_active=True,
+        ).select_related('student_class')
+    )
+    expected_map, collected_map = _student_term_financials(
+        students=students,
         school=school,
         academic_year=current_year,
-    ).filter(
-        Q(academic_term__in=term_labels) | Q(payment_plan='full_year')
-    ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
+        terms=selected_terms,
+    )
 
-    term_revenue_invoices = Invoice.objects.filter(
-        student__user__school=school,
-        is_paid=True,
-        issue_date__gte=term_start,
-        issue_date__lte=term_end,
-    ).aggregate(total=Sum('amount_paid'))['total'] or Decimal('0')
-    term_revenue = max(term_revenue_transactions, term_revenue_records, term_revenue_invoices)
+    term_expected_revenue = Decimal('0')
+    term_collected_revenue = Decimal('0')
+    term_paid_students = 0
+    term_partial_students = 0
+    term_unpaid_students = 0
+    for student in students:
+        student_expected = Decimal('0')
+        student_collected = Decimal('0')
+        for term in selected_terms:
+            student_expected += expected_map.get((student.id, term), Decimal('0'))
+            student_collected += collected_map.get((student.id, term), Decimal('0'))
+
+        term_expected_revenue += student_expected
+        term_collected_revenue += student_collected
+
+        student_balance = student_expected - student_collected
+        if student_expected <= 0:
+            continue
+        if student_balance <= 0:
+            term_paid_students += 1
+        elif student_collected > 0:
+            term_partial_students += 1
+        else:
+            term_unpaid_students += 1
+
+    term_revenue = term_expected_revenue if term_expected_revenue > 0 else term_collected_revenue
+    term_outstanding_revenue = max(Decimal('0'), term_revenue - term_collected_revenue)
+    term_collection_rate = Decimal('0')
+    if term_revenue > 0:
+        term_collection_rate = (term_collected_revenue / term_revenue) * Decimal('100')
 
     term_payroll_total = Decimal('0')
     payroll_rows = Payroll.objects.filter(
@@ -632,6 +875,7 @@ def finance_summary_view(request):
     )
     term_total_expenses = term_payroll_total + term_other_expenses
     term_profit = term_revenue - term_total_expenses
+    term_cash_profit = term_collected_revenue - term_total_expenses
 
     payroll_qs = Payroll.objects.filter(staff__user__school=school, month=month_name, year=year)
     paid_count = payroll_qs.filter(is_paid=True).count()
@@ -643,10 +887,18 @@ def finance_summary_view(request):
         'current_term': term_key,
         'monthly_salary_total': monthly_salary_total,
         'term_revenue': term_revenue,
+        'term_expected_revenue': term_expected_revenue,
+        'term_collected_revenue': term_collected_revenue,
+        'term_outstanding_revenue': term_outstanding_revenue,
+        'term_collection_rate': term_collection_rate,
         'term_other_expenses': term_other_expenses,
         'term_salary_expenses': term_payroll_total,
         'term_total_expenses': term_total_expenses,
         'term_profit': term_profit,
+        'term_cash_profit': term_cash_profit,
+        'term_paid_students': term_paid_students,
+        'term_partial_students': term_partial_students,
+        'term_unpaid_students': term_unpaid_students,
         'monthly_paid_count': paid_count,
         'monthly_unpaid_count': unpaid_count,
     })
@@ -1007,6 +1259,7 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
         payment_status = self.request.query_params.get('status')
         payment_type = self.request.query_params.get('type')
         academic_year = self.request.query_params.get('academic_year')
+        academic_term = self.request.query_params.get('academic_term')
         
         if student_id:
             queryset = queryset.filter(student_id=student_id)
@@ -1018,6 +1271,13 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(payment_type=payment_type)
         if academic_year:
             queryset = queryset.filter(academic_year=academic_year)
+        if academic_term:
+            normalized_term = normalize_term_key(academic_term)
+            queryset = queryset.filter(
+                Q(academic_term=academic_term) |
+                Q(academic_term=normalized_term) |
+                Q(payment_plan='full_year')
+            )
             
         return queryset.order_by('-date_created')
 
@@ -1076,13 +1336,16 @@ class StudentPaymentRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
         student = instance.student
         school = instance.school
         academic_year = instance.academic_year
-        academic_term = instance.academic_term or ''
+        covered_terms = normalize_terms(getattr(instance, 'covered_terms', []))
+        academic_term = normalize_term_key(instance.academic_term)
 
         with transaction.atomic():
             # Delete snapshot invoices linked to this payment record to avoid stale orphan invoices.
             Invoice.objects.filter(payment_record=instance, school=school).delete()
             instance.delete()
-            _recalculate_additional_fees_for_student(student, school, academic_year, academic_term)
+            terms_to_recalc = covered_terms or ([academic_term] if academic_term else [''])
+            for term in terms_to_recalc:
+                _recalculate_additional_fees_for_student(student, school, academic_year, term)
 
 
 @api_view(['POST'])
@@ -1156,6 +1419,8 @@ def class_fees_report(request):
     
     class_id = request.query_params.get('class_id')
     academic_year = request.query_params.get('academic_year')
+    academic_term = request.query_params.get('academic_term')
+    terms_param = request.query_params.get('terms')
     
     if not request.user.school:
         return Response({'error': 'No school associated'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1168,7 +1433,31 @@ def class_fees_report(request):
     except Class.DoesNotExist:
         return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    students = Student.objects.filter(student_class=cls)
+    students = list(
+        Student.objects.filter(student_class=cls).select_related('student_class', 'user')
+    )
+
+    if not academic_year:
+        _, _, inferred_year, _, _ = _current_term_window(request.user)
+        academic_year = inferred_year
+
+    if terms_param:
+        selected_terms = normalize_terms([part for part in terms_param.split(',') if part.strip()])
+    elif academic_term:
+        selected_terms = normalize_terms([academic_term])
+    else:
+        _, _, _, _, current_term = _current_term_window(request.user)
+        selected_terms = [current_term]
+
+    if not selected_terms:
+        return Response({'error': 'At least one valid term is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    expected_map, collected_map = _student_term_financials(
+        students=students,
+        school=request.user.school,
+        academic_year=academic_year,
+        terms=selected_terms,
+    )
     
     paid_count = 0
     partial_count = 0
@@ -1178,39 +1467,24 @@ def class_fees_report(request):
     student_data = []
     
     for student in students:
-        fee_breakdown = build_school_fee_breakdown(student, request.user.school)
-        additional_fees = get_additional_fees_for_student(student, request.user.school)
-        additional_fees_total = sum(float(f.amount) for f in additional_fees)
-        
-        records = StudentPaymentRecord.objects.filter(
-            student=student,
-            school=request.user.school
-        )
-        if academic_year:
-            records = records.filter(academic_year=academic_year)
-        
-        if records.exists():
-            student_due = sum(float(_record_total_due(r)) for r in records)
-            student_paid = sum(float(r.amount_paid) for r in records)
-            student_balance = student_due - student_paid
-            
-            latest_record = records.first()
-            if student_balance <= 0:
-                paid_count += 1
-                status_text = 'Paid'
-            elif student_paid > 0:
-                partial_count += 1
-                status_text = 'Partial'
-            else:
-                unpaid_count += 1
-                status_text = 'Unpaid'
+        student_due = Decimal('0')
+        student_paid = Decimal('0')
+        for term in selected_terms:
+            student_due += expected_map.get((student.id, term), Decimal('0'))
+            student_paid += collected_map.get((student.id, term), Decimal('0'))
+        student_balance = max(Decimal('0'), student_due - student_paid)
+
+        if student_due <= 0:
+            status_text = 'No Fees'
+        elif student_balance <= 0:
+            paid_count += 1
+            status_text = 'Paid'
+        elif student_paid > 0:
+            partial_count += 1
+            status_text = 'Partial'
         else:
-            base_due = float(fee_breakdown['total_school_fee']) + additional_fees_total
-            student_due = base_due
-            student_paid = 0
-            student_balance = student_due
             unpaid_count += 1
-            status_text = 'No Record'
+            status_text = 'Unpaid'
         
         total_due += student_due
         total_collected += student_paid
@@ -1222,20 +1496,22 @@ def class_fees_report(request):
             'total_due': float(student_due),
             'total_paid': float(student_paid),
             'balance': float(student_balance),
-            'status': status_text
+            'status': status_text,
         })
     
     report = {
         'class_id': cls.id,
         'class_name': cls.name,
-        'total_students': students.count(),
+        'academic_year': academic_year,
+        'terms': selected_terms,
+        'total_students': len(students),
         'paid_count': paid_count,
         'partial_count': partial_count,
         'unpaid_count': unpaid_count,
         'total_due': float(total_due),
         'total_collected': float(total_collected),
-        'total_outstanding': float(total_due - total_collected),
-        'students': student_data
+        'total_outstanding': float(max(Decimal('0'), total_due - total_collected)),
+        'students': student_data,
     }
     
     return Response({'reports': [report]})
@@ -1328,7 +1604,10 @@ def parent_invoices(request):
                         due_date=record.due_date or (date.today() + timedelta(days=30)),
                         is_paid=_record_balance(record) <= 0,
                         payment_record=record,
-                        notes=f"Snapshot invoice for {record.get_payment_type_display()} {record.academic_year} {record.academic_term}",
+                        notes=(
+                            f"Snapshot invoice for {record.get_payment_type_display()} "
+                            f"{record.academic_year} {_record_terms_label(record)}"
+                        ),
                     )
                     invoices_data.append({
                         'id': new_invoice.id,
@@ -1422,44 +1701,96 @@ def get_students_for_payment(request):
         return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     
     class_id = request.query_params.get('class_id')
+    academic_year = request.query_params.get('academic_year')
+    academic_term = normalize_term_key(request.query_params.get('academic_term'))
+    if not academic_year or not academic_term:
+        _, _, inferred_year, _, inferred_term = _current_term_window(request.user)
+        academic_year = academic_year or inferred_year
+        academic_term = academic_term or inferred_term
     
     students = Student.objects.filter(user__school=request.user.school)
     if class_id:
         students = students.filter(student_class_id=class_id)
+
+    students = list(students.select_related('student_class', 'user'))
+    grade_levels = {
+        student.student_class.grade_level
+        for student in students
+        if student.student_class
+    }
+    school_fee_rows = SchoolFees.objects.filter(
+        school=request.user.school,
+        academic_year=academic_year,
+        academic_term=academic_term,
+        grade_level__in=grade_levels,
+    )
+    fee_by_grade = {fee.grade_level: fee for fee in school_fee_rows}
+
+    additional_fees = AdditionalFee.objects.filter(
+        school=request.user.school,
+        academic_year=academic_year,
+        academic_term=academic_term,
+    )
+    additional_by_student = defaultdict(Decimal)
+    additional_by_class = defaultdict(Decimal)
+    additional_global = Decimal('0')
+    for fee in additional_fees:
+        amount = to_decimal(fee.amount)
+        if fee.student_id:
+            additional_by_student[fee.student_id] += amount
+        elif fee.student_class_id:
+            additional_by_class[fee.student_class_id] += amount
+        else:
+            additional_global += amount
     
     student_list = []
     for student in students:
         grade_level = student.student_class.grade_level if student.student_class else None
-
-        fee_breakdown = build_school_fee_breakdown(student, request.user.school)
-        additional_fees = get_additional_fees_for_student(student, request.user.school)
-        additional_fees_total = sum(float(f.amount) for f in additional_fees)
+        fee_row = fee_by_grade.get(grade_level)
+        additional_fees_total = (
+            additional_by_student.get(student.id, Decimal('0')) +
+            additional_by_class.get(student.student_class_id, Decimal('0')) +
+            additional_global
+        )
         
         school_fee = None
-        fee_row = fee_breakdown['school_fee']
         if fee_row:
+            base_fee_total = (
+                fee_row.tuition_fee +
+                fee_row.levy_fee +
+                fee_row.sports_fee +
+                fee_row.computer_fee +
+                fee_row.other_fees
+            )
+            school_supports_boarding = bool(
+                request.user.school and getattr(request.user.school, 'accommodation_type', 'day') in ('boarding', 'both')
+            )
+            boarding_fee_applied = fee_row.boarding_fee if (school_supports_boarding and student.residence_type == 'boarding') else Decimal('0')
+            transport_opted_in = bool(fee_row.transport_fee and fee_row.transport_fee > 0 and get_transport_opt_in(student))
+            transport_fee_applied = fee_row.transport_fee if transport_opted_in else Decimal('0')
+            school_fee_total = base_fee_total + boarding_fee_applied + transport_fee_applied
             school_fee = {
-                'total_fee': float(fee_breakdown['total_school_fee']) + additional_fees_total,
-                'base_fee': float(fee_breakdown['tuition'] + fee_breakdown['levy'] + fee_breakdown['sports'] + fee_breakdown['computer'] + fee_breakdown['other']),
-                'boarding_fee': float(fee_breakdown['boarding']),
-                'transport_fee': float(fee_breakdown['transport']),
-                'transport_opted_in': bool(fee_breakdown['transport_opted_in']),
-                'additional_fees_total': additional_fees_total,
+                'total_fee': float(school_fee_total + additional_fees_total),
+                'base_fee': float(base_fee_total),
+                'boarding_fee': float(boarding_fee_applied),
+                'transport_fee': float(transport_fee_applied),
+                'transport_opted_in': transport_opted_in,
+                'additional_fees_total': float(additional_fees_total),
                 'currency': fee_row.currency,
-                'academic_year': fee_row.academic_year,
-                'academic_term': fee_row.academic_term
+                'academic_year': academic_year,
+                'academic_term': academic_term,
             }
         elif additional_fees_total > 0:
             school_fee = {
-                'total_fee': additional_fees_total,
+                'total_fee': float(additional_fees_total),
                 'base_fee': 0,
                 'boarding_fee': 0,
                 'transport_fee': 0,
                 'transport_opted_in': False,
-                'additional_fees_total': additional_fees_total,
+                'additional_fees_total': float(additional_fees_total),
                 'currency': 'USD',
-                'academic_year': str(timezone.now().year),
-                'academic_term': 'term_1'
+                'academic_year': academic_year,
+                'academic_term': academic_term,
             }
         
         student_list.append({
@@ -1547,7 +1878,10 @@ def student_invoices_by_class(request):
                     due_date=record.due_date or (date.today() + timedelta(days=30)),
                     is_paid=_record_balance(record) <= 0,
                     payment_record=record,
-                    notes=f"Snapshot invoice for {record.get_payment_type_display()} {record.academic_year} {record.academic_term}",
+                    notes=(
+                        f"Snapshot invoice for {record.get_payment_type_display()} "
+                        f"{record.academic_year} {_record_terms_label(record)}"
+                    ),
                 )
                 invoices_data.append({
                     'id': created_invoice.id,

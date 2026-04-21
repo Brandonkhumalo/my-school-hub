@@ -107,6 +107,7 @@ class StudentPaymentRecord(models.Model):
         ('full_year', 'Full Year Payment'),
         ('two_terms', 'Two Terms Payment'),
         ('one_term', 'One Term Payment'),
+        ('specific_terms', 'Specific Terms Payment'),
         ('batch', 'Batch Payment'),
     ]
     
@@ -136,6 +137,7 @@ class StudentPaymentRecord(models.Model):
     
     academic_year = models.CharField(max_length=20)
     academic_term = models.CharField(max_length=20, blank=True)
+    covered_terms = models.JSONField(default=list, blank=True)
     
     total_amount_due = models.DecimalField(max_digits=10, decimal_places=2)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)

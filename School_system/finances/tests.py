@@ -472,6 +472,42 @@ class PaymentRecordAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("academic_term", response.data)
 
+    def test_specific_terms_plan_calculates_due_from_selected_terms(self):
+        """Specific-terms plan should sum exactly the selected terms."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "student": self.student.pk,
+            "payment_type": "school_fees",
+            "payment_plan": "specific_terms",
+            "academic_year": "2026",
+            "academic_term": "",
+            "covered_terms": ["term_1", "term_3"],
+            # Intentionally wrong client value; backend should compute 500 + 700 = 1200
+            "total_amount_due": "1.00",
+            "amount_paid": "0.00",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        record = StudentPaymentRecord.objects.get(id=response.data["id"])
+        self.assertEqual(record.total_amount_due, Decimal("1200.00"))
+        self.assertEqual(record.covered_terms, ["term_1", "term_3"])
+
+    def test_specific_terms_plan_requires_at_least_one_term(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {
+            "student": self.student.pk,
+            "payment_type": "school_fees",
+            "payment_plan": "specific_terms",
+            "academic_year": "2026",
+            "academic_term": "",
+            "covered_terms": [],
+            "total_amount_due": "0.00",
+            "amount_paid": "0.00",
+            "currency": "USD",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("covered_terms", response.data)
+
     def test_list_payment_records_requires_authentication(self):
         """Test that list payment records requires authentication."""
         response = self.client.get(self.url)
@@ -920,6 +956,9 @@ class FinanceSummaryAndExpensesAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("monthly_salary_total", response.data)
         self.assertIn("term_revenue", response.data)
+        self.assertIn("term_expected_revenue", response.data)
+        self.assertIn("term_collected_revenue", response.data)
+        self.assertIn("term_outstanding_revenue", response.data)
         self.assertIn("term_profit", response.data)
 
     def test_accountant_can_create_expense_pending(self):

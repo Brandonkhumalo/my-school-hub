@@ -1,9 +1,10 @@
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Q
 
 from .fee_calculator import get_unpaid_additional_fees_for_record
 from .models import AdditionalFee, StudentPaymentRecord
+from .term_finance import normalize_term_key, resolve_terms_for_plan
 
 
 def to_decimal(value):
@@ -65,13 +66,26 @@ def recalculate_student_additional_fees(student, school, academic_year, academic
     if not student or not school or not academic_year:
         return
 
-    records = StudentPaymentRecord.objects.filter(
+    records_qs = StudentPaymentRecord.objects.filter(
         student=student,
         school=school,
         academic_year=academic_year,
     )
+    records = list(records_qs)
     if academic_term:
-        records = records.filter(Q(academic_term=academic_term) | Q(academic_term=''))
+        target_term = normalize_term_key(academic_term)
+        filtered_records = []
+        for record in records:
+            terms = resolve_terms_for_plan(
+                record.payment_plan,
+                record.academic_term,
+                getattr(record, 'covered_terms', []),
+            )
+            if not terms and record.payment_plan == 'full_year':
+                terms = ['term_1', 'term_2', 'term_3']
+            if target_term in terms:
+                filtered_records.append(record)
+        records = filtered_records
 
     fees = AdditionalFee.objects.filter(
         school=school,
@@ -81,8 +95,8 @@ def recalculate_student_additional_fees(student, school, academic_year, academic
         fees = fees.filter(academic_term=academic_term)
     fees = fees.order_by('created_at', 'id')
 
-    total_base_due = to_decimal(records.aggregate(total=Sum('total_amount_due'))['total'] or Decimal('0'))
-    total_base_paid = to_decimal(records.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0'))
+    total_base_due = sum((to_decimal(record.total_amount_due) for record in records), Decimal('0'))
+    total_base_paid = sum((to_decimal(record.amount_paid) for record in records), Decimal('0'))
     available_for_additional = max(Decimal('0'), total_base_paid - total_base_due)
 
     for fee in fees:

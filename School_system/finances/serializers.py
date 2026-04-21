@@ -22,6 +22,7 @@ from .billing_service import (
     settle_additional_fees_for_record,
     to_decimal,
 )
+from .term_finance import TERM_SEQUENCE, normalize_term_key, term_display, resolve_terms_for_plan
 
 
 class FeeTypeSerializer(serializers.ModelSerializer):
@@ -281,6 +282,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
     total_amount_due = serializers.SerializerMethodField()
     base_school_fee = serializers.DecimalField(source='total_amount_due', max_digits=12, decimal_places=2, read_only=True)
     additional_fees_list = serializers.SerializerMethodField()
+    included_terms = serializers.SerializerMethodField()
     
     def get_additional_fees_total(self, obj):
         """Return additional fees total."""
@@ -302,6 +304,17 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
         """Return additional fees list."""
         additional_fees = get_unpaid_additional_fees_for_record(obj)
         return [{'name': f.fee_name, 'amount': float(f.amount), 'reason': f.reason} for f in additional_fees]
+
+    def get_included_terms(self, obj):
+        terms = resolve_terms_for_plan(
+            obj.payment_plan,
+            obj.academic_term,
+            getattr(obj, 'covered_terms', []),
+        )
+        return [
+            {'key': term, 'label': term_display(term)}
+            for term in terms
+        ]
     
     class Meta:
         """Represents Meta."""
@@ -309,7 +322,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'student', 'student_name', 'student_number', 'class_name', 'school',
             'payment_type', 'payment_plan', 'description',
-            'academic_year', 'academic_term',
+            'academic_year', 'academic_term', 'covered_terms', 'included_terms',
             'total_amount_due', 'base_school_fee', 'amount_paid', 'balance', 'currency',
             'payment_status', 'payment_method', 'is_fully_paid',
             'due_date', 'next_payment_due',
@@ -322,44 +335,50 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
 class CreatePaymentRecordSerializer(serializers.ModelSerializer):
     """Represents CreatePaymentRecordSerializer."""
     total_amount_due = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
-
-    TERM_SEQUENCE = ['term_1', 'term_2', 'term_3']
+    covered_terms = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         """Represents Meta."""
         model = StudentPaymentRecord
         fields = [
             'id', 'student', 'payment_type', 'payment_plan', 'description',
-            'academic_year', 'academic_term',
+            'academic_year', 'academic_term', 'covered_terms',
             'total_amount_due', 'amount_paid', 'currency',
             'payment_method', 'due_date', 'next_payment_due', 'notes'
         ]
         read_only_fields = ['id']
 
-    def _terms_for_plan(self, payment_plan, academic_term):
-        """Resolve included terms based on selected payment plan."""
-        if payment_plan == 'full_year':
-            return list(self.TERM_SEQUENCE)
+    def _validate_and_resolve_terms(self, payment_plan, academic_term, covered_terms):
+        terms = resolve_terms_for_plan(payment_plan, academic_term, covered_terms)
 
         if payment_plan == 'one_term':
-            if not academic_term:
+            if not terms:
                 raise serializers.ValidationError({'academic_term': 'Academic term is required for one-term payments.'})
-            if academic_term not in self.TERM_SEQUENCE:
-                raise serializers.ValidationError({'academic_term': 'Invalid academic term.'})
-            return [academic_term]
+            return terms
 
         if payment_plan == 'two_terms':
-            if not academic_term:
+            if not terms:
                 raise serializers.ValidationError({'academic_term': 'Academic term is required for two-term payments.'})
-            if academic_term not in self.TERM_SEQUENCE:
-                raise serializers.ValidationError({'academic_term': 'Invalid academic term.'})
-            start_index = self.TERM_SEQUENCE.index(academic_term)
-            terms = self.TERM_SEQUENCE[start_index:start_index + 2]
             if len(terms) < 2:
                 raise serializers.ValidationError({'academic_term': 'Two-term payment must start at Term 1 or Term 2.'})
             return terms
 
-        return []
+        if payment_plan == 'specific_terms':
+            if not terms:
+                raise serializers.ValidationError({'covered_terms': 'Select at least one term for specific-terms payments.'})
+            invalid = [
+                value for value in (covered_terms or [])
+                if normalize_term_key(value) not in TERM_SEQUENCE
+            ]
+            if invalid:
+                raise serializers.ValidationError({'covered_terms': 'Invalid term in covered_terms.'})
+            return terms
+
+        return terms
 
     def _calculate_due_for_school_fees(self, attrs):
         """Calculate amount due from SchoolFees using selected plan/year/term."""
@@ -370,6 +389,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
         academic_year = attrs.get('academic_year')
         payment_plan = attrs.get('payment_plan')
         academic_term = attrs.get('academic_term')
+        covered_terms = attrs.get('covered_terms') or []
 
         if not school:
             raise serializers.ValidationError({'school': 'No school associated with current user.'})
@@ -380,7 +400,7 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
         if not academic_year:
             raise serializers.ValidationError({'academic_year': 'Academic year is required.'})
 
-        included_terms = self._terms_for_plan(payment_plan, academic_term)
+        included_terms = self._validate_and_resolve_terms(payment_plan, academic_term, covered_terms)
         if not included_terms:
             # For "batch" we keep manual amount due.
             return None
@@ -425,6 +445,19 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate incoming data."""
+        payment_plan = attrs.get('payment_plan')
+        academic_term = attrs.get('academic_term')
+        covered_terms = attrs.get('covered_terms') or []
+        included_terms = self._validate_and_resolve_terms(payment_plan, academic_term, covered_terms)
+
+        attrs['covered_terms'] = included_terms
+        if payment_plan in ('one_term', 'two_terms') and included_terms:
+            attrs['academic_term'] = included_terms[0]
+        elif payment_plan == 'specific_terms' and len(included_terms) == 1:
+            attrs['academic_term'] = included_terms[0]
+        elif payment_plan == 'full_year':
+            attrs['academic_term'] = ''
+
         if attrs.get('payment_type') == 'school_fees':
             calculated_due = self._calculate_due_for_school_fees(attrs)
             if calculated_due is not None:
@@ -614,6 +647,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
                 'payment_plan': obj.payment_record.get_payment_plan_display(),
                 'academic_year': obj.payment_record.academic_year,
                 'academic_term': obj.payment_record.academic_term,
+                'covered_terms': obj.payment_record.covered_terms or [],
                 'currency': obj.payment_record.currency,
             }
         return None

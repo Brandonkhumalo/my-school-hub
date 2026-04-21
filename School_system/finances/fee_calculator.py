@@ -5,6 +5,7 @@ from django.db.models import Q
 from academics.models import ParentChildLink
 
 from .models import AdditionalFee, SchoolFees, TransportFeePreference
+from .term_finance import normalize_terms
 
 
 def _to_decimal(value):
@@ -49,7 +50,10 @@ def get_unpaid_additional_fees_for_record(payment_record):
     ).filter(
         Q(student=payment_record.student) | Q(student_class=payment_record.student.student_class)
     )
-    if payment_record.academic_term:
+    covered_terms = normalize_terms(getattr(payment_record, 'covered_terms', []))
+    if covered_terms:
+        queryset = queryset.filter(academic_term__in=covered_terms)
+    elif payment_record.academic_term:
         queryset = queryset.filter(academic_term=payment_record.academic_term)
     return list(queryset.order_by('created_at', 'id'))
 
