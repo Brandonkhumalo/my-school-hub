@@ -162,11 +162,26 @@ def login_view(request):
                 has_2fa = hasattr(user, 'two_factor_config') and user.two_factor_config.is_enabled
                 if not has_2fa:
                     if deadline and timezone.now() > deadline:
+                        # Deadline passed but no 2FA — log them in but force setup
+                        user_data = UserSerializer(user).data
+                        if user.student_number:
+                            user_data['student_number'] = user.student_number
+                        access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+                        try:
+                            AuditLog.objects.create(
+                                user=user, school=user.school, action='LOGIN',
+                                model_name='CustomUser', object_id=str(user.id),
+                                object_repr=f'Login (2FA setup required): {user.email}',
+                                ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+                            )
+                        except Exception:
+                            pass
                         return Response({
-                            "error": "2fa_required",
-                            "message": "2FA is required for your role. The grace period has ended. Please contact your administrator.",
-                            "deadline_passed": True
-                        }, status=403)
+                            'user': user_data,
+                            'token': access_token,
+                            'message': f'{user.role.capitalize()} login successful',
+                            'requires_2fa_setup': True,
+                        })
                     else:
                         # Allow login but return warning
                         warning_date = deadline.strftime('%d %B %Y') if deadline else None

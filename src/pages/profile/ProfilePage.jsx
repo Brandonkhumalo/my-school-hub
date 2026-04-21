@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/apiService";
 import { formatDateLong } from "../../utils/dateFormat";
 import Header from "../../components/Header";
+import TwoFactorSettings from "./TwoFactorSettings";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -129,6 +130,12 @@ export default function ProfilePage() {
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${activeTab === "password" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
           >
             Change Password
+          </button>
+          <button
+            onClick={() => setActiveTab("security")}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${activeTab === "security" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
+          >
+            <i className="fas fa-shield-alt mr-1.5" />Security
           </button>
         </div>
 
@@ -263,6 +270,10 @@ export default function ProfilePage() {
                 {saving ? "Changing..." : "Change Password"}
               </button>
             </form>
+          )}
+
+          {activeTab === "security" && (
+            <TwoFactorSettings />
           )}
         </div>
 

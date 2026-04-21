@@ -16,6 +16,7 @@ function Login() {
   const [showTwoFactor, setShowTwoFactor] = useState(false);
   const [otpSessionToken, setOtpSessionToken] = useState('');
   const [suspendedModal, setSuspendedModal] = useState(null);
+  const [twoFaWarningDeadline, set2faWarningDeadline] = useState(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
@@ -66,9 +67,16 @@ function Login() {
         return;
       }
 
-      // Show 2FA enforcement warning if present
+      if (response.requires_2fa_setup) {
+        login(response.user, response.token);
+        navigate('/setup-2fa-required');
+        return;
+      }
+
       if (response['2fa_warning']) {
-        toast(response['2fa_warning'], { icon: '🔒', duration: 6000 });
+        login(response.user, response.token);
+        set2faWarningDeadline(response['2fa_deadline']);
+        return;
       }
 
       login(response.user, response.token);
@@ -229,6 +237,50 @@ function Login() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── 2FA Warning Modal ───────────────────────────────────── */}
+      {twoFaWarningDeadline && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-7 space-y-4">
+            <div className="text-center">
+              <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fas fa-shield-exclamation text-amber-500 text-xl" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">2FA Required Soon</h3>
+              <p className="text-gray-500 text-sm mt-1">
+                Your school requires two-factor authentication by{" "}
+                <strong>{new Date(twoFaWarningDeadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.
+              </p>
+            </div>
+            <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800 space-y-1">
+              <p className="font-semibold">How to set it up:</p>
+              <ol className="list-decimal list-inside space-y-1 text-blue-700">
+                <li>Install Google Authenticator or Authy on your phone</li>
+                <li>Go to your profile → Security → Enable 2FA</li>
+                <li>Scan the QR code and save your backup codes</li>
+              </ol>
+            </div>
+            <button
+              onClick={() => {
+                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                const role = user?.role || '';
+                set2faWarningDeadline(null);
+                if (role) navigate(`/${role}`);
+                else navigate('/');
+              }}
+              className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition"
+            >
+              Got it — Set up later
+            </button>
+            <button
+              onClick={() => { set2faWarningDeadline(null); navigate('/2fa-settings'); }}
+              className="w-full py-2.5 rounded-xl text-sm border border-blue-200 text-blue-600 hover:bg-blue-50 transition"
+            >
+              Set up now
+            </button>
           </div>
         </div>
       )}

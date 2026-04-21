@@ -104,7 +104,9 @@ export default function TwoFactorSetup({ onComplete, onCancel }) {
           <button onClick={() => setStep(2)} className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition">
             I&apos;ve scanned it &rarr; Next
           </button>
-          <button onClick={onCancel} className="w-full py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>
+          {onCancel && (
+            <button onClick={onCancel} className="w-full py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>
+          )}
         </div>
       )}
 

@@ -75,6 +75,7 @@ const LoginPage = lazy(() => import("./pages/auth/Login"));
 const AdminLogin = lazy(() => import("./pages/auth/AdminLogin"));
 const ParentRegister = lazy(() => import("./pages/auth/ParentRegister"));
 const Logout = lazy(() => import("./pages/auth/Logout"));
+const ForcedTwoFactorSetup = lazy(() => import("./pages/auth/ForcedTwoFactorSetup"));
 
 // Tishanyq Admin Pages
 const TishanyqLogin = lazy(() => import("./pages/tishanyq/TishanyqLogin"));
@@ -232,6 +233,7 @@ function App() {
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/register/parent" element={<ParentRegister />} />
       <Route path="/logout" element={<Logout />} />
+      <Route path="/setup-2fa-required" element={<ForcedTwoFactorSetup />} />
 
       {/* Payment return pages — no auth required (PayNow redirects here) */}
       <Route path="/payment/success" element={<PaymentSuccess />} />

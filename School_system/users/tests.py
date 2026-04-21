@@ -699,3 +699,302 @@ class GlobalSearchViewTest(APITestCase):
         """Test that search requires authentication."""
         response = self.client.get(self.url, {"q": "test"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ---------------------------------------------------------------------------
+# API tests — 2FA endpoints
+# ---------------------------------------------------------------------------
+
+class TwoFactorSetupTest(APITestCase):
+    """Tests for 2FA setup, verify-setup, status, disable, and backup code endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.user = make_user(self.school, "twofa_user", role="admin")
+        self.client.force_authenticate(user=self.user)
+
+    def test_status_returns_disabled_when_no_config(self):
+        response = self.client.get("/api/v1/auth/2fa/status/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["is_enabled"])
+
+    def test_setup_returns_secret_and_qr_code(self):
+        response = self.client.post("/api/v1/auth/2fa/setup/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("secret", response.data)
+        self.assertIn("qr_code", response.data)
+        self.assertTrue(response.data["qr_code"].startswith("data:image/png;base64,"))
+
+    def test_setup_creates_config_with_secret(self):
+        from users.models import TwoFactorAuthConfig
+
+        self.client.post("/api/v1/auth/2fa/setup/")
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        self.assertNotEqual(config.secret_key, "")
+        self.assertFalse(config.is_enabled)
+
+    def test_verify_setup_invalid_code_returns_400(self):
+        self.client.post("/api/v1/auth/2fa/setup/")
+        response = self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": "000000"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_verify_setup_with_valid_code_enables_2fa(self):
+        import pyotp
+        from users.models import TwoFactorAuthConfig
+
+        setup_resp = self.client.post("/api/v1/auth/2fa/setup/")
+        secret = setup_resp.data["secret"]
+        valid_code = pyotp.TOTP(secret).now()
+        response = self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": valid_code})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("backup_codes", response.data)
+        self.assertEqual(len(response.data["backup_codes"]), 10)
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        self.assertTrue(config.is_enabled)
+
+    def test_status_returns_enabled_after_setup(self):
+        import pyotp
+        from users.models import TwoFactorAuthConfig
+
+        self.client.post("/api/v1/auth/2fa/setup/")
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        valid_code = pyotp.TOTP(config.secret_key).now()
+        self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": valid_code})
+        response = self.client.get("/api/v1/auth/2fa/status/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["is_enabled"])
+
+    def test_disable_requires_correct_password(self):
+        import pyotp
+        from users.models import TwoFactorAuthConfig
+
+        self.client.post("/api/v1/auth/2fa/setup/")
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": pyotp.TOTP(config.secret_key).now()})
+        response = self.client.post("/api/v1/auth/2fa/disable/", {"password": "wrongpassword"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_disable_with_correct_password_disables_2fa(self):
+        import pyotp
+        from users.models import TwoFactorAuthConfig
+
+        self.client.post("/api/v1/auth/2fa/setup/")
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": pyotp.TOTP(config.secret_key).now()})
+        response = self.client.post("/api/v1/auth/2fa/disable/", {"password": "testpass123"})
+        self.assertEqual(response.status_code, 200)
+        config.refresh_from_db()
+        self.assertFalse(config.is_enabled)
+
+    def test_regenerate_backup_codes_requires_2fa_enabled(self):
+        response = self.client.post("/api/v1/auth/2fa/regenerate-backup-codes/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_regenerate_backup_codes_returns_10_codes(self):
+        import pyotp
+        from users.models import TwoFactorAuthConfig
+
+        self.client.post("/api/v1/auth/2fa/setup/")
+        config = TwoFactorAuthConfig.objects.get(user=self.user)
+        self.client.post("/api/v1/auth/2fa/verify-setup/", {"code": pyotp.TOTP(config.secret_key).now()})
+        response = self.client.post("/api/v1/auth/2fa/regenerate-backup-codes/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["backup_codes"]), 10)
+
+    def test_trusted_devices_list_empty_initially(self):
+        response = self.client.get("/api/v1/auth/2fa/trusted-devices/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["devices"], [])
+
+    def test_setup_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post("/api/v1/auth/2fa/setup/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TwoFactorLoginTest(APITestCase):
+    """Tests for 2FA login flow (verify-otp, verify-backup)."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.user = make_user(self.school, "twofa_login_user", role="admin")
+
+        from users.models import TwoFactorAuthConfig
+        from users.utils.otp import generate_secret, generate_backup_codes, hash_backup_code
+
+        self.secret = generate_secret()
+        plain_codes = generate_backup_codes(10)
+        self.plain_backup_code = plain_codes[0]
+        hashed = [{"code_hash": hash_backup_code(c), "used": False} for c in plain_codes]
+        self.config = TwoFactorAuthConfig.objects.create(
+            user=self.user,
+            is_enabled=True,
+            secret_key=self.secret,
+            backup_codes=hashed,
+        )
+
+    def _get_otp_session_token(self):
+        response = self.client.post("/api/v1/auth/login/", {
+            "username": "twofa_login_user",
+            "password": "testpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(response.data.get("requires_2fa"))
+        return response.data["otp_session_token"]
+
+    def test_login_returns_202_when_2fa_enabled(self):
+        self._get_otp_session_token()
+
+    def test_verify_otp_with_valid_code_returns_token(self):
+        import pyotp
+
+        otp_token = self._get_otp_session_token()
+        valid_code = pyotp.TOTP(self.secret).now()
+        response = self.client.post("/api/v1/auth/2fa/verify-otp/", {
+            "otp_session_token": otp_token,
+            "code": valid_code,
+            "trust_device": False,
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("token", response.data)
+        self.assertIn("user", response.data)
+
+    def test_verify_otp_with_invalid_code_returns_400(self):
+        otp_token = self._get_otp_session_token()
+        response = self.client.post("/api/v1/auth/2fa/verify-otp/", {
+            "otp_session_token": otp_token,
+            "code": "000000",
+            "trust_device": False,
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_verify_backup_with_valid_code_returns_token(self):
+        otp_token = self._get_otp_session_token()
+        response = self.client.post("/api/v1/auth/2fa/verify-backup/", {
+            "otp_session_token": otp_token,
+            "backup_code": self.plain_backup_code,
+            "trust_device": False,
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("token", response.data)
+
+    def test_verify_backup_marks_code_as_used(self):
+        otp_token = self._get_otp_session_token()
+        self.client.post("/api/v1/auth/2fa/verify-backup/", {
+            "otp_session_token": otp_token,
+            "backup_code": self.plain_backup_code,
+            "trust_device": False,
+        }, format="json")
+        self.config.refresh_from_db()
+        self.assertTrue(self.config.backup_codes[0]["used"])
+
+    def test_verify_backup_invalid_code_returns_400(self):
+        otp_token = self._get_otp_session_token()
+        response = self.client.post("/api/v1/auth/2fa/verify-backup/", {
+            "otp_session_token": otp_token,
+            "backup_code": "INVALID1",
+            "trust_device": False,
+        }, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_verify_otp_with_invalid_session_token_returns_401(self):
+        response = self.client.post("/api/v1/auth/2fa/verify-otp/", {
+            "otp_session_token": "notavalidtoken",
+            "code": "123456",
+            "trust_device": False,
+        }, format="json")
+        self.assertEqual(response.status_code, 401)
+
+
+class TwoFactorEnforcementTest(APITestCase):
+    """Tests for admin 2FA enforcement and compliance endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.admin = make_user(self.school, "enforce_admin", role="admin")
+        self.teacher = make_user(self.school, "enforce_teacher", role="teacher")
+        SchoolSettings.objects.get_or_create(school=self.school)
+        self.client.force_authenticate(user=self.admin)
+
+    def test_enforce_2fa_requires_admin_role(self):
+        self.client.force_authenticate(user=self.teacher)
+        response = self.client.post("/api/v1/auth/school/enforce-2fa/", {
+            "enforce": True, "roles": ["teacher"], "grace_period_days": 7
+        }, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_enforce_2fa_activates_enforcement(self):
+        response = self.client.post("/api/v1/auth/school/enforce-2fa/", {
+            "enforce": True, "roles": ["teacher"], "grace_period_days": 7
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["enforce"])
+        settings = SchoolSettings.objects.get(school=self.school)
+        self.assertTrue(settings.enforce_2fa)
+        self.assertIn("teacher", settings.enforce_2fa_for_roles)
+
+    def test_enforce_2fa_disable_clears_settings(self):
+        self.client.post("/api/v1/auth/school/enforce-2fa/", {
+            "enforce": True, "roles": ["teacher"], "grace_period_days": 7
+        }, format="json")
+        response = self.client.post("/api/v1/auth/school/enforce-2fa/", {
+            "enforce": False, "roles": [], "grace_period_days": 14
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        settings = SchoolSettings.objects.get(school=self.school)
+        self.assertFalse(settings.enforce_2fa)
+
+    def test_compliance_view_returns_data(self):
+        self.client.post("/api/v1/auth/school/enforce-2fa/", {
+            "enforce": True, "roles": ["teacher"], "grace_period_days": 14
+        }, format="json")
+        response = self.client.get("/api/v1/auth/2fa/compliance/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("compliance_by_role", response.data)
+        self.assertIn("enforce_2fa", response.data)
+
+    def test_compliance_view_requires_admin(self):
+        self.client.force_authenticate(user=self.teacher)
+        response = self.client.get("/api/v1/auth/2fa/compliance/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_login_shows_requires_setup_after_deadline(self):
+        from django.utils import timezone
+        import datetime
+
+        settings = SchoolSettings.objects.get(school=self.school)
+        settings.enforce_2fa = True
+        settings.enforce_2fa_for_roles = ["teacher"]
+        settings.enforce_2fa_grace_period_days = 0
+        settings.enforce_2fa_started_at = timezone.now() - datetime.timedelta(days=1)
+        settings.save()
+
+        self.client.force_authenticate(user=None)
+        response = self.client.post("/api/v1/auth/login/", {
+            "username": "enforce_teacher",
+            "password": "testpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("requires_2fa_setup"))
+
+    def test_login_shows_warning_during_grace_period(self):
+        from django.utils import timezone
+
+        settings = SchoolSettings.objects.get(school=self.school)
+        settings.enforce_2fa = True
+        settings.enforce_2fa_for_roles = ["teacher"]
+        settings.enforce_2fa_grace_period_days = 14
+        settings.enforce_2fa_started_at = timezone.now()
+        settings.save()
+
+        self.client.force_authenticate(user=None)
+        response = self.client.post("/api/v1/auth/login/", {
+            "username": "enforce_teacher",
+            "password": "testpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("2fa_warning"))
+        self.assertIn("token", response.data)

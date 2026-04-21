@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSchoolSettings } from "../../context/SchoolSettingsContext";
 import apiService from "../../services/apiService";
 import { parseDate, toInputDate } from "../../utils/dateFormat";
@@ -26,6 +27,7 @@ const TERM_STYLES = {
 };
 
 export default function AdminSettings() {
+  const navigate = useNavigate();
   const { refreshSettings } = useSchoolSettings();
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -302,6 +304,27 @@ export default function AdminSettings() {
           {saving ? "Saving..." : "Save Settings"}
         </button>
       </form>
+
+      {/* 2FA Enforcement */}
+      <section className="border rounded-lg p-4 space-y-3 bg-white">
+        <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+          <i className="fas fa-shield-alt text-blue-600" />
+          Two-Factor Authentication (2FA)
+        </h2>
+        <p className="text-sm text-gray-500">
+          Require staff and students to verify their identity with a one-time code from an authenticator app.
+          Set grace periods so users have time to set up before enforcement begins.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/admin/2fa-compliance')}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-white text-sm transition"
+          style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)' }}
+        >
+          <i className="fas fa-shield-exclamation" />
+          Manage 2FA Enforcement
+        </button>
+      </section>
     </div>
   );
 }
