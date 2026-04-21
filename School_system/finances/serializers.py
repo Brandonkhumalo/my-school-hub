@@ -283,6 +283,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
     base_school_fee = serializers.DecimalField(source='total_amount_due', max_digits=12, decimal_places=2, read_only=True)
     additional_fees_list = serializers.SerializerMethodField()
     included_terms = serializers.SerializerMethodField()
+    invoice_number = serializers.SerializerMethodField()
     
     def get_additional_fees_total(self, obj):
         """Return additional fees total."""
@@ -315,6 +316,16 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
             {'key': term, 'label': term_display(term)}
             for term in terms
         ]
+
+    def get_invoice_number(self, obj):
+        invoice = (
+            Invoice.objects
+            .filter(payment_record=obj, school=obj.school)
+            .order_by('-issue_date', '-id')
+            .values_list('invoice_number', flat=True)
+            .first()
+        )
+        return invoice or ''
     
     class Meta:
         """Represents Meta."""
@@ -324,6 +335,7 @@ class StudentPaymentRecordSerializer(serializers.ModelSerializer):
             'payment_type', 'payment_plan', 'description',
             'academic_year', 'academic_term', 'covered_terms', 'included_terms',
             'total_amount_due', 'base_school_fee', 'amount_paid', 'balance', 'currency',
+            'invoice_number',
             'payment_status', 'payment_method', 'is_fully_paid',
             'due_date', 'next_payment_due',
             'date_created', 'date_updated', 'recorded_by', 'recorded_by_name',
@@ -503,8 +515,8 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
                 notes='Initial payment'
             )
             settle_additional_fees_for_record(payment_record)
-            
-            self._create_invoice(payment_record, amount_paid, user)
+
+        self._create_invoice(payment_record, amount_paid, user)
         
         return payment_record
     
@@ -527,7 +539,8 @@ class CreatePaymentRecordSerializer(serializers.ModelSerializer):
 
 class AddPaymentSerializer(serializers.Serializer):
     """Represents AddPaymentSerializer."""
-    payment_record_id = serializers.IntegerField()
+    payment_record_id = serializers.IntegerField(required=False)
+    invoice_number = serializers.CharField(required=True)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     payment_method = serializers.ChoiceField(choices=StudentPaymentRecord.PAYMENT_METHOD_CHOICES)
     transaction_reference = serializers.CharField(required=False, allow_blank=True)
@@ -536,11 +549,31 @@ class AddPaymentSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         """Validate incoming data."""
-        payment_record_id = attrs['payment_record_id']
+        request = self.context['request']
+        invoice_number = (attrs.get('invoice_number') or '').strip()
         amount = attrs['amount']
-        
+
+        if not invoice_number:
+            raise serializers.ValidationError("invoice_number is required.")
+
         try:
-            payment_record = StudentPaymentRecord.objects.get(id=payment_record_id)
+            invoice = Invoice.objects.select_related('payment_record').get(
+                invoice_number=invoice_number,
+                school=request.user.school,
+            )
+        except Invoice.DoesNotExist:
+            raise serializers.ValidationError("Invoice not found for this school.")
+
+        payment_record = invoice.payment_record
+        if not payment_record:
+            raise serializers.ValidationError("Invoice has no linked payment record.")
+
+        payment_record_id = attrs.get('payment_record_id')
+        if payment_record_id and payment_record.id != payment_record_id:
+            raise serializers.ValidationError("invoice_number does not match payment_record_id.")
+
+        try:
+            payment_record = StudentPaymentRecord.objects.get(id=payment_record.id)
         except StudentPaymentRecord.DoesNotExist:
             raise serializers.ValidationError("Payment record not found.")
         
@@ -550,14 +583,17 @@ class AddPaymentSerializer(serializers.Serializer):
         dynamic_balance = compute_record_totals(payment_record)['balance']
         if amount > dynamic_balance:
             raise serializers.ValidationError("Payment amount cannot exceed remaining balance.")
-        
+
         attrs['payment_record'] = payment_record
+        attrs['invoice'] = invoice
+        attrs['invoice_number'] = invoice_number
         return attrs
     
     def create(self, validated_data):
         """Create and return a new instance."""
         user = self.context['request'].user
         payment_record = validated_data['payment_record']
+        invoice = validated_data['invoice']
         amount = validated_data['amount']
         
         PaymentTransaction.objects.create(
@@ -580,18 +616,11 @@ class AddPaymentSerializer(serializers.Serializer):
         payment_record.save()
         settle_additional_fees_for_record(payment_record)
         
-        invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
-        Invoice.objects.create(
-            student=payment_record.student,
-            school=payment_record.school,
-            invoice_number=invoice_number,
-            total_amount=dynamic_total_due,
-            amount_paid=payment_record.amount_paid,
-            due_date=payment_record.due_date or date.today(),
-            is_paid=payment_record.amount_paid >= dynamic_total_due,
-            payment_record=payment_record,
-            notes=f"Payment of {payment_record.currency}{amount} for {payment_record.get_payment_type_display()}"
-        )
+        invoice.total_amount = dynamic_total_due
+        invoice.amount_paid = payment_record.amount_paid
+        invoice.due_date = payment_record.due_date or invoice.due_date or date.today()
+        invoice.is_paid = payment_record.amount_paid >= dynamic_total_due
+        invoice.save(update_fields=['total_amount', 'amount_paid', 'due_date', 'is_paid'])
         
         return payment_record
 

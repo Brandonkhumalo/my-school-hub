@@ -91,6 +91,26 @@ class StudentSerializer(serializers.ModelSerializer):
         return None
 
 
+class TransferredStudentSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    class_name = serializers.CharField(source='student_class.name', read_only=True)
+    transferred_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Student
+        fields = [
+            'id', 'user', 'student_class', 'class_name', 'residence_type',
+            'admission_date', 'parent_contact', 'address', 'date_of_birth',
+            'gender', 'emergency_contact', 'is_transferred', 'transferred_at',
+            'transfer_note', 'transferred_by_name',
+        ]
+
+    def get_transferred_by_name(self, obj):
+        if obj.transferred_by:
+            return obj.transferred_by.get_full_name() or obj.transferred_by.email
+        return None
+
+
 class TeacherSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     subjects = SubjectSerializer(source='subjects_taught', many=True, read_only=True)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSchoolSettings } from '../../context/SchoolSettingsContext';
 import apiService from '../../services/apiService';
 import { Palette, Upload, Save, CheckCircle, Type, MessageSquare, Sparkles } from 'lucide-react';
@@ -22,6 +23,7 @@ const FONT_OPTIONS = [
 ];
 
 function Customization() {
+  const navigate = useNavigate();
   const { fetchSettings } = useSchoolSettings();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -359,6 +361,26 @@ function Customization() {
             className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm resize-none"
           />
           <p className="text-xs text-gray-500 mt-1">Shown on the admin dashboard home page</p>
+        </div>
+      </div>
+
+      {/* 2FA Security Section */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <i className="fas fa-shield-alt text-blue-600" />
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Two-Factor Authentication</h2>
+            </div>
+            <p className="text-sm text-gray-500">Require staff and students to verify their identity with a second factor.</p>
+          </div>
+          <button
+            onClick={() => navigate('/admin/2fa-compliance')}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm transition"
+            style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}
+          >
+            <i className="fas fa-shield-exclamation" /> Manage 2FA Enforcement
+          </button>
         </div>
       </div>
     </div>

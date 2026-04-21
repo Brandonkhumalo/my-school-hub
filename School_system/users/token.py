@@ -30,6 +30,11 @@ class JWTAuthentication(BaseAuthentication):
         return jwt.encode(token_payload, key=settings.SECRET_KEY, algorithm='HS256')
     
     @staticmethod
+    def decode_token(token):
+        """Decode a JWT token and return the payload. Raises jwt.exceptions on failure."""
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+
+    @staticmethod
     def generate_refresh_token(payload):
         """Execute generate refresh token."""
         refresh_hours = max(1, int(getattr(settings, 'JWT_REFRESH_TOKEN_HOURS', 72)))

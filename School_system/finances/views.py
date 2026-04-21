@@ -1,7 +1,7 @@
 import logging
 import uuid
 from decimal import Decimal, InvalidOperation
-from datetime import date
+from datetime import date, timedelta
 from collections import defaultdict
 
 from django.db import transaction
@@ -598,6 +598,10 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """Return queryset."""
         user = self.request.user
+
+        # Ensure both paid and unpaid records have invoice snapshots.
+        if user.school and user.role in ['admin', 'accountant', 'hr']:
+            _ensure_invoice_snapshots_for_school(user.school)
         
         # Filter by school first
         if user.school:
@@ -1221,6 +1225,9 @@ class StudentPaymentRecordListCreateView(generics.ListCreateAPIView):
         if user.role not in ['admin', 'accountant', 'hr']:
             return StudentPaymentRecord.objects.none()
         
+        if user.school and user.role in ['admin', 'accountant', 'hr']:
+            _ensure_invoice_snapshots_for_school(user.school)
+
         if user.school:
             queryset = StudentPaymentRecord.objects.filter(school=user.school)
         else:
@@ -1519,8 +1526,6 @@ def parent_invoices(request):
         return Response({'error': 'Parent access required'}, status=status.HTTP_403_FORBIDDEN)
     
     try:
-        from datetime import date, timedelta
-        
         links = ParentChildLink.objects.filter(
             parent=request.user.parent,
             is_confirmed=True,
@@ -1557,49 +1562,35 @@ def parent_invoices(request):
                     'currency': inv.payment_record.currency if inv.payment_record else 'USD'
                 })
             
-            # If no invoice exists yet, persist invoice snapshots from payment records.
-            if not existing_invoices.exists():
-                payment_records = StudentPaymentRecord.objects.filter(
-                    student=student,
-                    school=request.user.school,
-                ).order_by('-date_created')
-                for record in payment_records:
-                    total_due = _record_total_due(record)
-                    if total_due <= 0:
-                        continue
-                    new_invoice = Invoice.objects.create(
-                        student=student,
-                        school=request.user.school,
-                        invoice_number=f"INV-{uuid.uuid4().hex[:8].upper()}",
-                        total_amount=total_due,
-                        amount_paid=record.amount_paid,
-                        due_date=record.due_date or (date.today() + timedelta(days=30)),
-                        is_paid=_record_balance(record) <= 0,
-                        payment_record=record,
-                        notes=(
-                            f"Snapshot invoice for {record.get_payment_type_display()} "
-                            f"{record.academic_year} {_record_terms_label(record)}"
-                        ),
-                    )
-                    invoices_data.append({
-                        'id': new_invoice.id,
-                        'invoice_number': new_invoice.invoice_number,
-                        'payment_record_id': record.id,
-                        'student_id': student.id,
-                        'student_name': student.user.full_name,
-                        'student_number': student.user.student_number,
-                        'class_name': student.student_class.name if student.student_class else 'N/A',
-                        'issue_date': new_invoice.issue_date.strftime('%Y-%m-%d'),
-                        'due_date': new_invoice.due_date.strftime('%Y-%m-%d'),
-                        'total_amount': float(new_invoice.total_amount),
-                        'amount_paid': float(new_invoice.amount_paid),
-                        'balance': float(new_invoice.balance),
-                        'status': 'paid' if new_invoice.is_paid else ('partial' if new_invoice.amount_paid > 0 else 'unpaid'),
-                        'is_auto_generated': True,
-                        'currency': record.currency or 'USD',
-                        'academic_year': record.academic_year,
-                        'academic_term': record.academic_term,
-                    })
+            payment_records = StudentPaymentRecord.objects.filter(
+                student=student,
+                school=request.user.school,
+            ).order_by('-date_created')
+            for record in payment_records:
+                invoice = _ensure_invoice_snapshot_for_record(record)
+                if not invoice:
+                    continue
+                if existing_invoices.filter(id=invoice.id).exists():
+                    continue
+                invoices_data.append({
+                    'id': invoice.id,
+                    'invoice_number': invoice.invoice_number,
+                    'payment_record_id': record.id,
+                    'student_id': student.id,
+                    'student_name': student.user.full_name,
+                    'student_number': student.user.student_number,
+                    'class_name': student.student_class.name if student.student_class else 'N/A',
+                    'issue_date': invoice.issue_date.strftime('%Y-%m-%d'),
+                    'due_date': invoice.due_date.strftime('%Y-%m-%d'),
+                    'total_amount': float(invoice.total_amount),
+                    'amount_paid': float(invoice.amount_paid),
+                    'balance': float(invoice.balance),
+                    'status': 'paid' if invoice.is_paid else ('partial' if invoice.amount_paid > 0 else 'unpaid'),
+                    'is_auto_generated': True,
+                    'currency': record.currency or 'USD',
+                    'academic_year': record.academic_year,
+                    'academic_term': record.academic_term,
+                })
         
         return Response({'invoices': invoices_data})
     except Exception as e:
@@ -1793,9 +1784,6 @@ def student_invoices_by_class(request):
     if not class_id:
         return Response({'invoices': []})
     
-    from datetime import date, timedelta
-    import uuid
-    
     # Get all students in the class
     students = Student.objects.filter(
         user__school=user.school,
@@ -1805,75 +1793,34 @@ def student_invoices_by_class(request):
     invoices_data = []
     
     for student in students:
-        grade_level = student.student_class.grade_level if student.student_class else None
-        
-        # Check if student has an existing invoice (from payment record)
-        existing_invoice = Invoice.objects.filter(
+        payment_records = StudentPaymentRecord.objects.filter(
             student=student,
-            school=user.school
-        ).order_by('-issue_date').first()
-        
-        if existing_invoice:
-            # Use existing invoice
+            school=user.school,
+        ).order_by('-date_created')
+
+        for record in payment_records:
+            invoice = _ensure_invoice_snapshot_for_record(record)
+            if not invoice:
+                continue
             invoices_data.append({
-                'id': existing_invoice.id,
-                'invoice_number': existing_invoice.invoice_number,
-                'payment_record_id': existing_invoice.payment_record_id,
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'payment_record_id': record.id,
                 'student_id': student.id,
                 'student_name': student.user.full_name,
                 'student_number': student.user.student_number,
                 'class_name': student.student_class.name if student.student_class else 'N/A',
-                'issue_date': existing_invoice.issue_date.strftime('%Y-%m-%d'),
-                'due_date': existing_invoice.due_date.strftime('%Y-%m-%d'),
-                'total_amount': float(existing_invoice.total_amount),
-                'amount_paid': float(existing_invoice.amount_paid),
-                'balance': float(existing_invoice.balance),
-                'status': 'paid' if existing_invoice.is_paid else ('partial' if existing_invoice.amount_paid > 0 else 'unpaid'),
-                'is_auto_generated': False,
-                'currency': existing_invoice.payment_record.currency if existing_invoice.payment_record else 'USD'
+                'issue_date': invoice.issue_date.strftime('%Y-%m-%d'),
+                'due_date': invoice.due_date.strftime('%Y-%m-%d'),
+                'total_amount': float(invoice.total_amount),
+                'amount_paid': float(invoice.amount_paid),
+                'balance': float(invoice.balance),
+                'status': 'paid' if invoice.is_paid else ('partial' if invoice.amount_paid > 0 else 'unpaid'),
+                'is_auto_generated': True,
+                'currency': record.currency or 'USD',
+                'academic_year': record.academic_year,
+                'academic_term': record.academic_term,
             })
-        else:
-            payment_records = StudentPaymentRecord.objects.filter(
-                student=student,
-                school=user.school,
-            ).order_by('-date_created')
-            for record in payment_records:
-                total_due = _record_total_due(record)
-                if total_due <= 0:
-                    continue
-                created_invoice = Invoice.objects.create(
-                    student=student,
-                    school=user.school,
-                    invoice_number=f"INV-{uuid.uuid4().hex[:8].upper()}",
-                    total_amount=total_due,
-                    amount_paid=record.amount_paid,
-                    due_date=record.due_date or (date.today() + timedelta(days=30)),
-                    is_paid=_record_balance(record) <= 0,
-                    payment_record=record,
-                    notes=(
-                        f"Snapshot invoice for {record.get_payment_type_display()} "
-                        f"{record.academic_year} {_record_terms_label(record)}"
-                    ),
-                )
-                invoices_data.append({
-                    'id': created_invoice.id,
-                    'invoice_number': created_invoice.invoice_number,
-                    'payment_record_id': record.id,
-                    'student_id': student.id,
-                    'student_name': student.user.full_name,
-                    'student_number': student.user.student_number,
-                    'class_name': student.student_class.name if student.student_class else 'N/A',
-                    'issue_date': created_invoice.issue_date.strftime('%Y-%m-%d'),
-                    'due_date': created_invoice.due_date.strftime('%Y-%m-%d'),
-                    'total_amount': float(created_invoice.total_amount),
-                    'amount_paid': float(created_invoice.amount_paid),
-                    'balance': float(created_invoice.balance),
-                    'status': 'paid' if created_invoice.is_paid else ('partial' if created_invoice.amount_paid > 0 else 'unpaid'),
-                    'is_auto_generated': True,
-                    'currency': record.currency or 'USD',
-                    'academic_year': record.academic_year,
-                    'academic_term': record.academic_term,
-                })
     
     return Response({'invoices': invoices_data})
 
@@ -2034,6 +1981,69 @@ def _record_balance(record):
     return compute_record_totals(record)['balance']
 
 
+def _ensure_invoice_snapshot_for_record(record):
+    """Ensure at least one invoice exists for a payment record and keep it in sync."""
+    total_due = _record_total_due(record)
+    if total_due <= 0:
+        return None
+
+    invoice = (
+        Invoice.objects
+        .filter(payment_record=record, school=record.school)
+        .order_by('-issue_date', '-id')
+        .first()
+    )
+
+    if not invoice:
+        return Invoice.objects.create(
+            student=record.student,
+            school=record.school,
+            invoice_number=f"INV-{uuid.uuid4().hex[:8].upper()}",
+            total_amount=total_due,
+            amount_paid=to_decimal(record.amount_paid),
+            due_date=record.due_date or (date.today() + timedelta(days=30)),
+            is_paid=_record_balance(record) <= 0,
+            payment_record=record,
+            notes=(
+                f"Snapshot invoice for {record.get_payment_type_display()} "
+                f"{record.academic_year} {_record_terms_label(record)}"
+            ),
+        )
+
+    changed_fields = []
+    paid_amount = to_decimal(record.amount_paid)
+    record_is_paid = _record_balance(record) <= 0
+    desired_due_date = record.due_date or invoice.due_date or (date.today() + timedelta(days=30))
+
+    if invoice.total_amount != total_due:
+        invoice.total_amount = total_due
+        changed_fields.append('total_amount')
+    if invoice.amount_paid != paid_amount:
+        invoice.amount_paid = paid_amount
+        changed_fields.append('amount_paid')
+    if invoice.is_paid != record_is_paid:
+        invoice.is_paid = record_is_paid
+        changed_fields.append('is_paid')
+    if invoice.due_date != desired_due_date:
+        invoice.due_date = desired_due_date
+        changed_fields.append('due_date')
+
+    if changed_fields:
+        invoice.save(update_fields=changed_fields)
+    return invoice
+
+
+def _ensure_invoice_snapshots_for_school(school):
+    """Backfill/sync invoice snapshots so paid and unpaid records are visible in invoice lists."""
+    records = (
+        StudentPaymentRecord.objects
+        .filter(school=school)
+        .select_related('student', 'school')
+    )
+    for record in records:
+        _ensure_invoice_snapshot_for_record(record)
+
+
 def _sync_invoice_with_record(invoice, record):
     if not invoice:
         return
@@ -2042,7 +2052,7 @@ def _sync_invoice_with_record(invoice, record):
     invoice.save(update_fields=['amount_paid', 'is_paid'])
 
 
-def _apply_payment_to_record(record, amount, method='other', actor=None, reference='', notes=''):
+def _apply_payment_to_record(record, amount, method='other', actor=None, reference='', notes='', target_invoice=None):
     """Apply payment atomically to record, transactions, invoice and additional-fee flags."""
     amount = to_decimal(amount)
     if amount <= 0:
@@ -2065,7 +2075,7 @@ def _apply_payment_to_record(record, amount, method='other', actor=None, referen
     record.payment_status = compute_record_totals(record)['status']
     record.save(update_fields=['amount_paid', 'payment_status', 'date_updated'])
 
-    invoice = Invoice.objects.filter(payment_record=record, school=record.school).order_by('-issue_date', '-id').first()
+    invoice = target_invoice or Invoice.objects.filter(payment_record=record, school=record.school).order_by('-issue_date', '-id').first()
     _sync_invoice_with_record(invoice, record)
 
     settle_additional_fees_for_record(record)
@@ -2086,7 +2096,7 @@ def _recalculate_additional_fees_for_student(student, school, academic_year, aca
 def paynow_initiate_payment(request):
     """
     Initiate a PayNow payment for a student fee or invoice.
-    Body: { invoice_id or record_id, amount, mobile_number (optional), method: ecocash|onemoney|web }
+    Body: { invoice_number, amount, mobile_number (optional), method: ecocash|onemoney|web }
     """
     if request.user.role not in ('parent', 'student', 'admin', 'accountant'):
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
@@ -2122,44 +2132,32 @@ def paynow_initiate_payment(request):
     invoice_id = request.data.get('invoice_id')
     payment_record_id = request.data.get('payment_record_id')
     student_id = request.data.get('student_id')
+    invoice_number = (request.data.get('invoice_number') or '').strip()
 
     payment_record = None
     linked_invoice = None
 
-    if invoice_id:
-        try:
-            linked_invoice = Invoice.objects.select_related('payment_record', 'student').get(
-                id=invoice_id,
-                school=school,
-            )
-        except Invoice.DoesNotExist:
-            return Response({'error': 'Invoice not found.'}, status=status.HTTP_404_NOT_FOUND)
-        payment_record = linked_invoice.payment_record
-        if not payment_record:
-            return Response({'error': 'Invoice has no linked payment record.'}, status=status.HTTP_400_BAD_REQUEST)
-    elif payment_record_id:
-        try:
-            payment_record = StudentPaymentRecord.objects.select_related('student').get(
-                id=payment_record_id,
-                school=school,
-            )
-        except StudentPaymentRecord.DoesNotExist:
-            return Response({'error': 'Payment record not found.'}, status=status.HTTP_404_NOT_FOUND)
-        linked_invoice = Invoice.objects.filter(payment_record=payment_record, school=school).order_by('-issue_date', '-id').first()
-    elif student_id:
-        queryset = StudentPaymentRecord.objects.filter(
+    if not invoice_number:
+        return Response({'error': 'invoice_number is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        linked_invoice = Invoice.objects.select_related('payment_record', 'student').get(
+            invoice_number=invoice_number,
             school=school,
-            student_id=student_id,
-        ).exclude(payment_status='paid').order_by('due_date', 'date_created')
-        payment_record = queryset.first()
-        if not payment_record:
-            return Response({'error': 'No outstanding payment record found for this student.'}, status=status.HTTP_400_BAD_REQUEST)
-        linked_invoice = Invoice.objects.filter(payment_record=payment_record, school=school).order_by('-issue_date', '-id').first()
-    else:
-        return Response(
-            {'error': 'invoice_id, payment_record_id, or student_id is required.'},
-            status=status.HTTP_400_BAD_REQUEST
         )
+    except Invoice.DoesNotExist:
+        return Response({'error': 'Invoice not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    payment_record = linked_invoice.payment_record
+    if not payment_record:
+        return Response({'error': 'Invoice has no linked payment record.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if invoice_id and str(linked_invoice.id) != str(invoice_id):
+        return Response({'error': 'invoice_id does not match invoice_number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if payment_record_id and str(payment_record.id) != str(payment_record_id):
+        return Response({'error': 'payment_record_id does not match invoice_number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if student_id and str(payment_record.student_id) != str(student_id):
+        return Response({'error': 'student_id does not match invoice_number.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if request.user.role == 'parent':
         parent_owns_student = ParentChildLink.objects.filter(
@@ -2281,6 +2279,7 @@ def paynow_result_callback(request):
                         actor=intent.created_by,
                         reference=paynow_reference or reference,
                         notes=f'PayNow callback ({status_value})',
+                        target_invoice=intent.invoice,
                     )
                 except ValueError as exc:
                     return Response({'status': 'ignored', 'reason': str(exc)})

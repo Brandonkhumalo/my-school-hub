@@ -18,7 +18,9 @@ urlpatterns = [
     # Student endpoints
     path('students/', views.StudentListView.as_view(), name='student-list'),
     path('students/<int:pk>/', views.StudentDetailView.as_view(), name='student-detail'),
+    path('students/<int:pk>/transfer/', views.transfer_student, name='student-transfer'),
     path('students/<int:student_id>/performance/', views.student_performance_view, name='student-performance'),
+    path('past-students/', views.past_students_search, name='past-students-search'),
     
     # Teacher endpoints
     path('teachers/', views.TeacherListView.as_view(), name='teacher-list'),
@@ -61,6 +63,7 @@ urlpatterns = [
     path('students/<int:student_id>/report-card/', views.generate_report_card, name='report-card'),
 
     # Report card publishing
+    path('reports/generate/', views.generate_reports_for_teachers, name='generate-reports-for-teachers'),
     path('reports/publish/', views.publish_reports, name='publish-reports'),
     path('reports/publish-all/', views.publish_all_reports, name='publish-all-reports'),
     path('reports/published/', views.list_published_reports, name='list-published-reports'),

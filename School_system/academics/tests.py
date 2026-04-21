@@ -31,6 +31,7 @@ from academics.models import (
     Parent,
     ParentChildLink,
     ReportCardApprovalRequest,
+    ReportCardGeneration,
     ReportCardRelease,
     Result,
     Suspension,
@@ -39,6 +40,7 @@ from academics.models import (
     Teacher,
     Timetable,
 )
+from finances.models import SchoolFees, StudentPaymentRecord
 
 
 # ---------------------------------------------------------------------------
@@ -1271,8 +1273,30 @@ class ReportFeedbackSignoffWorkflowAPITest(APITestCase):
         self.teacher_submit_url = "/api/v1/teachers/report-feedback/submit/"
         self.teacher_status_url = "/api/v1/teachers/report-feedback/status/"
         self.admin_list_url = "/api/v1/academics/reports/approval-requests/"
+        self.admin_generate_url = "/api/v1/academics/reports/generate/"
 
     def test_teacher_submit_then_admin_reject_then_approve(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        blocked_submit_response = self.client.post(self.teacher_submit_url, {
+            "class_id": self.cls.id,
+            "year": "2026",
+            "term": "Term 1",
+        }, format="json")
+        self.assertEqual(blocked_submit_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(user=self.admin)
+        generate_response = self.client.post(self.admin_generate_url, {
+            "class_id": self.cls.id,
+            "year": "2026",
+            "term": "Term 1",
+        }, format="json")
+        self.assertIn(generate_response.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
+        self.assertTrue(
+            ReportCardGeneration.objects.filter(
+                school=self.school, class_obj=self.cls, academic_year="2026", academic_term="Term 1"
+            ).exists()
+        )
+
         self.client.force_authenticate(user=self.teacher.user)
         submit_response = self.client.post(self.teacher_submit_url, {
             "class_id": self.cls.id,
@@ -1328,3 +1352,86 @@ class ReportFeedbackSignoffWorkflowAPITest(APITestCase):
                 school=self.school, class_obj=self.cls, academic_year="2026", academic_term="Term 1"
             ).exists()
         )
+
+
+class ReportCardFullyPaidAccessAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Report Access School")
+        self.admin = make_user(self.school, "access_admin", role="admin")
+        self.teacher = make_teacher(self.school, username="access_teacher")
+        self.subject = make_subject(self.school, name="History", code="HIS01")
+        self.cls = make_class(self.school, name="Form 3A", grade_level=10, year="2026")
+        self.student = make_student(self.school, self.cls, username="access_student", student_number="ACC001")
+        self.student_user = self.student.user
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+
+        self.parent_user = make_user(self.school, "access_parent", role="parent")
+        self.parent = Parent.objects.create(user=self.parent_user)
+        ParentChildLink.objects.create(parent=self.parent, student=self.student, is_confirmed=True)
+
+        # Minimal result row so PDF generation has report data.
+        Result.objects.create(
+            student=self.student,
+            subject=self.subject,
+            teacher=self.teacher,
+            exam_type="Term Test",
+            score=70,
+            max_score=100,
+            academic_term="Term 1",
+            academic_year="2026",
+            include_in_report=True,
+        )
+
+        # Fee configuration for outstanding checks.
+        SchoolFees.objects.create(
+            school=self.school,
+            grade_level=10,
+            grade_name="Form 3",
+            tuition_fee=100,
+            levy_fee=0,
+            sports_fee=0,
+            computer_fee=0,
+            other_fees=0,
+            boarding_fee=0,
+            transport_fee=0,
+            academic_year="2026",
+            academic_term="term_1",
+            created_by=self.admin,
+        )
+
+        ReportCardRelease.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            academic_year="2026",
+            academic_term="Term 1",
+            access_scope="fully_paid",
+            published_by=self.admin,
+        )
+        self.report_url = f"/api/v1/academics/students/{self.student.id}/report-card/?year=2026&term=Term+1"
+
+    def test_parent_blocked_when_outstanding_without_plan(self):
+        self.client.force_authenticate(user=self.parent_user)
+        response = self.client.get(self.report_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("fully-paid", str(response.data.get("error", "")).lower())
+
+    def test_parent_gets_access_after_payment(self):
+        StudentPaymentRecord.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_type="school_fees",
+            payment_plan="one_term",
+            academic_year="2026",
+            academic_term="term_1",
+            total_amount_due=100,
+            amount_paid=100,
+            payment_status="paid",
+            payment_method="cash",
+            recorded_by=self.admin,
+        )
+        self.client.force_authenticate(user=self.parent_user)
+        response = self.client.get(self.report_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")

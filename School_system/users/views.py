@@ -9,10 +9,19 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
+import time
+import datetime as dt
+
 from .models import (
     CustomUser, School, AuditLog, SchoolSettings, Notification,
     HRPermissionProfile, HRPagePermission,
     AccountantPermissionProfile, AccountantPagePermission,
+    TwoFactorAuthConfig, TrustedDevice, TwoFactorBackupCode,
+)
+from .utils.otp import (
+    generate_secret, get_qr_code, verify_totp,
+    generate_backup_codes, hash_backup_code, verify_backup_code,
+    create_backup_codes_list, parse_user_agent,
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
@@ -117,6 +126,71 @@ def login_view(request):
                     'error': 'school_suspended',
                     'message': 'Your school has been suspended. Please contact your school administrator.'
                 }, status=403)
+
+        # Check if user has 2FA enabled
+        try:
+            two_fa_config = user.two_factor_config
+            if two_fa_config.is_enabled:
+                # Check if this device/IP is trusted
+                ip = request.META.get('REMOTE_ADDR')
+                is_trusted = TrustedDevice.objects.filter(
+                    user=user, ip_address=ip, verified=True
+                ).exists()
+
+                if not is_trusted:
+                    # Generate a short-lived session token for OTP verification
+                    import jwt as _jwt
+                    from django.conf import settings as _settings
+                    otp_payload = {"user_id": str(user.id), "type": "otp_session", "exp": int(time.time()) + 300}
+                    otp_token = _jwt.encode(otp_payload, key=_settings.SECRET_KEY, algorithm='HS256')
+                    return Response({
+                        "requires_2fa": True,
+                        "otp_session_token": otp_token,
+                        "message": "2FA verification required"
+                    }, status=202)
+        except AttributeError:
+            pass  # No 2FA config means 2FA not set up
+
+        # Also check school-level enforcement
+        try:
+            school_settings = user.school.settings
+            if school_settings.enforce_2fa and user.role in (school_settings.enforce_2fa_for_roles or []):
+                deadline = None
+                if school_settings.enforce_2fa_started_at:
+                    deadline = school_settings.enforce_2fa_started_at + dt.timedelta(days=school_settings.enforce_2fa_grace_period_days)
+
+                has_2fa = hasattr(user, 'two_factor_config') and user.two_factor_config.is_enabled
+                if not has_2fa:
+                    if deadline and timezone.now() > deadline:
+                        return Response({
+                            "error": "2fa_required",
+                            "message": "2FA is required for your role. The grace period has ended. Please contact your administrator.",
+                            "deadline_passed": True
+                        }, status=403)
+                    else:
+                        # Allow login but return warning
+                        warning_date = deadline.strftime('%d %B %Y') if deadline else None
+                        user_data = UserSerializer(user).data
+                        if user.student_number:
+                            user_data['student_number'] = user.student_number
+                        access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+                        try:
+                            AuditLog.objects.create(
+                                user=user, school=user.school, action='LOGIN',
+                                model_name='CustomUser', object_id=str(user.id),
+                                object_repr=f'Login: {user.email}',
+                                ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+                            )
+                        except Exception:
+                            pass
+                        return Response({
+                            'user': user_data, 'token': access_token,
+                            'message': f'{user.role.capitalize()} login successful',
+                            '2fa_warning': True,
+                            '2fa_deadline': warning_date
+                        })
+        except Exception:
+            pass
 
         user_data = UserSerializer(user).data
         if user.student_number:
@@ -1340,4 +1414,472 @@ def admin_analytics(request):
         'attendance_by_day': attendance_by_day,
         'subject_performance': subject_performance,
         'class_distribution': class_distribution,
+    })
+
+
+# ---------------------------------------------------------------
+# Two-Factor Authentication (TOTP)
+# ---------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_status_view(request):
+    """GET: Return 2FA status + school enforcement info for current user"""
+    try:
+        config = request.user.two_factor_config
+        is_enabled = config.is_enabled
+        has_backup_codes = len([c for c in config.backup_codes if not c.get('used')]) > 0
+    except AttributeError:
+        is_enabled = False
+        has_backup_codes = False
+
+    trusted_count = TrustedDevice.objects.filter(user=request.user, verified=True).count()
+
+    # School enforcement info
+    enforce_info = {}
+    try:
+        school_settings = request.user.school.settings
+        if school_settings.enforce_2fa:
+            deadline = None
+            if school_settings.enforce_2fa_started_at:
+                deadline = school_settings.enforce_2fa_started_at + dt.timedelta(days=school_settings.enforce_2fa_grace_period_days)
+            enforce_info = {
+                'is_enforced': request.user.role in (school_settings.enforce_2fa_for_roles or []),
+                'deadline': deadline.isoformat() if deadline else None,
+                'grace_days': school_settings.enforce_2fa_grace_period_days,
+            }
+    except Exception:
+        pass
+
+    return Response({
+        'is_enabled': is_enabled,
+        'has_backup_codes': has_backup_codes,
+        'trusted_devices_count': trusted_count,
+        'enforcement': enforce_info,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_setup_view(request):
+    """POST: Generate a new TOTP secret + QR code. Does NOT enable 2FA yet."""
+    user = request.user
+    secret = generate_secret()
+    qr_code = get_qr_code(secret, user.email, organization_name='My School Hub')
+
+    # Store secret temporarily in the config (not enabled yet)
+    config, _ = TwoFactorAuthConfig.objects.get_or_create(user=user)
+    config.secret_key = secret
+    config.is_enabled = False
+    config.save(update_fields=['secret_key', 'is_enabled'])
+
+    return Response({
+        'secret': secret,
+        'qr_code': qr_code,
+        'message': 'Scan the QR code with your authenticator app, then call verify-setup with the 6-digit code.'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_verify_setup_view(request):
+    """POST: Verify the first TOTP code to confirm setup, enable 2FA, return backup codes."""
+    from .serializers import TwoFactorSetupVerifySerializer
+    serializer = TwoFactorSetupVerifySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    code = serializer.validated_data['code']
+    try:
+        config = request.user.two_factor_config
+    except AttributeError:
+        return Response({'error': 'Setup not initiated. Call /2fa/setup/ first.'}, status=400)
+
+    if not config.secret_key:
+        return Response({'error': 'Setup not initiated. Call /2fa/setup/ first.'}, status=400)
+
+    if not verify_totp(config.secret_key, code):
+        return Response({'error': 'Invalid code. Please try again.'}, status=400)
+
+    # Generate backup codes
+    plain_codes = generate_backup_codes(10)
+    hashed = [{'code_hash': hash_backup_code(c), 'used': False} for c in plain_codes]
+
+    config.is_enabled = True
+    config.backup_codes = hashed
+    config.backup_codes_used = []
+    config.last_verified_at = timezone.now()
+    config.last_ip_address = request.META.get('REMOTE_ADDR')
+    config.save()
+
+    try:
+        AuditLog.objects.create(
+            user=request.user, school=request.user.school, action='UPDATE',
+            model_name='TwoFactorAuthConfig', object_id=str(config.pk),
+            object_repr=f'2FA enabled: {request.user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+        )
+    except Exception:
+        pass
+
+    return Response({
+        'message': '2FA enabled successfully.',
+        'backup_codes': plain_codes,
+        'warning': 'Save these backup codes in a safe place. They will not be shown again.'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def two_fa_verify_otp_view(request):
+    """POST: Verify TOTP code during login using otp_session_token."""
+    if _check_rate_limit(request, group='2fa_verify', rate='5/m'):
+        return Response({'error': 'Too many attempts. Please wait.'}, status=429)
+
+    from .serializers import TwoFactorVerifySerializer
+    serializer = TwoFactorVerifySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    otp_token = serializer.validated_data['otp_session_token']
+    code = serializer.validated_data['code']
+    trust_device = serializer.validated_data.get('trust_device', False)
+
+    # Decode the session token
+    try:
+        payload = JWTAuthentication.decode_token(otp_token)
+        if payload.get('type') != 'otp_session':
+            raise ValueError('Invalid token type')
+        user_id = payload.get('user_id')
+        user = CustomUser.objects.get(id=user_id)
+    except Exception:
+        return Response({'error': 'Invalid or expired session token.'}, status=401)
+
+    try:
+        config = user.two_factor_config
+    except AttributeError:
+        return Response({'error': '2FA not configured.'}, status=400)
+
+    if not verify_totp(config.secret_key, code):
+        return Response({'error': 'Invalid code.'}, status=400)
+
+    config.last_verified_at = timezone.now()
+    config.last_ip_address = request.META.get('REMOTE_ADDR')
+    config.save(update_fields=['last_verified_at', 'last_ip_address'])
+
+    if trust_device:
+        ip = request.META.get('REMOTE_ADDR', '')
+        ua = request.META.get('HTTP_USER_AGENT', '')
+        device_name = parse_user_agent(ua)
+        TrustedDevice.objects.update_or_create(
+            user=user, ip_address=ip,
+            defaults={'user_agent': ua[:500], 'device_name': device_name, 'verified': True}
+        )
+
+    access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+    user_data = UserSerializer(user).data
+    if user.student_number:
+        user_data['student_number'] = user.student_number
+
+    try:
+        AuditLog.objects.create(
+            user=user, school=user.school, action='LOGIN',
+            model_name='CustomUser', object_id=str(user.id),
+            object_repr=f'Login (2FA verified): {user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+        )
+    except Exception:
+        pass
+
+    return Response({
+        'user': user_data,
+        'token': access_token,
+        'message': f'{user.role.capitalize()} login successful'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def two_fa_verify_backup_view(request):
+    """POST: Verify a backup code during login."""
+    if _check_rate_limit(request, group='2fa_backup', rate='3/m'):
+        return Response({'error': 'Too many attempts. Please wait.'}, status=429)
+
+    from .serializers import TwoFactorBackupVerifySerializer
+    serializer = TwoFactorBackupVerifySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    otp_token = serializer.validated_data['otp_session_token']
+    backup_code = serializer.validated_data['backup_code'].upper()
+    trust_device = serializer.validated_data.get('trust_device', False)
+
+    try:
+        payload = JWTAuthentication.decode_token(otp_token)
+        if payload.get('type') != 'otp_session':
+            raise ValueError('Invalid token type')
+        user_id = payload.get('user_id')
+        user = CustomUser.objects.get(id=user_id)
+    except Exception:
+        return Response({'error': 'Invalid or expired session token.'}, status=401)
+
+    try:
+        config = user.two_factor_config
+    except AttributeError:
+        return Response({'error': '2FA not configured.'}, status=400)
+
+    # Find and verify the backup code
+    matched_idx = None
+    for i, code_obj in enumerate(config.backup_codes):
+        if not code_obj.get('used') and verify_backup_code(code_obj['code_hash'], backup_code):
+            matched_idx = i
+            break
+
+    if matched_idx is None:
+        return Response({'error': 'Invalid or already-used backup code.'}, status=400)
+
+    # Mark as used
+    config.backup_codes[matched_idx]['used'] = True
+    config.save(update_fields=['backup_codes'])
+
+    # Create audit trail
+    try:
+        TwoFactorBackupCode.objects.create(
+            user=user, code_index=matched_idx,
+            used_ip_address=request.META.get('REMOTE_ADDR', '0.0.0.0'),
+            used_device=parse_user_agent(request.META.get('HTTP_USER_AGENT', ''))
+        )
+    except Exception:
+        pass
+
+    if trust_device:
+        ip = request.META.get('REMOTE_ADDR', '')
+        ua = request.META.get('HTTP_USER_AGENT', '')
+        TrustedDevice.objects.update_or_create(
+            user=user, ip_address=ip,
+            defaults={'user_agent': ua[:500], 'device_name': parse_user_agent(ua), 'verified': True}
+        )
+
+    access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+    user_data = UserSerializer(user).data
+    if user.student_number:
+        user_data['student_number'] = user.student_number
+
+    remaining = sum(1 for c in config.backup_codes if not c.get('used'))
+
+    try:
+        AuditLog.objects.create(
+            user=user, school=user.school, action='LOGIN',
+            model_name='CustomUser', object_id=str(user.id),
+            object_repr=f'Login via backup code: {user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+        )
+    except Exception:
+        pass
+
+    return Response({
+        'user': user_data,
+        'token': access_token,
+        'message': f'{user.role.capitalize()} login successful',
+        'backup_codes_remaining': remaining,
+        'warning': f'{remaining} backup code(s) remaining.' if remaining <= 3 else None
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_disable_view(request):
+    """POST: Disable 2FA for current user. Requires current password."""
+    password = request.data.get('password', '')
+    if not request.user.check_password(password):
+        return Response({'error': 'Incorrect password.'}, status=400)
+
+    try:
+        config = request.user.two_factor_config
+        config.is_enabled = False
+        config.secret_key = ''
+        config.backup_codes = []
+        config.backup_codes_used = []
+        config.save()
+    except AttributeError:
+        return Response({'error': '2FA was not enabled.'}, status=400)
+
+    TrustedDevice.objects.filter(user=request.user).delete()
+
+    try:
+        AuditLog.objects.create(
+            user=request.user, school=request.user.school, action='UPDATE',
+            model_name='TwoFactorAuthConfig', object_id=str(config.pk),
+            object_repr=f'2FA disabled: {request.user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+        )
+    except Exception:
+        pass
+
+    return Response({'message': '2FA disabled successfully.'})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_regenerate_backup_codes_view(request):
+    """POST: Regenerate backup codes (invalidates old ones)."""
+    try:
+        config = request.user.two_factor_config
+        if not config.is_enabled:
+            return Response({'error': '2FA is not enabled.'}, status=400)
+    except AttributeError:
+        return Response({'error': '2FA is not enabled.'}, status=400)
+
+    plain_codes = generate_backup_codes(10)
+    hashed = [{'code_hash': hash_backup_code(c), 'used': False} for c in plain_codes]
+    config.backup_codes = hashed
+    config.backup_codes_used = []
+    config.save(update_fields=['backup_codes', 'backup_codes_used'])
+
+    return Response({
+        'backup_codes': plain_codes,
+        'message': 'New backup codes generated. Save them in a safe place.'
+    })
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_trusted_devices_view(request):
+    """GET: List trusted devices. DELETE: Revoke all or a specific trusted device."""
+    if request.method == 'GET':
+        devices = TrustedDevice.objects.filter(user=request.user, verified=True).order_by('-last_seen')
+        data = [{
+            'id': d.id,
+            'device_name': d.device_name or 'Unknown Device',
+            'ip_address': d.ip_address,
+            'first_seen': d.first_seen.isoformat(),
+            'last_seen': d.last_seen.isoformat(),
+        } for d in devices]
+        return Response({'devices': data})
+    else:  # DELETE
+        device_id = request.data.get('device_id')
+        if device_id:
+            TrustedDevice.objects.filter(user=request.user, id=device_id).delete()
+            return Response({'message': 'Device removed.'})
+        else:
+            TrustedDevice.objects.filter(user=request.user).delete()
+            return Response({'message': 'All trusted devices removed.'})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def enforce_two_fa_view(request):
+    """POST: Admin-only endpoint to enable/disable 2FA enforcement for specific roles."""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin access required.'}, status=403)
+
+    from .serializers import Enforce2FASerializer
+    serializer = Enforce2FASerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    enforce = serializer.validated_data['enforce']
+    roles = serializer.validated_data.get('roles', [])
+    grace_period_days = serializer.validated_data.get('grace_period_days', 14)
+
+    try:
+        school_settings = request.user.school.settings
+    except Exception:
+        return Response({'error': 'School settings not found.'}, status=400)
+
+    school_settings.enforce_2fa = enforce
+    if enforce:
+        school_settings.enforce_2fa_for_roles = roles
+        school_settings.enforce_2fa_grace_period_days = grace_period_days
+        school_settings.enforce_2fa_started_at = timezone.now()
+    else:
+        school_settings.enforce_2fa_for_roles = []
+        school_settings.enforce_2fa_started_at = None
+    school_settings.save()
+
+    # Compliance stats
+    total_affected = 0
+    compliant = 0
+    if enforce and roles:
+        affected_users = CustomUser.objects.filter(school=request.user.school, role__in=roles)
+        total_affected = affected_users.count()
+        compliant = affected_users.filter(two_factor_config__is_enabled=True).count()
+
+    action_label = 'UPDATE'
+    action_repr = f'2FA enforcement {"activated" if enforce else "disabled"}: roles={roles}'
+    try:
+        AuditLog.objects.create(
+            user=request.user, school=request.user.school, action=action_label,
+            model_name='SchoolSettings', object_id=str(school_settings.pk),
+            object_repr=action_repr,
+            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+        )
+    except Exception:
+        pass
+
+    deadline = None
+    if enforce and school_settings.enforce_2fa_started_at:
+        deadline = (school_settings.enforce_2fa_started_at + dt.timedelta(days=grace_period_days)).isoformat()
+
+    return Response({
+        'message': f'2FA enforcement {"activated" if enforce else "disabled"} successfully.',
+        'enforce': enforce,
+        'roles': roles,
+        'grace_period_days': grace_period_days,
+        'deadline': deadline,
+        'compliance': {
+            'total_affected': total_affected,
+            'compliant': compliant,
+            'non_compliant': total_affected - compliant,
+        } if enforce else None
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def two_fa_compliance_view(request):
+    """GET: Admin-only compliance dashboard data."""
+    if request.user.role != 'admin':
+        return Response({'error': 'Admin access required.'}, status=403)
+
+    try:
+        school_settings = request.user.school.settings
+    except Exception:
+        return Response({'error': 'School settings not found.'}, status=400)
+
+    enforced_roles = school_settings.enforce_2fa_for_roles or []
+    school = request.user.school
+
+    compliance_by_role = []
+    all_users = CustomUser.objects.filter(school=school).select_related('two_factor_config')
+
+    for role in enforced_roles:
+        role_users = [u for u in all_users if u.role == role]
+        total = len(role_users)
+        enabled = sum(1 for u in role_users if hasattr(u, 'two_factor_config') and u.two_factor_config.is_enabled)
+        non_compliant_users = [
+            {'id': u.id, 'name': u.get_full_name() or u.email, 'email': u.email}
+            for u in role_users
+            if not (hasattr(u, 'two_factor_config') and u.two_factor_config.is_enabled)
+        ]
+        compliance_by_role.append({
+            'role': role,
+            'total': total,
+            'compliant': enabled,
+            'non_compliant': total - enabled,
+            'percentage': round((enabled / total * 100) if total > 0 else 0, 1),
+            'non_compliant_users': non_compliant_users,
+        })
+
+    deadline = None
+    if school_settings.enforce_2fa_started_at:
+        deadline = (school_settings.enforce_2fa_started_at + dt.timedelta(days=school_settings.enforce_2fa_grace_period_days)).isoformat()
+
+    return Response({
+        'enforce_2fa': school_settings.enforce_2fa,
+        'enforced_roles': enforced_roles,
+        'grace_period_days': school_settings.enforce_2fa_grace_period_days,
+        'started_at': school_settings.enforce_2fa_started_at.isoformat() if school_settings.enforce_2fa_started_at else None,
+        'deadline': deadline,
+        'compliance_by_role': compliance_by_role,
     })

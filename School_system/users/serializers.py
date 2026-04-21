@@ -758,3 +758,33 @@ class SubjectGroupSerializer(serializers.ModelSerializer):
         model = SubjectGroup
         fields = ['id', 'subject', 'subject_name', 'group_type']
         read_only_fields = ['id', 'subject_name']
+
+
+class TwoFactorSetupVerifySerializer(serializers.Serializer):
+    """Verify a TOTP code during 2FA setup"""
+    code = serializers.CharField(min_length=6, max_length=6)
+
+
+class TwoFactorVerifySerializer(serializers.Serializer):
+    """Verify OTP or backup code during login"""
+    otp_session_token = serializers.CharField()
+    code = serializers.CharField(min_length=6, max_length=8)
+    trust_device = serializers.BooleanField(default=False)
+
+
+class TwoFactorBackupVerifySerializer(serializers.Serializer):
+    """Verify a backup code during login"""
+    otp_session_token = serializers.CharField()
+    backup_code = serializers.CharField(min_length=8, max_length=8)
+    trust_device = serializers.BooleanField(default=False)
+
+
+class Enforce2FASerializer(serializers.Serializer):
+    """Admin endpoint to enforce 2FA for specific roles"""
+    enforce = serializers.BooleanField()
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=['admin', 'teacher', 'student', 'parent', 'hr', 'accountant', 'security', 'cleaner', 'librarian']),
+        required=False,
+        default=list
+    )
+    grace_period_days = serializers.IntegerField(min_value=0, max_value=90, default=14)

@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from django.db.models import Avg, Count, Q, Prefetch
 from django.utils import timezone
@@ -24,7 +25,8 @@ from .serializers import (
     ParentSerializer, ResultSerializer, TimetableSerializer, AnnouncementSerializer,
     ComplaintSerializer, SuspensionSerializer, StudentPerformanceSerializer,
     CreateResultSerializer, CreateStudentSerializer, CreateTeacherSerializer, CreateParentSerializer,
-    UpdateStudentSerializer, UpdateTeacherSerializer, UpdateParentSerializer
+    UpdateStudentSerializer, UpdateTeacherSerializer, UpdateParentSerializer,
+    TransferredStudentSerializer,
 )
 
 
@@ -167,6 +169,44 @@ class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
         if request.user.role not in ('admin', 'hr', 'superadmin'):
             return Response({'error': 'Only admin/HR can delete students.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def transfer_student(request, pk):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can transfer students.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = Student.objects.get(pk=pk, user__school=request.user.school)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    note = request.data.get('transfer_note', '').strip()
+    student.is_transferred = True
+    student.transferred_at = timezone.now()
+    student.transferred_by = request.user
+    student.transfer_note = note
+    student.save(update_fields=['is_transferred', 'transferred_at', 'transferred_by', 'transfer_note'])
+    return Response({'message': 'Student transferred successfully.'}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def past_students_search(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    q = request.query_params.get('q', '').strip()
+    if not q:
+        return Response({'error': 'A search term is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    queryset = Student.objects.transferred_only().filter(
+        user__school=request.user.school
+    ).filter(
+        Q(user__student_number__icontains=q) |
+        Q(user__first_name__icontains=q) |
+        Q(user__last_name__icontains=q)
+    ).select_related('user', 'student_class', 'transferred_by')
+    serializer = TransferredStudentSerializer(queryset, many=True)
+    return Response(serializer.data)
 
 
 @api_view(['GET'])
@@ -1052,6 +1092,62 @@ def get_timetable_stats(request):
 # Report Card PDF Generation
 # ---------------------------------------------------------------
 
+def _student_has_approved_plan_for_term(student, school, year, term_key):
+    """
+    Interpret an approved payment plan as an installment record with a next due date.
+    This allows access when a student is on an active admin/accounting-managed plan.
+    """
+    from finances.models import StudentPaymentRecord
+    from finances.term_finance import resolve_terms_for_plan, normalize_term_key
+
+    records = StudentPaymentRecord.objects.filter(
+        school=school,
+        student=student,
+        academic_year=str(year),
+        payment_type='school_fees',
+        payment_status__in=['partial', 'unpaid'],
+    ).exclude(next_payment_due__isnull=True)
+
+    for record in records:
+        covered = resolve_terms_for_plan(
+            record.payment_plan,
+            record.academic_term,
+            getattr(record, 'covered_terms', []),
+        )
+        if not covered:
+            fallback = normalize_term_key(record.academic_term)
+            covered = [fallback] if fallback else []
+        if term_key in covered:
+            return True
+    return False
+
+
+def _student_is_financially_eligible_for_report(student, school, year, term):
+    """For fully-paid releases: block students who owe current/previous term without approved plans."""
+    from finances.term_finance import TERM_SEQUENCE, TERM_INDEX, normalize_term_key
+    from finances.views import _student_term_financials
+
+    term_key = normalize_term_key(term)
+    if term_key not in TERM_INDEX:
+        return True
+
+    terms_to_check = TERM_SEQUENCE[:TERM_INDEX[term_key] + 1]
+    expected_map, collected_map = _student_term_financials(
+        students=[student],
+        school=school,
+        academic_year=str(year),
+        terms=terms_to_check,
+    )
+
+    for current_term in terms_to_check:
+        expected = expected_map.get((student.id, current_term), Decimal('0'))
+        collected = collected_map.get((student.id, current_term), Decimal('0'))
+        outstanding = expected - collected
+        if outstanding > Decimal('0.01'):
+            if not _student_has_approved_plan_for_term(student, school, year, current_term):
+                return False
+    return True
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_report_card(request, student_id):
@@ -1111,15 +1207,26 @@ def generate_report_card(request, student_id):
     # ── Check if reports are published (students and parents only) ─────
     if user.role in ('student', 'parent') and student.student_class_id:
         from .models import ReportCardRelease
-        is_published = ReportCardRelease.objects.filter(
+        release = ReportCardRelease.objects.filter(
             school=school, class_obj_id=student.student_class_id,
             academic_year=year, academic_term=term,
-        ).exists()
-        if not is_published:
+        ).first()
+        if not release:
             return Response(
                 {'error': 'Report cards for this term have not been published yet. Please check back later.'},
                 status=status.HTTP_403_FORBIDDEN
             )
+        if release.access_scope == 'fully_paid':
+            if not _student_is_financially_eligible_for_report(student, school, year, term):
+                return Response(
+                    {
+                        'error': (
+                            'Report access is currently limited to fully-paid students '
+                            'or those on approved payment plans for current/previous terms.'
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
     # ── Build PDF ───────────────────────────────────────────────────────
     # Only include results marked for the report card.
@@ -2297,18 +2404,69 @@ def _announce_report_release(author, class_obj, term, year):
         Notification.objects.bulk_create(payload)
 
 
-def _publish_class_reports(school, class_obj, year, term, actor):
+def _publish_class_reports(school, class_obj, year, term, actor, access_scope='all'):
     from .models import ReportCardRelease
     release, created = ReportCardRelease.objects.get_or_create(
         school=school,
         class_obj=class_obj,
         academic_year=year,
         academic_term=term,
-        defaults={'published_by': actor},
+        defaults={'published_by': actor, 'access_scope': access_scope},
     )
+    if not created and release.access_scope != access_scope:
+        release.access_scope = access_scope
+        release.save(update_fields=['access_scope'])
     if created:
         _announce_report_release(actor, class_obj, term, year)
     return release, created
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_reports_for_teachers(request):
+    """
+    Step 1 workflow gate:
+    Admin generates class/year/term report batch before teachers can submit sign-off.
+    Body: { "class_id": 5, "year": "2026", "term": "Term 1" }
+    """
+    if request.user.role != 'admin':
+        return Response({'error': 'Only admins can generate report batches'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.data.get('class_id')
+    year = request.data.get('year')
+    term = request.data.get('term')
+    if not all([class_id, year, term]):
+        return Response({'error': 'class_id, year, and term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    try:
+        class_obj = Class.objects.get(id=class_id, school=school)
+    except Class.DoesNotExist:
+        return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import ReportCardGeneration
+    generation, created = ReportCardGeneration.objects.get_or_create(
+        school=school,
+        class_obj=class_obj,
+        academic_year=year,
+        academic_term=term,
+        defaults={'generated_by': request.user},
+    )
+    if not created:
+        generation.generated_by = request.user
+        generation.generated_at = timezone.now()
+        generation.save(update_fields=['generated_by', 'generated_at'])
+        return Response({
+            'message': f'Report batch regenerated for {class_obj.name} - {term} {year}.',
+            'generated': True,
+            'already_generated': True,
+        }, status=status.HTTP_200_OK)
+
+    return Response({
+        'message': f'Report batch generated for teachers: {class_obj.name} - {term} {year}.',
+        'generated': True,
+        'already_generated': False,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -2327,6 +2485,10 @@ def publish_reports(request):
     year = request.data.get('year')
     term = request.data.get('term')
 
+    access_scope = (request.data.get('access_scope') or 'all').strip().lower()
+    if access_scope not in ('all', 'fully_paid'):
+        return Response({'error': "access_scope must be 'all' or 'fully_paid'."}, status=status.HTTP_400_BAD_REQUEST)
+
     if not all([class_id, year, term]):
         return Response({'error': 'class_id, year, and term are required'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2335,6 +2497,18 @@ def publish_reports(request):
         class_obj = Class.objects.get(id=class_id, school=school)
     except Class.DoesNotExist:
         return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import ReportCardGeneration
+    if not ReportCardGeneration.objects.filter(
+        school=school,
+        class_obj=class_obj,
+        academic_year=year,
+        academic_term=term,
+    ).exists():
+        return Response(
+            {'error': 'Generate this class report batch first before publishing.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     from .models import ReportCardApprovalRequest
     approval = ReportCardApprovalRequest.objects.filter(
@@ -2354,7 +2528,7 @@ def publish_reports(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    release, created = _publish_class_reports(school, class_obj, year, term, request.user)
+    release, created = _publish_class_reports(school, class_obj, year, term, request.user, access_scope=access_scope)
     if not created:
         return Response({'message': f'Reports for {class_obj.name} - {term} {year} were already published',
                          'already_published': True})
@@ -2377,6 +2551,7 @@ def publish_reports(request):
     return Response({
         'message': f'Reports published for {class_obj.name} - {term} {year}',
         'class_name': class_obj.name,
+        'access_scope': release.access_scope,
         'published': True,
     }, status=status.HTTP_201_CREATED)
 
@@ -2394,17 +2569,30 @@ def publish_all_reports(request):
     year = request.data.get('year')
     term = request.data.get('term')
 
+    access_scope = (request.data.get('access_scope') or 'all').strip().lower()
+    if access_scope not in ('all', 'fully_paid'):
+        return Response({'error': "access_scope must be 'all' or 'fully_paid'."}, status=status.HTTP_400_BAD_REQUEST)
+
     if not all([year, term]):
         return Response({'error': 'year and term are required'}, status=status.HTTP_400_BAD_REQUEST)
 
     school = request.user.school
     classes = Class.objects.filter(school=school)
 
-    from .models import ReportCardApprovalRequest
+    from .models import ReportCardApprovalRequest, ReportCardGeneration
     published = []
     skipped = []
 
     for class_obj in classes:
+        is_generated = ReportCardGeneration.objects.filter(
+            school=school,
+            class_obj=class_obj,
+            academic_year=year,
+            academic_term=term,
+        ).exists()
+        if not is_generated:
+            skipped.append(class_obj.name)
+            continue
         approval = ReportCardApprovalRequest.objects.filter(
             school=school,
             class_obj=class_obj,
@@ -2415,7 +2603,14 @@ def publish_all_reports(request):
         if not approval:
             skipped.append(class_obj.name)
             continue
-        _, created = _publish_class_reports(school, class_obj, year, term, request.user)
+        _, created = _publish_class_reports(
+            school,
+            class_obj,
+            year,
+            term,
+            request.user,
+            access_scope=access_scope,
+        )
         if created:
             approval.status = 'approved'
             approval.reviewed_by = request.user
@@ -2450,6 +2645,7 @@ def list_published_reports(request):
         'class_name': r.class_obj.name,
         'academic_year': r.academic_year,
         'academic_term': r.academic_term,
+        'access_scope': r.access_scope,
         'published_by': r.published_by.full_name,
         'published_at': r.published_at.isoformat(),
     } for r in releases]
@@ -2538,12 +2734,29 @@ def review_report_approval_request(request, request_id):
             )
         return Response({'message': 'Report request sent back to teacher for corrections.', 'status': approval.status})
 
+    access_scope = (request.data.get('access_scope') or 'all').strip().lower()
+    if access_scope not in ('all', 'fully_paid'):
+        return Response({'error': "access_scope must be 'all' or 'fully_paid'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .models import ReportCardGeneration
+    if not ReportCardGeneration.objects.filter(
+        school=request.user.school,
+        class_obj=approval.class_obj,
+        academic_year=approval.academic_year,
+        academic_term=approval.academic_term,
+    ).exists():
+        return Response(
+            {'error': 'Generate this class report batch first before final sign-off.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     _, created = _publish_class_reports(
         request.user.school,
         approval.class_obj,
         approval.academic_year,
         approval.academic_term,
         request.user,
+        access_scope=access_scope,
     )
     approval.status = 'approved'
     approval.reviewed_by = request.user

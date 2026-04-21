@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import apiService from "../../services/apiService";
+import TwoFactorLogin from "../../components/TwoFactorLogin";
+import toast from "react-hot-toast";
 
 function Login() {
   const navigate   = useNavigate();
@@ -11,6 +13,8 @@ function Login() {
   const [showPw,   setShowPw]   = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
+  const [showTwoFactor, setShowTwoFactor] = useState(false);
+  const [otpSessionToken, setOtpSessionToken] = useState('');
   const [suspendedModal, setSuspendedModal] = useState(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -24,6 +28,26 @@ function Login() {
     confirm_password: "",
   });
 
+  const navigateByRole = (role) => {
+    switch (role) {
+      case "admin":      navigate("/admin");      break;
+      case "hr":         navigate("/hr");         break;
+      case "accountant": navigate("/accountant"); break;
+      case "security":   navigate("/security");   break;
+      case "cleaner":    navigate("/cleaner");    break;
+      case "librarian":  navigate("/librarian");  break;
+      case "teacher":    navigate("/teacher");    break;
+      case "parent":     navigate("/parent");     break;
+      case "student":    navigate("/student");    break;
+      default:           navigate("/");
+    }
+  };
+
+  const handleTwoFactorSuccess = (user, token) => {
+    login(user, token);
+    navigateByRole(user.role);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) {
@@ -34,19 +58,21 @@ function Login() {
       setLoading(true);
       setError("");
       const response = await apiService.login({ username, password });
-      login(response.user, response.token);
-      switch (response.user.role) {
-        case "admin":      navigate("/admin");      break;
-        case "hr":         navigate("/hr");         break;
-        case "accountant": navigate("/accountant"); break;
-        case "security":   navigate("/security");   break;
-        case "cleaner":    navigate("/cleaner");    break;
-        case "librarian":  navigate("/librarian");  break;
-        case "teacher":    navigate("/teacher");    break;
-        case "parent":     navigate("/parent");     break;
-        case "student":    navigate("/student");    break;
-        default:           navigate("/");
+
+      // Handle 2FA challenge
+      if (response.requires_2fa) {
+        setOtpSessionToken(response.otp_session_token);
+        setShowTwoFactor(true);
+        return;
       }
+
+      // Show 2FA enforcement warning if present
+      if (response['2fa_warning']) {
+        toast(response['2fa_warning'], { icon: '🔒', duration: 6000 });
+      }
+
+      login(response.user, response.token);
+      navigateByRole(response.user.role);
     } catch (err) {
       if (err.response?.data?.error === "school_suspended_admin") {
         setSuspendedModal({ type: "admin", message: err.response.data.message, contact: err.response.data.contact });
@@ -283,146 +309,156 @@ function Login() {
             <i className="fas fa-arrow-left text-xs" /> Back to Home
           </button>
 
-          {/* Form header */}
-          <div className="mb-8">
-            {/* Mobile logo */}
-            <div className="flex items-center gap-2 mb-5 lg:hidden">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                <i className="fas fa-graduation-cap text-white text-sm" />
+          {showTwoFactor ? (
+            <TwoFactorLogin
+              otpSessionToken={otpSessionToken}
+              onSuccess={handleTwoFactorSuccess}
+              onCancel={() => { setShowTwoFactor(false); setOtpSessionToken(''); }}
+            />
+          ) : (
+            <>
+              {/* Form header */}
+              <div className="mb-8">
+                {/* Mobile logo */}
+                <div className="flex items-center gap-2 mb-5 lg:hidden">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                    <i className="fas fa-graduation-cap text-white text-sm" />
+                  </div>
+                  <span className="font-bold text-slate-800">MySchoolHub</span>
+                </div>
+                <h2 className="text-2xl font-extrabold text-slate-800">Welcome back 👋</h2>
+                <p className="text-slate-500 text-sm mt-1">Sign in to access your portal</p>
               </div>
-              <span className="font-bold text-slate-800">MySchoolHub</span>
-            </div>
-            <h2 className="text-2xl font-extrabold text-slate-800">Welcome back 👋</h2>
-            <p className="text-slate-500 text-sm mt-1">Sign in to access your portal</p>
-          </div>
 
-          {/* Error alert */}
-          {error && (
-            <div
-              className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm"
-              style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626" }}
-            >
-              <i className="fas fa-circle-exclamation flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Username */}
-            <div>
-              <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
-                Student Number / Email
-              </label>
-              <div className="relative">
-                <i
-                  className="fas fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
-                  style={{ color: "#94a3b8" }}
-                />
-                <input
-                  type="text"
-                  id="login-username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your student number or email"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition"
-                  style={{
-                    background: "#fff",
-                    border: "1.5px solid #e2e8f0",
-                    color: "#0f172a",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-                  onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
-                Password
-              </label>
-              <div className="relative">
-                <i
-                  className="fas fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
-                  style={{ color: "#94a3b8" }}
-                />
-                <input
-                  type={showPw ? "text" : "password"}
-                  id="login-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full pl-10 pr-11 py-3 rounded-xl text-sm outline-none transition"
-                  style={{
-                    background: "#fff",
-                    border: "1.5px solid #e2e8f0",
-                    color: "#0f172a",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-                  onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2"
-                  style={{ color: "#94a3b8", background: "none", border: "none", cursor: "pointer" }}
+              {/* Error alert */}
+              {error && (
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm"
+                  style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626" }}
                 >
-                  <i className={`fas ${showPw ? "fa-eye-slash" : "fa-eye"} text-sm`} />
-                </button>
-              </div>
-              <div className="mt-2 text-right">
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(true)}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Parent forgot password?
-                </button>
-              </div>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition"
-              style={{
-                background: loading
-                  ? "#93c5fd"
-                  : "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                boxShadow: "0 4px 14px rgba(37,99,235,0.35)",
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? (
-                <>
-                  <div
-                    className="w-5 h-5 rounded-full animate-spin"
-                    style={{ border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }}
-                  />
-                  Signing In…
-                </>
-              ) : (
-                <>
-                  Sign In <i className="fas fa-arrow-right text-sm" />
-                </>
+                  <i className="fas fa-circle-exclamation flex-shrink-0" />
+                  {error}
+                </div>
               )}
-            </button>
-          </form>
 
-          {/* Footer links */}
-          <div className="mt-6 text-center space-y-2">
-            <p className="text-sm" style={{ color: "#64748b" }}>
-              Are you a parent?{" "}
-              <a href="/register/parent" className="font-semibold text-blue-600 hover:text-blue-700 transition">
-                Register here
-              </a>
-            </p>
-            <p className="text-xs" style={{ color: "#94a3b8" }}>
-              Staff and students: Contact your administrator
-            </p>
-          </div>
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Username */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
+                    Student Number / Email
+                  </label>
+                  <div className="relative">
+                    <i
+                      className="fas fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
+                      style={{ color: "#94a3b8" }}
+                    />
+                    <input
+                      type="text"
+                      id="login-username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter your student number or email"
+                      className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition"
+                      style={{
+                        background: "#fff",
+                        border: "1.5px solid #e2e8f0",
+                        color: "#0f172a",
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+                      onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: "#374151" }}>
+                    Password
+                  </label>
+                  <div className="relative">
+                    <i
+                      className="fas fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"
+                      style={{ color: "#94a3b8" }}
+                    />
+                    <input
+                      type={showPw ? "text" : "password"}
+                      id="login-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="w-full pl-10 pr-11 py-3 rounded-xl text-sm outline-none transition"
+                      style={{
+                        background: "#fff",
+                        border: "1.5px solid #e2e8f0",
+                        color: "#0f172a",
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
+                      onBlur={(e)  => (e.target.style.borderColor = "#e2e8f0")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2"
+                      style={{ color: "#94a3b8", background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      <i className={`fas ${showPw ? "fa-eye-slash" : "fa-eye"} text-sm`} />
+                    </button>
+                  </div>
+                  <div className="mt-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(true)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Parent forgot password?
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition"
+                  style={{
+                    background: loading
+                      ? "#93c5fd"
+                      : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                    boxShadow: "0 4px 14px rgba(37,99,235,0.35)",
+                    cursor: loading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {loading ? (
+                    <>
+                      <div
+                        className="w-5 h-5 rounded-full animate-spin"
+                        style={{ border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }}
+                      />
+                      Signing In…
+                    </>
+                  ) : (
+                    <>
+                      Sign In <i className="fas fa-arrow-right text-sm" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Footer links */}
+              <div className="mt-6 text-center space-y-2">
+                <p className="text-sm" style={{ color: "#64748b" }}>
+                  Are you a parent?{" "}
+                  <a href="/register/parent" className="font-semibold text-blue-600 hover:text-blue-700 transition">
+                    Register here
+                  </a>
+                </p>
+                <p className="text-xs" style={{ color: "#94a3b8" }}>
+                  Staff and students: Contact your administrator
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

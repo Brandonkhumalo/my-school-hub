@@ -11,6 +11,7 @@ export default function AdminInvoices() {
   const [searchName, setSearchName] = useState("");
   const [searchInvoiceNumber, setSearchInvoiceNumber] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,6 +56,12 @@ export default function AdminInvoices() {
       });
     }
 
+    if (filterStatus === "paid") {
+      result = result.filter((inv) => Boolean(inv.is_paid));
+    } else if (filterStatus === "unpaid") {
+      result = result.filter((inv) => !inv.is_paid);
+    }
+
     result.sort((a, b) => {
       const dateA = parseDate(a.due_date || a.created_at) || new Date(0);
       const dateB = parseDate(b.due_date || b.created_at) || new Date(0);
@@ -62,7 +69,7 @@ export default function AdminInvoices() {
     });
     
     return result;
-  }, [invoices, searchName, searchInvoiceNumber, filterDate, sortOrder]);
+  }, [invoices, searchName, searchInvoiceNumber, filterDate, filterStatus, sortOrder]);
 
   const totalPages = Math.ceil(filteredAndSortedInvoices.length / itemsPerPage);
   const paginatedInvoices = filteredAndSortedInvoices.slice(
@@ -80,13 +87,14 @@ export default function AdminInvoices() {
     setSearchName("");
     setSearchInvoiceNumber("");
     setFilterDate("");
+    setFilterStatus("all");
     setSortOrder("newest");
     setCurrentPage(1);
   };
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchName, searchInvoiceNumber, filterDate, sortOrder]);
+  }, [searchName, searchInvoiceNumber, filterDate, filterStatus, sortOrder]);
 
   if (isLoading) return (
     <div>
@@ -101,7 +109,7 @@ export default function AdminInvoices() {
       <div className="p-6">
         <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Filter & Sort Invoices</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
               <input
@@ -130,6 +138,18 @@ export default function AdminInvoices() {
                 onChange={(e) => setFilterDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All</option>
+                <option value="paid">Paid</option>
+                <option value="unpaid">Unpaid</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
@@ -259,7 +279,7 @@ export default function AdminInvoices() {
             <div className="text-center py-12 text-gray-500">
               <i className="fas fa-file-invoice-dollar text-6xl mb-4"></i>
               <p>No invoices found matching your criteria.</p>
-              {(searchName || searchInvoiceNumber || filterDate) && (
+              {(searchName || searchInvoiceNumber || filterDate || filterStatus !== "all") && (
                 <button
                   onClick={clearFilters}
                   className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"

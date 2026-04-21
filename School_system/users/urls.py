@@ -65,6 +65,18 @@ urlpatterns = [
     path('notifications/read-all/', views.notification_mark_all_read_view, name='notification-mark-all-read'),
     path('notifications/unread-count/', views.notification_unread_count_view, name='notification-unread-count'),
 
+    # 2FA endpoints
+    path('2fa/status/', views.two_fa_status_view, name='2fa-status'),
+    path('2fa/setup/', views.two_fa_setup_view, name='2fa-setup'),
+    path('2fa/verify-setup/', views.two_fa_verify_setup_view, name='2fa-verify-setup'),
+    path('2fa/verify-otp/', views.two_fa_verify_otp_view, name='2fa-verify-otp'),
+    path('2fa/verify-backup/', views.two_fa_verify_backup_view, name='2fa-verify-backup'),
+    path('2fa/disable/', views.two_fa_disable_view, name='2fa-disable'),
+    path('2fa/regenerate-backup-codes/', views.two_fa_regenerate_backup_codes_view, name='2fa-regenerate-backup-codes'),
+    path('2fa/trusted-devices/', views.two_fa_trusted_devices_view, name='2fa-trusted-devices'),
+    path('school/enforce-2fa/', views.enforce_two_fa_view, name='enforce-2fa'),
+    path('2fa/compliance/', views.two_fa_compliance_view, name='2fa-compliance'),
+
     # Superadmin endpoints (Tishanyq Developer Portal)
     path('superadmin/register/', superadmin_views.superadmin_register, name='superadmin-register'),
     path('superadmin/login/', superadmin_views.superadmin_login, name='superadmin-login'),

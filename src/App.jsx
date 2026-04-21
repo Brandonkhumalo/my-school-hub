@@ -119,6 +119,9 @@ const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
 const AdminAtRiskStudents = lazy(() => import("./pages/admin/AdminAtRiskStudents"));
+const AdminPastStudents = lazy(() => import("./pages/admin/AdminPastStudents"));
+const TwoFactorCompliance = lazy(() => import("./pages/admin/TwoFactorCompliance"));
+const TwoFactorSettings = lazy(() => import("./pages/profile/TwoFactorSettings"));
 
 // Teacher Pages
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
@@ -282,6 +285,8 @@ function App() {
         <Route path="/admin/analytics" element={<RequireAuth allowedRoles={['admin']}><AdminAnalytics /></RequireAuth>} />
         <Route path="/admin/audit-logs" element={<RequireAuth allowedRoles={['admin']}><AdminAuditLog /></RequireAuth>} />
         <Route path="/admin/at-risk-students" element={<RequireAuth allowedRoles={['admin', 'hr']}><AdminAtRiskStudents /></RequireAuth>} />
+        <Route path="/admin/past-students" element={<RequireAuth allowedRoles={['admin']}><AdminPastStudents /></RequireAuth>} />
+        <Route path="/admin/2fa-compliance" element={<RequireAuth allowedRoles={['admin']}><TwoFactorCompliance /></RequireAuth>} />
         <Route path="/admin/profile" element={<RequireAuth allowedRoles={['admin']}><ProfilePage /></RequireAuth>} />
 
         {/* Teacher Routes */}
@@ -371,6 +376,7 @@ function App() {
         <Route path="/hr/settings" element={<RequireAuth allowedRoles={['hr']}><AdminSettings /></RequireAuth>} />
         <Route path="/hr/customization" element={<RequireAuth allowedRoles={['hr']}><Customization /></RequireAuth>} />
         <Route path="/hr/at-risk-students" element={<RequireAuth allowedRoles={['hr']}><AdminAtRiskStudents /></RequireAuth>} />
+        <Route path="/hr/past-students" element={<RequireAuth allowedRoles={['hr']}><AdminPastStudents /></RequireAuth>} />
         <Route path="/hr/profile" element={<RequireAuth allowedRoles={['hr']}><ProfilePage /></RequireAuth>} />
 
         {/* Accountant Routes */}
@@ -406,6 +412,9 @@ function App() {
         <Route path="/cleaner/tasks" element={<RequireAuth allowedRoles={['cleaner']}><CleanerTasks /></RequireAuth>} />
         <Route path="/cleaner/attendance" element={<RequireAuth allowedRoles={['cleaner']}><CleanerAttendance /></RequireAuth>} />
         <Route path="/cleaner/profile" element={<RequireAuth allowedRoles={['cleaner']}><ProfilePage /></RequireAuth>} />
+
+        {/* 2FA Settings — accessible to all authenticated roles */}
+        <Route path="/2fa-settings" element={<RequireAuth allowedRoles={['admin','teacher','student','parent','hr','accountant','security','cleaner','librarian']}><TwoFactorSettings /></RequireAuth>} />
 
         {/* Generic profile redirect */}
         <Route path="/profile" element={<ProfilePage />} />

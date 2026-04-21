@@ -15,6 +15,7 @@ const ALL_MENU_ITEMS = {
     ]},
     { section: "PEOPLE", items: [
       { path: "/admin/students",        icon: "fa-user-graduate",       title: "Students" },
+      { path: "/admin/past-students",   icon: "fa-archive",             title: "Past Students" },
       { path: "/admin/teachers",        icon: "fa-chalkboard-teacher",  title: "Teachers" },
       { path: "/admin/parents",         icon: "fa-users",               title: "Parents" },
       { path: "/admin/parent-requests", icon: "fa-link",                title: "Parent Requests" },
@@ -152,8 +153,9 @@ const ALL_MENU_ITEMS = {
       { path: "/hr", icon: "fa-home", title: "Dashboard" },
     ]},
     { section: "PEOPLE", items: [
-      { path: "/hr/students",    icon: "fa-user-graduate",    title: "Students" },
-      { path: "/hr/teachers",    icon: "fa-chalkboard-teacher", title: "Teachers" },
+      { path: "/hr/students",      icon: "fa-user-graduate",    title: "Students" },
+      { path: "/hr/past-students", icon: "fa-archive",          title: "Past Students" },
+      { path: "/hr/teachers",      icon: "fa-chalkboard-teacher", title: "Teachers" },
       { path: "/hr/parents",     icon: "fa-users",            title: "Parents" },
       { path: "/hr/parent-requests", icon: "fa-link",         title: "Parent Requests" },
       { path: "/hr/staff",       icon: "fa-users",            title: "Staff" },
@@ -224,6 +226,7 @@ const ROLE_COLORS = {
 const HR_PATH_TO_PERMISSION_KEY = {
   "/hr": "dashboard",
   "/hr/students": "students",
+  "/hr/past-students": "students",
   "/hr/teachers": "teachers",
   "/hr/parents": "parents",
   "/hr/parent-requests": "parent_requests",

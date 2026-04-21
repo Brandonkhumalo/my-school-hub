@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from .models import (
     Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable,
-    SubjectTermFeedback, AssessmentPlan, ReportCardApprovalRequest,
+    SubjectTermFeedback, AssessmentPlan, ReportCardApprovalRequest, ReportCardGeneration,
 )
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
 
@@ -42,6 +42,15 @@ def _teacher_authorized_class_ids(teacher, subject_id=None, fallback_to_school=T
     return set(
         Class.objects.filter(school=teacher.user.school).values_list('id', flat=True)
     )
+
+
+def _report_batch_generated(school, class_id, year, term):
+    return ReportCardGeneration.objects.filter(
+        school=school,
+        class_obj_id=class_id,
+        academic_year=year,
+        academic_term=term,
+    ).exists()
 
 
 @api_view(['GET'])
@@ -1142,6 +1151,12 @@ def subject_feedback_list(request):
         return Response({'error': 'class_id, subject_id, year, term are required'},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    if not _report_batch_generated(user.school, class_id, year, term):
+        return Response(
+            {'error': 'Admin must generate this class report batch before teachers can work on feedback.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     if user.role == 'teacher':
         try:
             teacher = user.teacher
@@ -1197,6 +1212,12 @@ def subject_feedback_upsert(request):
         student = Student.objects.select_related('user').get(id=student_id, user__school=user.school)
     except Student.DoesNotExist:
         return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not _report_batch_generated(user.school, student.student_class_id, year, term):
+        return Response(
+            {'error': 'Admin must generate this class report batch before teachers can submit feedback.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     teacher = None
     if user.role == 'teacher':
@@ -1288,6 +1309,7 @@ def report_feedback_submission_status(request):
         'admin_note': req.admin_note if req else '',
         'teacher_comment': req.teacher_comment if req else '',
         'requested_by': req.requested_by.full_name if req and req.requested_by else None,
+        'is_generated': _report_batch_generated(user.school, class_id_int, year, term),
     })
 
 
@@ -1322,6 +1344,12 @@ def submit_report_feedback_for_signoff(request):
     class_obj = Class.objects.filter(id=class_id_int, school=user.school).first()
     if not class_obj:
         return Response({'error': 'Class not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not _report_batch_generated(user.school, class_id_int, year, term):
+        return Response(
+            {'error': 'Admin has not generated this class report batch yet.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     teacher_comment = (request.data.get('teacher_comment') or '').strip()
     req, created = ReportCardApprovalRequest.objects.get_or_create(

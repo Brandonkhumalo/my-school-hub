@@ -46,6 +46,19 @@ class TenantSoftDeleteManager(models.Manager):
         return super().get_queryset()
 
 
+class TransferAwareManager(models.Manager):
+    """Default manager that excludes transferred students."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_transferred=False)
+
+    def transferred_only(self):
+        return super().get_queryset().filter(is_transferred=True)
+
+    def including_transferred(self):
+        return super().get_queryset()
+
+
 class School(models.Model):
     """Multi-tenant School entity - each school is a separate tenant"""
     SCHOOL_TYPE_CHOICES = [
@@ -166,6 +179,64 @@ class BlacklistedToken(models.Model):
         return f"Blacklisted token at {self.blacklisted_at}"
 
 
+class TwoFactorAuthConfig(models.Model):
+    """User's 2FA settings: secret key, backup codes, device tracking."""
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='two_factor_config')
+    is_enabled = models.BooleanField(default=False, help_text='Is 2FA currently enabled for this user')
+    secret_key = models.CharField(max_length=255, blank=True, help_text='Base32-encoded TOTP secret (encrypted)')
+    backup_codes = models.JSONField(
+        default=list,
+        help_text='List of hashed backup codes (each code format: {"code_hash": "...", "used": false})'
+    )
+    backup_codes_used = models.JSONField(default=list, help_text='Indices of used backup codes')
+    last_ip_address = models.GenericIPAddressField(null=True, blank=True, help_text='Last IP address used with 2FA')
+    last_verified_at = models.DateTimeField(null=True, blank=True, help_text='Last time user verified with 2FA')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Two Factor Authentication Config"
+        verbose_name_plural = "Two Factor Authentication Configs"
+
+    def __str__(self):
+        return f"2FA Config for {self.user.email} (enabled={self.is_enabled})"
+
+
+class TrustedDevice(models.Model):
+    """Tracks trusted devices by IP address + User-Agent to skip 2FA on known devices."""
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='trusted_devices')
+    ip_address = models.GenericIPAddressField()
+    user_agent = models.CharField(max_length=500, blank=True, help_text='Parsed User-Agent string')
+    device_name = models.CharField(max_length=255, blank=True, help_text='User-friendly device name (e.g., "Chrome on Windows")')
+    verified = models.BooleanField(default=False, help_text='Requires email confirmation before trusting')
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'ip_address')
+        verbose_name = "Trusted Device"
+        verbose_name_plural = "Trusted Devices"
+
+    def __str__(self):
+        return f"{self.user.email}: {self.device_name or self.ip_address}"
+
+
+class TwoFactorBackupCode(models.Model):
+    """Audit trail for backup code usage."""
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='backup_code_audit')
+    code_index = models.IntegerField(help_text='Index of backup code in TwoFactorAuthConfig.backup_codes list')
+    used_at = models.DateTimeField(auto_now_add=True)
+    used_ip_address = models.GenericIPAddressField()
+    used_device = models.CharField(max_length=255, blank=True, help_text='Device info from User-Agent')
+
+    class Meta:
+        verbose_name = "Two Factor Backup Code Use"
+        verbose_name_plural = "Two Factor Backup Code Uses"
+
+    def __str__(self):
+        return f"{self.user.email}: Backup code #{self.code_index} used at {self.used_at}"
+
+
 class SchoolSettings(models.Model):
     """Per-school configuration (term dates, grading system, currency, etc.)"""
     GRADING_CHOICES = [
@@ -206,6 +277,15 @@ class SchoolSettings(models.Model):
     font_family = models.CharField(max_length=10, choices=FONT_FAMILY_CHOICES, default='sans')
     welcome_message = models.TextField(blank=True, help_text='Custom greeting shown on the dashboard')
     logo = models.ImageField(upload_to='school_logos/', blank=True, null=True, help_text='Custom logo for the dashboard')
+
+    # 2FA Enforcement
+    enforce_2fa = models.BooleanField(default=False, help_text='Enable 2FA enforcement for this school')
+    enforce_2fa_for_roles = models.JSONField(
+        default=list,
+        help_text='List of roles that must have 2FA enabled (e.g., ["admin", "hr", "accountant"])'
+    )
+    enforce_2fa_started_at = models.DateTimeField(null=True, blank=True, help_text='When 2FA enforcement was activated')
+    enforce_2fa_grace_period_days = models.IntegerField(default=14, help_text='Days users have to set up 2FA before enforcement')
 
     def __str__(self):
         return f"Settings for {self.school.name}"

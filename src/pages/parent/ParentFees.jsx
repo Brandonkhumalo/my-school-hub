@@ -604,6 +604,7 @@ export default function ParentFees() {
                       amount: feesData?.outstanding || 0,
                       student_id: selectedChild?.id,
                       invoice_id: childOpenInvoice?.id,
+                      invoice_number: childOpenInvoice?.invoice_number || "",
                       method: paynowMethod,
                     };
                     if (paynowMethod !== "web") payload.mobile_number = paynowPhone;

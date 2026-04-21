@@ -278,6 +278,8 @@ const apiService = {
   fetchStudentPerformance: (studentId) => request(`/academics/students/${studentId}/performance/`, "GET"),
   createStudent: (data) => request("/academics/students/", "POST", data),
   updateStudent: (id, data) => request(`/academics/students/${id}/`, "PATCH", data),
+  transferStudent: (id, data) => request(`/academics/students/${id}/transfer/`, "POST", data),
+  searchPastStudents: (q) => request(`/academics/past-students/?q=${encodeURIComponent(q)}`, "GET"),
 
   fetchTeachers: () => request("/academics/teachers/", "GET"),
   createTeacher: (data) => request("/academics/teachers/", "POST", data),
@@ -340,6 +342,7 @@ const apiService = {
   updateReportSettings: (data) => request("/teachers/results/report-settings/", "PATCH", data),
 
   // Report card publishing
+  generateReportsForTeachers: (data) => request("/academics/reports/generate/", "POST", data),
   publishReports: (data) => request("/academics/reports/publish/", "POST", data),
   publishAllReports: (data) => request("/academics/reports/publish-all/", "POST", data),
   getPublishedReports: () => request("/academics/reports/published/", "GET"),
@@ -941,6 +944,19 @@ const apiService = {
     return request(`/boarding/wellness-checkins/${q ? '?' + q : ''}`, "GET");
   },
   createWellnessCheckin: (data) => request("/boarding/wellness-checkins/", "POST", data),
+
+  // 2FA
+  twoFactorStatus: () => request('/auth/2fa/status/', 'GET'),
+  twoFactorSetup: () => request('/auth/2fa/setup/', 'POST'),
+  twoFactorVerifySetup: (data) => request('/auth/2fa/verify-setup/', 'POST', data),
+  twoFactorVerifyOtp: (data) => request('/auth/2fa/verify-otp/', 'POST', data, false),
+  twoFactorVerifyBackup: (data) => request('/auth/2fa/verify-backup/', 'POST', data, false),
+  twoFactorDisable: (data) => request('/auth/2fa/disable/', 'POST', data),
+  twoFactorRegenerateBackupCodes: () => request('/auth/2fa/regenerate-backup-codes/', 'POST'),
+  twoFactorTrustedDevices: () => request('/auth/2fa/trusted-devices/', 'GET'),
+  twoFactorRevokeTrustedDevice: (deviceId) => request('/auth/2fa/trusted-devices/', 'DELETE', deviceId ? { device_id: deviceId } : {}),
+  enforce2FA: (data) => request('/auth/school/enforce-2fa/', 'POST', data),
+  twoFactorCompliance: () => request('/auth/2fa/compliance/', 'GET'),
 
   // Admin Analytics
   getAdminAnalytics: () => request("/auth/analytics/", "GET"),

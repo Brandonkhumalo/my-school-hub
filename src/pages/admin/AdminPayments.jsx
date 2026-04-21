@@ -49,6 +49,7 @@ export default function AdminPayments() {
 
   const [addPaymentData, setAddPaymentData] = useState({
     payment_record_id: "",
+    invoice_number: "",
     amount: "",
     payment_method: "cash",
     transaction_reference: "",
@@ -184,10 +185,14 @@ export default function AdminPayments() {
       
       const cleanPayment = { ...addPaymentData };
       if (!cleanPayment.next_payment_due) delete cleanPayment.next_payment_due;
+      if (!cleanPayment.invoice_number) {
+        throw new Error("Invoice number is required for payment.");
+      }
       await apiService.addPaymentToRecord(cleanPayment);
       setShowPaymentModal(false);
       setAddPaymentData({
         payment_record_id: "",
+        invoice_number: "",
         amount: "",
         payment_method: "cash",
         transaction_reference: "",
@@ -242,6 +247,7 @@ export default function AdminPayments() {
     setSelectedRecord(record);
     setAddPaymentData({
       payment_record_id: record.id,
+      invoice_number: record.invoice_number || "",
       amount: "",
       payment_method: "cash",
       transaction_reference: "",
@@ -1197,6 +1203,20 @@ export default function AdminPayments() {
               </div>
             </div>
             <form onSubmit={handleAddPayment} className="p-6 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number *</label>
+                <input
+                  type="text"
+                  value={addPaymentData.invoice_number}
+                  className="w-full px-3 py-2 border rounded-lg bg-gray-50 text-gray-700"
+                  readOnly
+                  required
+                />
+                {!addPaymentData.invoice_number && (
+                  <p className="text-xs text-red-600 mt-1">No invoice number found for this record. Refresh invoices first.</p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount *</label>
                 <input

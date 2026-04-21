@@ -21,6 +21,9 @@ export default function AdminStudents() {
   const [classFilter, setClassFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferNote, setTransferNote] = useState("");
+  const [isTransferring, setIsTransferring] = useState(false);
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -53,6 +56,23 @@ export default function AdminStudents() {
     });
     setEditingStudent(null);
     setShowForm(false);
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedStudent) return;
+    setIsTransferring(true);
+    try {
+      await apiService.transferStudent(selectedStudent.id, { transfer_note: transferNote });
+      setStudents((prev) => prev.filter((s) => s.id !== selectedStudent.id));
+      setSelectedStudent(null);
+      setShowTransferModal(false);
+      setTransferNote("");
+    } catch (error) {
+      console.error("Transfer failed:", error);
+      alert("Failed to transfer student. Please try again.");
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   useEffect(() => {
@@ -421,11 +441,62 @@ export default function AdminStudents() {
           </div>
         )}
 
+        {showTransferModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center">
+                <i className="fas fa-exchange-alt text-orange-500 mr-2"></i>
+                Transfer Student
+              </h3>
+              <p className="text-gray-600 text-sm mb-4">
+                You are about to transfer <span className="font-semibold">{selectedStudent?.user?.first_name} {selectedStudent?.user?.last_name}</span>.
+                They will be removed from all active lists and calculations but their data will be preserved.
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Transfer Note (optional)</label>
+                <textarea
+                  value={transferNote}
+                  onChange={(e) => setTransferNote(e.target.value)}
+                  rows="3"
+                  placeholder="e.g. Transferred to ABC High School"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm"
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => { setShowTransferModal(false); setTransferNote(""); }}
+                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+                  disabled={isTransferring}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTransfer}
+                  disabled={isTransferring}
+                  className="px-4 py-2 rounded bg-orange-500 text-white hover:bg-orange-600 text-sm disabled:opacity-60"
+                >
+                  {isTransferring ? "Transferring..." : "Confirm Transfer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedStudent ? (
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <button onClick={() => setSelectedStudent(null)} className="mb-4 flex items-center text-blue-600 hover:text-blue-800 font-medium">
-              <i className="fas fa-arrow-left mr-2"></i>Back to List
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setSelectedStudent(null)} className="flex items-center text-blue-600 hover:text-blue-800 font-medium">
+                <i className="fas fa-arrow-left mr-2"></i>Back to List
+              </button>
+              {(user?.role === 'admin' || user?.hr_is_root_boss) && (
+                <button
+                  onClick={() => setShowTransferModal(true)}
+                  className="flex items-center px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 text-sm font-medium"
+                >
+                  <i className="fas fa-exchange-alt mr-2"></i>Transfer Student
+                </button>
+              )}
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-50 rounded-lg p-6">

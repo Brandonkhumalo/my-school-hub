@@ -161,6 +161,8 @@ export default function AdminReportConfig() {
   const [publishedReleases, setPublishedReleases] = useState([]);
   const [publishing, setPublishing] = useState(false);
   const [publishingAll, setPublishingAll] = useState(false);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
+  const [releaseScope, setReleaseScope] = useState("all");
   const [publishMessage, setPublishMessage] = useState(null);
   const [approvalRequests, setApprovalRequests] = useState([]);
   const [loadingApprovalRequests, setLoadingApprovalRequests] = useState(false);
@@ -416,7 +418,12 @@ export default function AdminReportConfig() {
     setPublishing(true);
     setPublishMessage(null);
     try {
-      const data = await apiService.publishReports({ class_id: selectedClassId, year: genYear, term: genTerm });
+      const data = await apiService.publishReports({
+        class_id: selectedClassId,
+        year: genYear,
+        term: genTerm,
+        access_scope: releaseScope,
+      });
       setPublishMessage({ type: "success", text: data.message });
       await loadPublished();
       await loadApprovalRequests();
@@ -429,7 +436,7 @@ export default function AdminReportConfig() {
     setPublishingAll(true);
     setPublishMessage(null);
     try {
-      const data = await apiService.publishAllReports({ year: genYear, term: genTerm });
+      const data = await apiService.publishAllReports({ year: genYear, term: genTerm, access_scope: releaseScope });
       setPublishMessage({ type: "success", text: data.message });
       await loadPublished();
       await loadApprovalRequests();
@@ -443,7 +450,7 @@ export default function AdminReportConfig() {
     setPublishMessage(null);
     try {
       const admin_note = decision === "reject" ? (rejectionNotes[requestId] || "").trim() : "";
-      const data = await apiService.reviewReportApprovalRequest(requestId, { decision, admin_note });
+      const data = await apiService.reviewReportApprovalRequest(requestId, { decision, admin_note, access_scope: releaseScope });
       setPublishMessage({ type: "success", text: data.message || "Request updated" });
       await loadApprovalRequests();
       await loadPublished();
@@ -467,6 +474,25 @@ export default function AdminReportConfig() {
     ),
     [approvalRequests, selectedClassId, genYear, genTerm],
   );
+
+  const handleGenerateBatch = async () => {
+    if (!selectedClassId) return;
+    setGeneratingBatch(true);
+    setPublishMessage(null);
+    try {
+      const data = await apiService.generateReportsForTeachers({
+        class_id: selectedClassId,
+        year: genYear,
+        term: genTerm,
+      });
+      setPublishMessage({ type: "success", text: data.message || "Report batch generated." });
+      await loadApprovalRequests();
+    } catch (err) {
+      setPublishMessage({ type: "error", text: err.message || "Failed to generate report batch." });
+    } finally {
+      setGeneratingBatch(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
   const c = config || {};
@@ -789,6 +815,11 @@ export default function AdminReportConfig() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-4">
+                <button onClick={handleGenerateBatch}
+                  disabled={!selectedClassId || generatingBatch}
+                  className="py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 text-sm">
+                  {generatingBatch ? "Generating..." : "1. Generate For Teachers"}
+                </button>
                 <button onClick={handlePublishClass}
                   disabled={
                     !selectedClassId
@@ -799,12 +830,24 @@ export default function AdminReportConfig() {
                   }
                   className="py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 text-sm">
                   {publishing ? "Publishing..." : (selectedClassId && isPublished(selectedClassId))
-                    ? "Already Published" : "Approve & Publish This Class"}
+                    ? "Already Published" : "3. Approve & Publish This Class"}
                 </button>
                 <button onClick={handlePublishAll} disabled={publishingAll}
-                  className="py-2.5 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 disabled:opacity-50 text-sm">
-                  {publishingAll ? "Publishing All..." : "Approve & Publish All Pending"}
+                  className="py-2.5 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 disabled:opacity-50 text-sm col-span-2">
+                  {publishingAll ? "Publishing All..." : "3. Approve & Publish All Pending"}
                 </button>
+              </div>
+
+              <div className="mb-4">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Who gets report access on sign-off?</label>
+                <select
+                  value={releaseScope}
+                  onChange={(e) => setReleaseScope(e.target.value)}
+                  className="border rounded w-full p-2 text-sm"
+                >
+                  <option value="all">All students</option>
+                  <option value="fully_paid">Fully-paid only (or approved payment plans)</option>
+                </select>
               </div>
 
               <div className="mb-4 p-3 border rounded-lg bg-gray-50">

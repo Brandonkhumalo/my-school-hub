@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
-from users.models import TenantAwareManager, TenantSoftDeleteManager
+from users.models import TenantAwareManager, TenantSoftDeleteManager, TransferAwareManager
 
 
 class Subject(models.Model):
@@ -88,6 +88,17 @@ class Student(models.Model):
     gender = models.CharField(max_length=20, blank=True)
     emergency_contact = models.CharField(max_length=20, blank=True)
     house = models.ForeignKey(SportsHouse, null=True, blank=True, on_delete=models.SET_NULL, related_name='students')
+
+    # Transfer tracking
+    is_transferred = models.BooleanField(default=False, db_index=True)
+    transferred_at = models.DateTimeField(null=True, blank=True)
+    transferred_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='transferred_students'
+    )
+    transfer_note = models.TextField(blank=True)
+
+    objects = TransferAwareManager()
 
     class Meta:
         ordering = ['-id']
@@ -670,10 +681,16 @@ class AnnouncementDismissal(models.Model):
 
 class ReportCardRelease(models.Model):
     """Tracks which class/year/term report cards have been published by the admin."""
+    ACCESS_SCOPE_CHOICES = [
+        ('all', 'All Students'),
+        ('fully_paid', 'Fully Paid / Approved Plan Only'),
+    ]
+
     school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='report_releases')
     class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='report_releases')
     academic_year = models.CharField(max_length=20)
     academic_term = models.CharField(max_length=50)
+    access_scope = models.CharField(max_length=20, choices=ACCESS_SCOPE_CHOICES, default='all')
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     published_at = models.DateTimeField(auto_now_add=True)
 
@@ -682,6 +699,23 @@ class ReportCardRelease(models.Model):
 
     def __str__(self):
         return f"{self.class_obj.name} - {self.academic_term} {self.academic_year}"
+
+
+class ReportCardGeneration(models.Model):
+    """Admin generation gate before teachers can submit class report feedback."""
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='report_generations')
+    class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='report_generations')
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=50)
+    generated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'class_obj', 'academic_year', 'academic_term')
+        ordering = ['-generated_at']
+
+    def __str__(self):
+        return f"{self.class_obj.name} - {self.academic_term} {self.academic_year} (generated)"
 
 
 class ReportCardApprovalRequest(models.Model):
