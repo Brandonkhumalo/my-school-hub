@@ -1130,6 +1130,16 @@ class PaymentTransactionRecordingAPITest(APITestCase):
             payment_status="unpaid",
             recorded_by=self.admin,
         )
+        self.invoice = Invoice.objects.create(
+            student=self.student,
+            school=self.school,
+            payment_record=self.record,
+            invoice_number="INV-TXN-001",
+            total_amount=Decimal("500.00"),
+            amount_paid=Decimal("0.00"),
+            due_date=datetime.date(2026, 3, 31),
+            is_paid=False,
+        )
         self.local_url = "/api/v1/finances/payment-records/add-payment/"
         self.paynow_callback_url = "/api/v1/finances/payments/paynow/result/"
 
@@ -1139,6 +1149,7 @@ class PaymentTransactionRecordingAPITest(APITestCase):
             self.local_url,
             {
                 "payment_record_id": self.record.id,
+                "invoice_number": self.invoice.invoice_number,
                 "amount": "120.00",
                 "payment_method": "cash",
                 "transaction_reference": "LOCAL-TXN-001",

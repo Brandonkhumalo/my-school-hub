@@ -1268,21 +1268,24 @@ def _cfg(cfg, attr, default):
 def _font_name(family, bold=False, italic=False):
     """Map font_family config → reportlab built-in font."""
     if family == 'sans':
-        base = 'Helvetica'
+        if bold and italic:
+            return 'Helvetica-BoldOblique'
+        if bold:
+            return 'Helvetica-Bold'
+        if italic:
+            return 'Helvetica-Oblique'
+        return 'Helvetica'
     elif family == 'elegant':
-        base = 'Times-Roman'
         italic = True  # elegant is italic-leaning
-    else:
-        base = 'Times-Roman'  # serif
+
+    # serif/elegant families map to Times built-ins
     if bold and italic:
-        suffix = '-BoldOblique' if base == 'Helvetica' else '-BoldItalic'
-    elif bold:
-        suffix = '-Bold'
-    elif italic:
-        suffix = '-Oblique' if base == 'Helvetica' else '-Italic'
-    else:
-        suffix = ''
-    return base + suffix
+        return 'Times-BoldItalic'
+    if bold:
+        return 'Times-Bold'
+    if italic:
+        return 'Times-Italic'
+    return 'Times-Roman'
 
 
 def _font_scale(scale):
