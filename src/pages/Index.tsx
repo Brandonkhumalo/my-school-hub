@@ -210,7 +210,7 @@ const Index = () => {
               {
                 step: "01",
                 title: "Set Up Your School",
-                desc: (<><a href="https://tishanyq.co.zw" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">Tishanyq Digital</a> onboards your school — creating classes, subjects, and importing student data. Zero IT expertise needed.</>),
+                desc: (<><a href="https://tishanyq.co.zw" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">Tishanyq Digital</a> helps onboard your students, while your school admin and HR teams create classes and subjects and manage student data imports. Zero IT expertise needed.</>),
                 color: "bg-blue-600",
               },
               {
