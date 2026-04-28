@@ -120,7 +120,7 @@ function NotificationBell() {
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute left-0 top-10 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 flex flex-col">
+        <div className="absolute right-0 top-10 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-800">Notifications</h3>

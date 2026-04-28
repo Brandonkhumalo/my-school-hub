@@ -11,15 +11,19 @@ export default function AdminMessages() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [search, setSearch] = useState("");
+  const [threadsError, setThreadsError] = useState("");
+  const [threadError, setThreadError] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
         setLoadingThreads(true);
+        setThreadsError("");
         const data = await apiService.adminListConversations();
         setThreads(data || []);
       } catch (err) {
         console.error("Error loading conversations:", err);
+        setThreadsError(err?.message || "Failed to load conversations.");
       } finally {
         setLoadingThreads(false);
       }
@@ -30,10 +34,12 @@ export default function AdminMessages() {
     setSelected(thread);
     try {
       setLoadingThread(true);
+      setThreadError("");
       const data = await apiService.adminGetConversation(thread.teacher_id, thread.parent_id);
       setMessages(data || []);
     } catch (err) {
       console.error("Error loading thread:", err);
+      setThreadError(err?.message || "Failed to load messages.");
       setMessages([]);
     } finally {
       setLoadingThread(false);
@@ -74,6 +80,11 @@ export default function AdminMessages() {
               <LoadingSpinner />
             ) : (
               <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+                {threadsError && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+                    {threadsError}
+                  </div>
+                )}
                 {filtered.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <i className="fas fa-inbox text-3xl mb-2"></i>
@@ -133,6 +144,11 @@ export default function AdminMessages() {
               <LoadingSpinner />
             ) : (
               <>
+                {threadError && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-3">
+                    {threadError}
+                  </div>
+                )}
                 <div className="border-b pb-3 mb-3">
                   <h3 className="text-lg font-semibold text-gray-800">
                     {selected.teacher_name} ↔ {selected.parent_name}

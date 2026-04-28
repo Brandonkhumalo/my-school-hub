@@ -193,11 +193,11 @@ def request_child_link(request):
             return Response({'error': 'Student not found'}, 
                            status=status.HTTP_404_NOT_FOUND)
 
-        # Enforce max 2 parents per child
+        # Enforce max 3 parents per child
         current_parent_count = Parent.objects.filter(children=student).count()
-        if current_parent_count >= 2:
+        if current_parent_count >= 3:
             return Response({
-                'error': 'This student already has the maximum of 2 parents linked.'
+                'error': 'This student already has the maximum of 3 parents linked.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if link already exists
@@ -253,11 +253,11 @@ def confirm_child(request, child_id):
             return Response({'message': 'Link already confirmed'}, 
                            status=status.HTTP_400_BAD_REQUEST)
 
-        # Enforce max 2 parents per child before confirming
+        # Enforce max 3 parents per child before confirming
         current_parent_count = Parent.objects.filter(children=link.student).count()
-        if current_parent_count >= 2:
+        if current_parent_count >= 3:
             return Response({
-                'error': 'Cannot approve link: this student already has 2 parents linked.'
+                'error': 'Cannot approve link: this student already has 3 parents linked.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         link.is_confirmed = True

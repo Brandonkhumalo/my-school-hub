@@ -425,16 +425,42 @@ def admin_list_conversations(request):
         return Response({'error': 'Only admins can review conversations'},
                        status=status.HTTP_403_FORBIDDEN)
 
+    if not user.school_id:
+        return Response([])
+
+    school_id = user.school_id
     qs = ParentTeacherMessage.objects.filter(
-        sender__school=user.school, recipient__school=user.school,
         sender__role__in=['parent', 'teacher'],
         recipient__role__in=['parent', 'teacher'],
     ).select_related('sender', 'recipient')
 
+    membership_cache = {}
+
+    def belongs_to_school(member_user):
+        cache_key = member_user.id
+        if cache_key in membership_cache:
+            return membership_cache[cache_key]
+
+        in_school = False
+        if member_user.role == 'teacher':
+            in_school = member_user.school_id == school_id
+        elif member_user.role == 'parent':
+            in_school = (
+                member_user.school_id == school_id or
+                Parent.objects.filter(user=member_user, schools__id=school_id).exists()
+            )
+
+        membership_cache[cache_key] = in_school
+        return in_school
+
     threads = {}
     for msg in qs:
+        if msg.sender.role == msg.recipient.role:
+            continue
         teacher_user = msg.sender if msg.sender.role == 'teacher' else msg.recipient
         parent_user = msg.sender if msg.sender.role == 'parent' else msg.recipient
+        if not belongs_to_school(teacher_user) or not belongs_to_school(parent_user):
+            continue
         key = (teacher_user.id, parent_user.id)
         thread = threads.get(key)
         if thread is None:
@@ -470,11 +496,30 @@ def admin_get_conversation(request, teacher_id, parent_id):
         return Response({'error': 'Only admins can review conversations'},
                        status=status.HTTP_403_FORBIDDEN)
 
+    if not user.school_id:
+        return Response([])
+
+    school_id = user.school_id
+    try:
+        teacher_user = Teacher.objects.select_related('user').get(user_id=teacher_id).user
+        parent_user = Parent.objects.select_related('user').get(user_id=parent_id).user
+    except (Teacher.DoesNotExist, Parent.DoesNotExist):
+        return Response([])
+
+    teacher_in_school = teacher_user.school_id == school_id
+    parent_in_school = (
+        parent_user.school_id == school_id or
+        Parent.objects.filter(user=parent_user, schools__id=school_id).exists()
+    )
+    if not teacher_in_school or not parent_in_school:
+        return Response([])
+
     messages = ParentTeacherMessage.objects.filter(
-        sender__school=user.school, recipient__school=user.school,
-    ).filter(
         (Q(sender_id=teacher_id) & Q(recipient_id=parent_id)) |
         (Q(sender_id=parent_id) & Q(recipient_id=teacher_id))
+    ).filter(
+        sender__role__in=['parent', 'teacher'],
+        recipient__role__in=['parent', 'teacher'],
     ).select_related('sender', 'recipient', 'student__user').order_by('date_sent')
 
     serializer = ParentTeacherMessageSerializer(messages, many=True)

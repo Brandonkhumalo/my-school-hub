@@ -18,6 +18,7 @@ export default function TeacherMessages() {
   const [subject, setSubject] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
 
   useEffect(() => {
     loadConversations();
@@ -94,14 +95,16 @@ export default function TeacherMessages() {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     
+    setSendError("");
+
     if (!messageText.trim()) {
-      alert("Please enter a message");
+      setSendError("Please enter a message.");
       return;
     }
 
     const recipientId = selectedConversation?.userId || selectedParent?.user.id;
     if (!recipientId) {
-      alert("Please select a recipient");
+      setSendError("Please select a recipient.");
       return;
     }
 
@@ -112,20 +115,20 @@ export default function TeacherMessages() {
         message: messageText,
         subject: subject
       });
-      
+
       setMessageText("");
       setSubject("");
-      
+
       if (selectedConversation) {
         await loadMessages(selectedConversation);
       } else if (selectedParent) {
         await loadParentConversation(selectedParent);
       }
-      
+
       await loadConversations();
     } catch (error) {
       console.error("Error sending message:", error);
-      alert("Failed to send message: " + (error.message || "Unknown error"));
+      setSendError(error.message || "Failed to send message. Please try again.");
     } finally {
       setSending(false);
     }
@@ -338,6 +341,15 @@ export default function TeacherMessages() {
                 </div>
 
                 <form onSubmit={handleSendMessage} className="border-t pt-4">
+                  {sendError && (
+                    <div className="flex items-start gap-2 mb-3 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                      <i className="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
+                      <span className="flex-1">{sendError}</span>
+                      <button type="button" onClick={() => setSendError("")} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  )}
                   <input
                     type="text"
                     placeholder="Subject (optional)"

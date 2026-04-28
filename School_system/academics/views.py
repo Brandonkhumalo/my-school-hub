@@ -1066,9 +1066,9 @@ def approve_parent_link_request(request, link_id):
         ).get(id=link_id, is_confirmed=False, student__user__school=school)
 
         current_parent_count = Parent.objects.filter(children=link.student).count()
-        if current_parent_count >= 2:
+        if current_parent_count >= 3:
             return Response(
-                {'error': 'Cannot approve link: this student already has 2 parents linked.'},
+                {'error': 'Cannot approve link: this student already has 3 parents linked.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         

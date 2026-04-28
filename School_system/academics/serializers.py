@@ -753,14 +753,14 @@ class CreateParentSerializer(serializers.Serializer):
             over_limit = []
             for student in students:
                 current_parent_count = Parent.objects.filter(children=student).count()
-                if current_parent_count >= 2:
+                if current_parent_count >= 3:
                     over_limit.append(
                         f"{student.user.full_name} ({student.user.student_number or student.id})"
                     )
             if over_limit:
                 raise serializers.ValidationError({
                     "student_ids": (
-                        "These students already have the maximum of 2 parents linked: "
+                        "These students already have the maximum of 3 parents linked: "
                         + ", ".join(over_limit)
                     )
                 })
@@ -1055,14 +1055,14 @@ class UpdateParentSerializer(serializers.Serializer):
             over_limit = []
             for student in students:
                 current_parent_count = Parent.objects.filter(children=student).exclude(id=instance.id).count()
-                if current_parent_count >= 2:
+                if current_parent_count >= 3:
                     over_limit.append(
                         f"{student.user.full_name} ({student.user.student_number or student.id})"
                     )
             if over_limit:
                 raise serializers.ValidationError({
                     "student_ids": (
-                        "These students already have the maximum of 2 parents linked: "
+                        "These students already have the maximum of 3 parents linked: "
                         + ", ".join(over_limit)
                     )
                 })

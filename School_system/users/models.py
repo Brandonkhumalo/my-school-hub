@@ -5,6 +5,10 @@ import secrets
 import string
 
 
+def current_year():
+    return str(timezone.now().year)
+
+
 class SoftDeleteManager(models.Manager):
     """Manager that excludes soft-deleted records by default."""
 
@@ -268,7 +272,7 @@ class SchoolSettings(models.Model):
     ]
 
     school = models.OneToOneField(School, on_delete=models.CASCADE, related_name='settings')
-    current_academic_year = models.CharField(max_length=20, default='2025')
+    current_academic_year = models.CharField(max_length=20, default=current_year)
     current_term = models.CharField(max_length=50, default='Term 1')
     term_start_date = models.DateField(null=True, blank=True)
     term_end_date = models.DateField(null=True, blank=True)
