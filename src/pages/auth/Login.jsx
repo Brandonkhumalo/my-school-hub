@@ -17,6 +17,7 @@ function Login() {
   const [otpSessionToken, setOtpSessionToken] = useState('');
   const [suspendedModal, setSuspendedModal] = useState(null);
   const [parentBlockedModal, setParentBlockedModal] = useState(null);
+  const [studentLimitModal, setStudentLimitModal] = useState(null);
   const [twoFaWarningDeadline, set2faWarningDeadline] = useState(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -100,6 +101,10 @@ function Login() {
           message: err.response.data.message,
           unblockAt: err.response.data.unblock_at || null,
         });
+      } else if (err.response?.data?.error === "student_limit_reached") {
+        setStudentLimitModal({
+          message: err.response.data.message,
+        });
       } else {
         setError(err.response?.data?.error || "Failed to login. Please check your credentials.");
       }
@@ -165,6 +170,27 @@ function Login() {
             )}
             <button
               onClick={() => setParentBlockedModal(null)}
+              className="w-full py-3 rounded-xl font-semibold text-white transition"
+              style={{ background: "#1e293b" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {studentLimitModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-7 bg-white">
+            <div className="text-center mb-5">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-users-slash text-amber-500 text-2xl" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Student Limit Reached</h3>
+              <p className="text-gray-600 text-sm whitespace-pre-line">{studentLimitModal.message}</p>
+            </div>
+            <button
+              onClick={() => setStudentLimitModal(null)}
               className="w-full py-3 rounded-xl font-semibold text-white transition"
               style={{ background: "#1e293b" }}
             >

@@ -31,6 +31,7 @@ from .serializers import (
     ManagedUserSerializer
 )
 from .token import JWTAuthentication
+from academics.models import Student
 
 
 def _check_rate_limit(request, group='api', rate='10/m'):
@@ -160,6 +161,29 @@ def login_view(request):
         user = authenticate(username=user_candidate.username, password=password)
 
     if user is None:
+        if user_candidate and user_candidate.role == 'student' and not user_candidate.is_active:
+            password_matches = False
+            try:
+                password_matches = user_candidate.check_password(password)
+            except Exception:
+                password_matches = False
+            if password_matches:
+                pending_record = Student.objects.filter(
+                    user=user_candidate,
+                    pending_activation_due_to_limit=True
+                ).exists()
+                if pending_record:
+                    return Response(
+                        {
+                            'error': 'student_limit_reached',
+                            'message': (
+                                'Your account is saved but not yet active because your school has reached '
+                                'its student limit. Please ask your school administrator to contact Tishanyq Digital.'
+                            ),
+                        },
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
         if user_candidate:
             user_candidate.register_failed_login_attempt(
                 threshold=_lockout_threshold(),

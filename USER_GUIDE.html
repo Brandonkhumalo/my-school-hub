@@ -1,0 +1,432 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;line-height:1.45;margin:36px;color:#111} h1,h2,h3{color:#0f172a} code{background:#f1f5f9;padding:1px 4px;border-radius:3px} ul,ol{margin-top:4px} p{margin:6px 0}</style></head><body>
+<h1>My School Hub User Guide</h1>
+<p>Guide Version: <code>v1.1</code></p>
+<p>Last Updated: <code>28 April 2026</code></p>
+<p>This guide is written for first-time users. It explains what to do step by step for each role.</p>
+<p>Link format in this guide:</p>
+<ul>
+<li>All pages are highlighted like this: **`/admin/students`**</li>
+<li>If you are already logged in, use the sidebar menu to find the same page name.</li>
+</ul>
+<h2>1. Start Here (All Users)</h2>
+<ol>
+<li>Open your school URL.</li>
+<li>Login with your username and password.</li>
+<li>If asked for 2FA code, enter it.</li>
+<li>Open your profile and confirm your phone/email is correct.</li>
+<li>If you cannot find a page in this guide, ask Admin/HR to enable your permission.</li>
+</ol>
+<h2>2. Admin User Guide</h2>
+<h3>First Day Setup (in order)</h3>
+<ol>
+<li>Open **`/admin/settings`**.</li>
+</ol>
+<p>What to do: set school profile, term dates, accommodation type.</p>
+<p>Success check: school info saves and term dates appear correctly.</p>
+<ol>
+<li>Open **`/admin/customization`**.</li>
+</ol>
+<p>What to do: set logo/colors/font.</p>
+<p>Success check: dashboard branding updates.</p>
+<ol>
+<li>Open **`/admin/users`**.</li>
+</ol>
+<p>What to do: create accounts for HR, Accountant, Librarian, Security, Cleaner, Sports Director, and Teachers.</p>
+<p>Success check: each account can log in.</p>
+<ol>
+<li>Open **`/admin/classes`**.</li>
+</ol>
+<p>What to do: create all classes/streams.</p>
+<p>Success check: classes appear in dropdowns elsewhere.</p>
+<ol>
+<li>Open **`/admin/subjects`**.</li>
+</ol>
+<p>What to do: create subjects and map them to classes.</p>
+<p>Success check: teachers can select subjects.</p>
+<ol>
+<li>Open **`/admin/students`**.</li>
+</ol>
+<p>What to do: add/import students with class and student number.</p>
+<p>Success check: students appear in class lists.</p>
+<ol>
+<li>Open **`/admin/teachers`**.</li>
+</ol>
+<p>What to do: create teacher profiles and assign classes/subjects.</p>
+<p>Success check: teacher dashboards show class data.</p>
+<ol>
+<li>Open **`/admin/parent-requests`**.</li>
+</ol>
+<p>What to do: approve parent-child links.</p>
+<p>Success check: parents can see their children.</p>
+<ol>
+<li>Open **`/admin/assessment-plans`**.</li>
+</ol>
+<p>What to do: define CA/test/exam structure and weights.</p>
+<p>Success check: mark entry follows configured components.</p>
+<ol>
+<li>Open **`/admin/timetable`**.</li>
+</ol>
+<p>What to do: create periods and assign teacher/subject/class.</p>
+<p>Success check: teacher and student timetable pages are populated.</p>
+<ol>
+<li>If your school uses boarding, open **`/admin/boarding`**.</li>
+</ol>
+<p>What to do: create boarding structures and assign learners to boarding records.</p>
+<p>Success check: boarding data is visible to allowed users.</p>
+<ol>
+<li>Open **`/admin/report-config`**.</li>
+</ol>
+<p>What to do: configure report layout and comment options.</p>
+<p>Success check: report preview/download works as expected.</p>
+<ol>
+<li>Open **`/admin/fees`**.</li>
+</ol>
+<p>What to do: create fee types and assign charges.</p>
+<p>Success check: invoices/balances can be generated.</p>
+<ol>
+<li>Open **`/admin/invoices`** and **`/admin/payments`**.</li>
+</ol>
+<p>What to do: run a small invoice/payment test for one learner.</p>
+<p>Success check: payment posts correctly and balance updates.</p>
+<ol>
+<li>Open **`/admin/permissions`** and **`/admin/2fa-compliance`**.</li>
+</ol>
+<p>What to do: finalize access and security.</p>
+<p>Success check: each role sees only intended modules.</p>
+<h3>Daily Admin Routine</h3>
+<ol>
+<li>Open **`/admin`** and review alerts.</li>
+<li>Clear pending approvals in **`/admin/parent-requests`** and user-related pages.</li>
+<li>Check academics in **`/admin/results`**, **`/admin/analytics`**, **`/admin/at-risk-students`**.</li>
+<li>Check finance in **`/admin/payments`**, **`/admin/invoices`**, **`/admin/fees`**.</li>
+<li>End with review in **`/admin/audit-logs`**.</li>
+</ol>
+<h2>3. HR User Guide</h2>
+<h3>First-Time HR Setup</h3>
+<ol>
+<li>Open **`/hr/staff`** and verify all staff records.</li>
+<li>Open **`/hr/leaves`** and confirm leave workflow rules.</li>
+<li>Open **`/hr/attendance`** and confirm attendance capture process.</li>
+</ol>
+<h3>Daily HR Routine</h3>
+<ol>
+<li>Review attendance exceptions in **`/hr/attendance`**.</li>
+<li>Process leave approvals in **`/hr/leaves`**.</li>
+<li>Update staff records in **`/hr/staff`**.</li>
+<li>Review operations in **`/hr/visitor-logs`**, **`/hr/incidents`**, **`/hr/cleaning`**.</li>
+<li>Share unresolved items with Admin.</li>
+</ol>
+<h2>4. Accountant User Guide</h2>
+<h3>First-Time Accountant Setup</h3>
+<ol>
+<li>Open **`/accountant/fees`** and verify fee structures.</li>
+<li>Open **`/accountant/invoices`** and test invoice generation.</li>
+<li>Open **`/accountant/payments`** and confirm payment posting flow.</li>
+</ol>
+<h3>Daily Accountant Routine</h3>
+<ol>
+<li>Post incoming payments in **`/accountant/payments`**.</li>
+<li>Reconcile against invoices in **`/accountant/invoices`**.</li>
+<li>Review overdue balances and produce follow-up list.</li>
+<li>Generate summaries in **`/accountant/reports`**.</li>
+</ol>
+<h2>5. Teacher User Guide</h2>
+<h3>First-Time Teacher Setup</h3>
+<ol>
+<li>Open **`/teacher/classes`** and confirm assigned classes.</li>
+<li>Open **`/teacher/students`** and verify learner lists.</li>
+<li>Open **`/teacher/attendance`** and check timetable/class mapping.</li>
+</ol>
+<h3>Daily Teacher Routine</h3>
+<ol>
+<li>Mark attendance in **`/teacher/attendance`**.</li>
+<li>Post class work in **`/teacher/homework`** or **`/teacher/assignments`**.</li>
+<li>Capture assessment marks in **`/teacher/marks`**.</li>
+<li>Communicate with parents via **`/teacher/messages`**.</li>
+<li>Track learner performance in **`/teacher/performance`**.</li>
+</ol>
+<h3>End-of-Term Teacher Routine</h3>
+<ol>
+<li>Finalize marks in **`/teacher/marks`**.</li>
+<li>Enter report comments in **`/teacher/report-feedback`**.</li>
+<li>Verify no learner is missing a mark/result.</li>
+</ol>
+<h2>6. Student User Guide</h2>
+<h3>First-Time Student Steps</h3>
+<ol>
+<li>Open **`/student`** dashboard.</li>
+<li>Check **`/student/timetable`**.</li>
+<li>Check **`/student/announcements`** for current notices.</li>
+</ol>
+<h3>Daily Student Routine</h3>
+<ol>
+<li>Start with **`/student/timetable`**.</li>
+<li>Complete tasks from **`/student/homework`** and **`/student/assignments`**.</li>
+<li>Take tests from **`/student/tests`**.</li>
+<li>Monitor progress in **`/student/marks`** and **`/student/results`**.</li>
+</ol>
+<h2>7. Parent User Guide</h2>
+<h3>First-Time Parent Steps</h3>
+<ol>
+<li>Register at **`/register/parent`** (if you do not already have an account).</li>
+<li>Login and open **`/parent`**.</li>
+<li>Confirm child appears in **`/parent/children`**.</li>
+</ol>
+<p>If not visible: contact admin to approve parent-child link.</p>
+<h3>Daily/Weekly Parent Routine</h3>
+<ol>
+<li>Check progress in **`/parent/performance`** and **`/parent/results`**.</li>
+<li>Check school work in **`/parent/homework`**.</li>
+<li>Check balances in **`/parent/fees`** and **`/parent/fees-summary`**.</li>
+<li>Message teachers in **`/parent/chat`** when support is needed.</li>
+</ol>
+<h2>8. Librarian User Guide</h2>
+<h3>First-Time Setup</h3>
+<ol>
+<li>Open **`/librarian/books`** and verify catalog.</li>
+<li>Add missing titles/copies.</li>
+</ol>
+<h3>Daily Routine</h3>
+<ol>
+<li>Record loans/returns in **`/librarian/loans`**.</li>
+<li>Update book availability in **`/librarian/books`**.</li>
+<li>Track and follow up overdue books.</li>
+</ol>
+<h2>9. Security User Guide</h2>
+<h3>First-Time Setup</h3>
+<ol>
+<li>Confirm visitor and incident policy with Admin/HR.</li>
+</ol>
+<h3>Daily Routine</h3>
+<ol>
+<li>Log all visitors in **`/security/visitors`**.</li>
+<li>Log incidents in **`/security/incidents`** immediately.</li>
+<li>Update duty attendance in **`/security/attendance`**.</li>
+</ol>
+<h2>10. Cleaner User Guide</h2>
+<h3>First-Time Setup</h3>
+<ol>
+<li>Review assigned cleaning areas and schedule.</li>
+</ol>
+<h3>Daily Routine</h3>
+<ol>
+<li>Check tasks in **`/cleaner/tasks`**.</li>
+<li>Complete and update each task status.</li>
+<li>Record attendance in **`/cleaner/attendance`**.</li>
+<li>Report hazards or supply shortages to supervisor.</li>
+</ol>
+<h2>11. Sports Director User Guide</h2>
+<h3>First-Time Setup</h3>
+<ol>
+<li>Open **`/sports-director/activities`**.</li>
+<li>Create/confirm activities, teams, and participants.</li>
+</ol>
+<h3>Daily/Weekly Routine</h3>
+<ol>
+<li>Track participation and updates in **`/sports-director/activities`**.</li>
+<li>Review outcomes and trends in **`/sports-director/analysis`**.</li>
+<li>Share performance updates with Admin.</li>
+</ol>
+<h2>12. Boarding (Only if School Uses Boarding)</h2>
+<ol>
+<li>Admin maintains boarding setup in **`/admin/boarding`**.</li>
+<li>HR/support users may manage operations in **`/hr/boarding`**.</li>
+<li>Students/parents check boarding pages only if enabled for the school.</li>
+</ol>
+<h2>13. New User Troubleshooting</h2>
+<ul>
+<li>Page not visible: permission not enabled for your role.</li>
+<li>No child data (parent): parent-child link not approved yet.</li>
+<li>No marks/results: teacher may not have finalized entries.</li>
+<li>No fees/invoices: fee setup may be incomplete.</li>
+<li>Account locked: too many failed attempts; contact school admin.</li>
+</ul>
+<h2>14. Field-by-Field Examples (Use These Formats)</h2>
+<p>Use these examples when creating records to avoid validation issues.</p>
+<ul>
+<li>School setup:</li>
+</ul>
+<p><code>School Name</code>: <code>Greenfield High School</code></p>
+<p><code>Accommodation Type</code>: <code>day</code> or <code>boarding</code> or <code>both</code></p>
+<p><code>Term Start</code>: <code>2026-01-13</code></p>
+<p><code>Term End</code>: <code>2026-04-10</code></p>
+<ul>
+<li>Class creation:</li>
+</ul>
+<p><code>Class Name</code>: <code>Form 1A</code>, <code>Grade 6 Blue</code></p>
+<p><code>Class Teacher</code>: select existing teacher user</p>
+<ul>
+<li>Student creation:</li>
+</ul>
+<p><code>First Name</code>: <code>Tariro</code></p>
+<p><code>Last Name</code>: <code>Moyo</code></p>
+<p><code>Student Number</code>: <code>GH-2026-0012</code> (keep a consistent school format)</p>
+<p><code>Class</code>: select one class only</p>
+<p><code>Guardian Phone</code>: <code>+2637XXXXXXXX</code></p>
+<ul>
+<li>Subject creation:</li>
+</ul>
+<p><code>Subject Name</code>: <code>Mathematics</code></p>
+<p><code>Subject Code</code>: <code>MATH-F1</code></p>
+<p><code>Class Mapping</code>: select all classes that learn the subject</p>
+<ul>
+<li>Teacher assignment:</li>
+</ul>
+<p><code>Teacher</code>: select user with teacher role</p>
+<p><code>Assigned Subject</code>: e.g., <code>Mathematics</code></p>
+<p><code>Assigned Classes</code>: e.g., <code>Form 1A</code>, <code>Form 1B</code></p>
+<ul>
+<li>Fee setup:</li>
+</ul>
+<p><code>Fee Type</code>: <code>Tuition</code>, <code>Boarding</code>, <code>Transport</code>, <code>Exam Fee</code></p>
+<p><code>Amount</code>: numeric only, e.g., <code>150.00</code></p>
+<p><code>Billing Scope</code>: class-level or student-level</p>
+<h2>15. Common Mistakes to Avoid</h2>
+<ol>
+<li>Do not create subjects before classes are created.</li>
+<li>Do not change term dates after marks entry has started unless absolutely required.</li>
+<li>Do not create duplicate student profiles for the same learner.</li>
+<li>Do not assign a teacher to subjects they do not teach.</li>
+<li>Do not publish reports before checking missing marks and comments.</li>
+<li>Do not post payments without checking the correct student invoice.</li>
+<li>Do not remove permissions during school hours without notifying affected staff.</li>
+</ol>
+<h2>16. Role Handoff Points (Who Takes Over Next)</h2>
+<ol>
+<li>Admin -&gt; HR:</li>
+</ol>
+<p>After user setup and permissions are complete, HR takes over staff attendance, leave, and staff records.</p>
+<ol>
+<li>Admin -&gt; Accountant:</li>
+</ol>
+<p>After fees are configured, Accountant takes over daily invoicing, payment posting, and reconciliation.</p>
+<ol>
+<li>Admin -&gt; Teacher:</li>
+</ol>
+<p>After classes, subjects, timetable, and assessment plans are ready, teachers take over attendance, teaching tasks, and marks.</p>
+<ol>
+<li>Admin -&gt; Parent:</li>
+</ol>
+<p>After parent-child links are approved, parents can monitor performance, homework, and fees.</p>
+<ol>
+<li>Teacher -&gt; Admin:</li>
+</ol>
+<p>At term end, teachers finalize marks/comments, then Admin validates and releases reports.</p>
+<h2>17. Time-Based Checklists</h2>
+<h3>Daily Checklist</h3>
+<ol>
+<li>Admin: review approvals, alerts, and exceptions.</li>
+<li>HR: attendance and leave actions.</li>
+<li>Accountant: payment posting and reconciliation.</li>
+<li>Teacher: attendance and class task updates.</li>
+<li>Student: timetable, tasks, and submissions.</li>
+<li>Parent: progress, homework, and fee updates.</li>
+</ol>
+<h3>Weekly Checklist</h3>
+<ol>
+<li>Admin: data quality review (missing marks, pending approvals).</li>
+<li>HR: staff attendance and leave summary.</li>
+<li>Accountant: collections and arrears summary.</li>
+<li>Teacher: markbook completeness check.</li>
+<li>Librarian/Security/Cleaner/Sports: submit weekly operational summaries.</li>
+</ol>
+<h3>Month-End Checklist</h3>
+<ol>
+<li>Accountant: full reconciliation and outstanding balances report.</li>
+<li>HR: staffing and attendance trend report.</li>
+<li>Admin: compliance and audit review.</li>
+</ol>
+<h3>Term-End Checklist</h3>
+<ol>
+<li>Teachers finalize marks and comments.</li>
+<li>Admin verifies results and report settings.</li>
+<li>Reports are released.</li>
+<li>Promotions/rollover planning is prepared.</li>
+</ol>
+<h2>18. Process Flows</h2>
+<h3>Parent Registration -&gt; Child Link Approval</h3>
+<ol>
+<li>Parent registers at **`/register/parent`**.</li>
+<li>Parent logs in and waits for link approval.</li>
+<li>Admin reviews in **`/admin/parent-requests`**.</li>
+<li>After approval, parent sees child data in **`/parent/children`**.</li>
+</ol>
+<h3>Marks Entry -&gt; Report Release</h3>
+<ol>
+<li>Admin defines assessment structure in **`/admin/assessment-plans`**.</li>
+<li>Teacher enters marks in **`/teacher/marks`**.</li>
+<li>Teacher enters comments in **`/teacher/report-feedback`**.</li>
+<li>Admin validates in **`/admin/results`**.</li>
+<li>Admin confirms layout in **`/admin/report-config`**.</li>
+<li>Reports are released.</li>
+</ol>
+<h3>Fee Setup -&gt; Invoice -&gt; Payment -&gt; Balance Update</h3>
+<ol>
+<li>Admin/Accountant creates fees in **`/admin/fees`** or **`/accountant/fees`**.</li>
+<li>Invoice is generated in **`/admin/invoices`** or **`/accountant/invoices`**.</li>
+<li>Payment is posted in **`/admin/payments`** or **`/accountant/payments`**.</li>
+<li>Balance is rechecked on fee summary pages.</li>
+</ol>
+<h2>19. Issue Escalation Matrix</h2>
+<ol>
+<li>Login/password/2FA issues:</li>
+</ol>
+<p>User -&gt; School Admin -&gt; HR (if staff account support needed)</p>
+<ol>
+<li>Missing role access/page not visible:</li>
+</ol>
+<p>User -&gt; School Admin (permissions update)</p>
+<ol>
+<li>Missing student marks/results:</li>
+</ol>
+<p>Student/Parent -&gt; Teacher -&gt; Admin</p>
+<ol>
+<li>Wrong fee balance/payment mismatch:</li>
+</ol>
+<p>Parent/Student -&gt; Accountant -&gt; Admin</p>
+<ol>
+<li>Staff record/leave/attendance issues:</li>
+</ol>
+<p>Staff -&gt; HR -&gt; Admin</p>
+<ol>
+<li>Critical incident/security risk:</li>
+</ol>
+<p>Security -&gt; HR/Admin immediately</p>
+<h2>20. Glossary (Simple Terms)</h2>
+<ul>
+<li>Assessment Plan: rules for how tests/exams/coursework are weighted.</li>
+<li>CA: Continuous Assessment marks earned during the term.</li>
+<li>Timetable: class schedule by day and time.</li>
+<li>Parent-Child Link: approval that connects a parent account to a learner.</li>
+<li>Reconciliation: checking payments against invoices to ensure balances are correct.</li>
+<li>At-Risk Student: learner flagged for performance or progress concerns.</li>
+<li>Arrears: unpaid fee balance.</li>
+<li>Boarding Allocation: assigning boarders to dorm/boarding structures.</li>
+</ul>
+<h2>21. Quick Start One-Pagers</h2>
+<h3>Admin First 60 Minutes</h3>
+<ol>
+<li>Complete **`/admin/settings`** and **`/admin/customization`**.</li>
+<li>Create users in **`/admin/users`**.</li>
+<li>Create classes and subjects.</li>
+<li>Add students and teachers.</li>
+<li>Configure assessments and fees.</li>
+<li>Set permissions and run one end-to-end test (invoice -&gt; payment -&gt; balance).</li>
+</ol>
+<h3>Teacher First 60 Minutes</h3>
+<ol>
+<li>Confirm classes/students.</li>
+<li>Confirm timetable.</li>
+<li>Mark one attendance session.</li>
+<li>Post one homework/assignment.</li>
+<li>Enter one sample mark.</li>
+</ol>
+<h3>Parent First 60 Minutes</h3>
+<ol>
+<li>Register/login.</li>
+<li>Confirm child link approval.</li>
+<li>Check performance and homework.</li>
+<li>Check current fee status.</li>
+<li>Send one message to teacher if needed.</li>
+</ol>
+</body></html>

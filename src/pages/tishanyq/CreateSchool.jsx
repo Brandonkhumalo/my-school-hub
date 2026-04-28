@@ -12,6 +12,7 @@ export default function CreateSchool() {
     admin_email: "",
     admin_phone: "",
     admin_password: "",
+    student_limit: 500,
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
@@ -53,6 +54,7 @@ export default function CreateSchool() {
         admin_email: "",
         admin_phone: "",
         admin_password: "",
+        student_limit: 500,
       });
     } catch (err) {
       setError(err.message);
@@ -171,6 +173,19 @@ export default function CreateSchool() {
                 <option value="cambridge">Cambridge International</option>
                 <option value="both">Both ZIMSEC & Cambridge</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Student Limit <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="1"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                value={formData.student_limit}
+                onChange={(e) => setFormData({ ...formData, student_limit: Number(e.target.value || 0) })}
+              />
             </div>
           </div>
 

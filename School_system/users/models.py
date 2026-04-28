@@ -100,6 +100,7 @@ class School(models.Model):
     email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     logo = models.URLField(blank=True)
+    student_limit = models.PositiveIntegerField(default=500)
     is_active = models.BooleanField(default=True)
     is_suspended = models.BooleanField(default=False)
     suspension_reason = models.TextField(blank=True, null=True)
@@ -520,6 +521,7 @@ class Notification(models.Model):
         ('attendance', 'Attendance'),
         ('result', 'Result'),
         ('general', 'General'),
+        ('student_limit', 'Student Limit'),
     ]
     user = models.ForeignKey('CustomUser', on_delete=models.CASCADE, related_name='notifications')
     title = models.CharField(max_length=200)

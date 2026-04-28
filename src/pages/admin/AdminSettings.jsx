@@ -125,6 +125,28 @@ export default function AdminSettings() {
       {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4">{success}</div>}
 
       <form onSubmit={handleSave} className="space-y-6">
+        <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
+          <h2 className="text-lg font-semibold text-gray-700 mb-2">Student Capacity</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            {settings?.current_student_count ?? 0} of {settings?.student_limit ?? 0} students
+          </p>
+          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${
+                Number(settings?.student_capacity_percent || 0) >= 100
+                  ? "bg-red-500"
+                  : Number(settings?.student_capacity_percent || 0) >= 80
+                    ? "bg-amber-500"
+                    : "bg-green-500"
+              }`}
+              style={{ width: `${Math.min(100, Number(settings?.student_capacity_percent || 0))}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-600 mt-2">
+            {Number(settings?.student_capacity_percent || 0).toFixed(1)}% used
+          </p>
+        </section>
+
         {/* Academic Year & Current Term */}
         <section className="bg-white border border-gray-200 rounded-lg shadow p-5">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Academic Settings</h2>

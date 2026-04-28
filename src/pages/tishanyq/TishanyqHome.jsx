@@ -31,6 +31,7 @@ export default function TishanyqHome() {
     ["Admins", stats?.admins],
     ["Students", stats?.total_students],
     ["Teachers", stats?.total_teachers],
+    ["HR", stats?.total_hr],
     ["Parents", stats?.total_parents],
     ["Locked Admins", stats?.locked_admin_accounts],
   ];
@@ -42,7 +43,7 @@ export default function TishanyqHome() {
         <p className="text-gray-600 mt-1">Real-time visibility across all schools and security posture.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4">
         {kpi.map(([label, value]) => (
           <div key={label} className="bg-white rounded-xl shadow p-4">
             <p className="text-xs text-gray-500">{label}</p>

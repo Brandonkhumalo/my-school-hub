@@ -24,7 +24,7 @@ class SchoolSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'code', 'school_type', 'accommodation_type', 'curriculum',
             'address', 'city', 'country', 'phone', 'email',
-            'website', 'logo', 'is_active', 'created_at'
+            'website', 'logo', 'student_limit', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'code', 'created_at']
 
@@ -672,6 +672,9 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
     """Represents SchoolSettingsSerializer."""
     school_name = serializers.CharField(source='school.name', read_only=True)
     logo_url = serializers.SerializerMethodField()
+    student_limit = serializers.IntegerField(source='school.student_limit', read_only=True)
+    current_student_count = serializers.SerializerMethodField()
+    student_capacity_percent = serializers.SerializerMethodField()
     DATE_FIELDS = (
         'term_start_date', 'term_end_date',
         'term_1_start', 'term_1_end',
@@ -701,6 +704,7 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
             'currency', 'timezone', 'max_students_per_class', 'late_fee_percentage',
             'paynow_integration_id', 'paynow_integration_key',
             'primary_color', 'logo_url',
+            'student_limit', 'current_student_count', 'student_capacity_percent',
         ]
         read_only_fields = ['id', 'school_name', 'logo_url']
 
@@ -711,6 +715,15 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.logo.url)
         return obj.logo.url
+
+    def get_current_student_count(self, obj):
+        from academics.models import Student
+        return Student.objects.filter(user__school=obj.school).count()
+
+    def get_student_capacity_percent(self, obj):
+        limit = max(1, int(getattr(obj.school, 'student_limit', 0) or 0))
+        current = self.get_current_student_count(obj)
+        return round((current / limit) * 100, 2) if limit else 0
 
 
 

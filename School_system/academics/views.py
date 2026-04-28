@@ -332,6 +332,19 @@ class StudentListView(generics.ListCreateAPIView):
                 queryset = queryset.filter(residence_type=normalized)
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        student = serializer.save()
+        payload = StudentSerializer(student, context={'request': request}).data
+        limit_info = serializer.context.get('limit_exceeded_info')
+        if limit_info:
+            payload['limit_exceeded'] = True
+            payload['limit_message'] = limit_info['message']
+            payload['student_limit'] = limit_info['student_limit']
+            payload['active_students'] = limit_info['active_students']
+        return Response(payload, status=status.HTTP_201_CREATED)
+
 
 class StudentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Student.objects.all()

@@ -200,10 +200,14 @@ export default function SchoolsList() {
                 accommodation_type: data.school.accommodation_type,
                 accommodation_type_display: data.school.accommodation_type_display,
                 curriculum: data.school.curriculum,
+                student_limit: data.school.student_limit,
               }
             : s
         )
       );
+      if (data.activated_students > 0) {
+        alert(`${data.activated_students} pending student account(s) were automatically activated.`);
+      }
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -276,6 +280,7 @@ export default function SchoolsList() {
                         <button className="font-semibold text-gray-800 hover:text-blue-700" onClick={() => openSchoolDetail(school)}>{school.name}</button>
                         <p className="text-sm text-gray-500">{school.city} | {school.school_type}</p>
                         <p className="text-xs text-gray-400">{school.accommodation_type_display || school.accommodation_type || 'day'} | {school.curriculum}</p>
+                        <p className="text-xs text-gray-500">Student Limit: {school.student_limit ?? "-"}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -312,6 +317,19 @@ export default function SchoolsList() {
                           <option value="boarding">Boarding</option>
                           <option value="both">Both</option>
                         </select>
+                        <input
+                          type="number"
+                          min="1"
+                          defaultValue={school.student_limit || 500}
+                          disabled={updatingSchool === school.id}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value || 0);
+                            if (!next || next < 1 || next === school.student_limit) return;
+                            handleUpdateSchoolProfile(school.id, { student_limit: next });
+                          }}
+                          className="w-24 px-2 py-2 border border-gray-200 rounded text-xs"
+                          title="Student limit"
+                        />
                         <button
                           onClick={() => handleResetPassword(school.id)}
                           disabled={resetting === school.id}
@@ -373,9 +391,17 @@ export default function SchoolsList() {
                 <section className="border rounded-lg p-3">
                   <p className="font-semibold mb-2">Counts</p>
                   <p>Students: {schoolDetail.counts?.students ?? 0}</p>
+                  <p>Active Students: {schoolDetail.counts?.active_students ?? 0}</p>
+                  <p>Pending Activation: {schoolDetail.counts?.pending_activation_students ?? 0}</p>
                   <p>Teachers: {schoolDetail.counts?.teachers ?? 0}</p>
+                  <p>HR: {schoolDetail.counts?.hr ?? 0}</p>
+                  <p>Accountants: {schoolDetail.counts?.accountants ?? 0}</p>
+                  <p>Security: {schoolDetail.counts?.security ?? 0}</p>
+                  <p>Librarians: {schoolDetail.counts?.librarians ?? 0}</p>
+                  <p>Cleaners: {schoolDetail.counts?.cleaners ?? 0}</p>
                   <p>Parents: {schoolDetail.counts?.parents ?? 0}</p>
                   <p>Staff: {schoolDetail.counts?.staff ?? 0}</p>
+                  <p>Student Limit: {schoolDetail.capacity?.student_limit ?? "-"}</p>
                 </section>
                 <section className="border rounded-lg p-3">
                   <p className="font-semibold mb-2">Finance</p>

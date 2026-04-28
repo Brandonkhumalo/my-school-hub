@@ -89,6 +89,7 @@ class Student(models.Model):
     gender = models.CharField(max_length=20, blank=True)
     emergency_contact = models.CharField(max_length=20, blank=True)
     house = models.ForeignKey(SportsHouse, null=True, blank=True, on_delete=models.SET_NULL, related_name='students')
+    pending_activation_due_to_limit = models.BooleanField(default=False, db_index=True)
 
     # Transfer tracking
     is_transferred = models.BooleanField(default=False, db_index=True)

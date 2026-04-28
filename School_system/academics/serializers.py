@@ -511,30 +511,43 @@ class CreateStudentSerializer(serializers.Serializer):
 
         email = student_email if student_email else f"{student_number}@school.com"
 
-        user = CustomUser.objects.create_user(
-            username=student_number,
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            role='student',
-            student_number=student_number,
-            phone_number=student_contact if student_contact else None,
-            school=school,
-            created_by=created_by
-        )
+        with transaction.atomic():
+            from django.db.models import Count
 
-        student = Student.objects.create(
-            user=user,
-            student_class=student_class,
-            residence_type=residence_type,
-            admission_date=admission_date,
-            parent_contact=student_contact,
-            address=student_address,
-            date_of_birth=date_of_birth,
-            gender=gender,
-            emergency_contact=emergency_contact or student_contact
-        )
+            active_students_count = Student.objects.select_for_update().filter(
+                user__school=school,
+                user__role='student',
+                user__is_active=True,
+            ).aggregate(total=Count('id'))['total'] or 0
+            student_limit = int(getattr(school, 'student_limit', 0) or 0)
+            over_limit = student_limit > 0 and active_students_count >= student_limit
+
+            user = CustomUser.objects.create_user(
+                username=student_number,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                role='student',
+                student_number=student_number,
+                phone_number=student_contact if student_contact else None,
+                school=school,
+                created_by=created_by,
+                is_active=not over_limit,
+            )
+
+            student = Student.objects.create(
+                user=user,
+                student_class=student_class,
+                residence_type=residence_type,
+                admission_date=admission_date,
+                parent_contact=student_contact,
+                address=student_address,
+                date_of_birth=date_of_birth,
+                gender=gender,
+                emergency_contact=emergency_contact or student_contact,
+                pending_activation_due_to_limit=over_limit,
+            )
 
         # Automatically bootstrap one-term invoices/payment records for Terms 1-3
         # when school fees exist for this grade/year.
@@ -549,6 +562,17 @@ class CreateStudentSerializer(serializers.Serializer):
         except Exception:
             # Student creation should not fail if billing sync fails.
             pass
+
+            if over_limit:
+                self.context['limit_exceeded_info'] = {
+                    'message': (
+                        'You have reached your student limit. '
+                        'Please contact Tishanyq Digital. '
+                        'This student was saved and will activate automatically when your limit is increased.'
+                    ),
+                    'student_limit': student_limit,
+                    'active_students': active_students_count,
+                }
 
         return student
 

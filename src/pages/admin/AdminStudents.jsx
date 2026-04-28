@@ -202,7 +202,12 @@ export default function AdminStudents() {
           full_name: `${response.user.first_name} ${response.user.last_name}`,
           student_number: response.user.student_number,
           password: formData.password,
+          limit_exceeded: response.limit_exceeded === true,
+          limit_message: response.limit_message || "",
         });
+        if (response.limit_exceeded) {
+          alert(response.limit_message || "Student saved but the school has reached its student limit.");
+        }
       }
       resetForm();
       fetchData();
@@ -331,7 +336,14 @@ export default function AdminStudents() {
                   <p className="text-gray-700"><strong>Name:</strong> {showCredentials.full_name}</p>
                   <p className="text-gray-700"><strong>Student Number:</strong> <span className="font-mono bg-green-100 px-2 py-1 rounded">{showCredentials.student_number}</span></p>
                   <p className="text-gray-700"><strong>Password:</strong> <span className="font-mono bg-green-100 px-2 py-1 rounded">{showCredentials.password}</span></p>
-                  <p className="text-sm text-green-700 mt-2">Use the student number and password to log in.</p>
+                  <p className="text-sm text-green-700 mt-2">
+                    {showCredentials.limit_exceeded
+                      ? "This student is saved but cannot log in yet until your student limit is increased."
+                      : "Use the student number and password to log in."}
+                  </p>
+                  {showCredentials.limit_exceeded && showCredentials.limit_message && (
+                    <p className="text-sm text-amber-700 mt-2">{showCredentials.limit_message}</p>
+                  )}
                 </div>
               </div>
               <button onClick={() => setShowCredentials(null)} className="text-green-600 hover:text-green-800">

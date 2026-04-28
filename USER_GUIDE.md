@@ -1,401 +1,374 @@
 # My School Hub User Guide
-
-## Introduction
-
-My School Hub is a comprehensive school management platform designed to streamline academic, administrative, and operational activities for schools. This guide provides detailed instructions for all user roles on how to access and use the system effectively.
-
-## Getting Started
-
-### Accessing the System
-
-1. Open your web browser and navigate to your school's My School Hub URL (provided by your school administrator).
-2. You will see the login page.
-
-### Logging In
-
-1. Enter your username and password.
-2. Click the "Login" button.
-3. If you forget your password, click "Forgot Password" and follow the instructions (may require phone verification).
-
-### First Time Login
-
-- After logging in, you may be prompted to change your password for security.
-- Familiarize yourself with the navigation sidebar and dashboard.
-
-### Navigation
-
-- The sidebar contains links to different sections based on your role.
-- The header shows your name and may include notifications or profile options.
-- Use the search functionality if available in specific sections.
-
-## Admin Role
-
-### Overview
-The Admin role has full access to manage all aspects of the school, including students, teachers, finances, and system settings.
-
-### Getting Started as Admin
-1. Log in with your admin credentials.
-2. Review the dashboard for school statistics and quick actions.
-3. Set up school settings, including academic periods, grading systems, and customization.
-
-### Key Features
-
-#### Dashboard
-- View total students, teachers, parents, and financial summaries.
-- Access quick actions for common tasks like adding students or teachers.
-- Monitor recent activities and announcements.
-
-#### Student Management
-- **Add/Edit Students**: Register new students with personal details, class assignments, and boarding information if applicable.
-- **View All Students**: Browse and search student records.
-- **Parent Linking**: Approve parent-child relationships.
-- **Promotions**: Manage student progression between grades.
-
-#### Teacher Management
-- **Add/Edit Teachers**: Register teachers and assign subjects/classes.
-- **View All Teachers**: Manage teacher records and assignments.
-
-#### Academic Management
-- **Classes**: Create and manage class structures.
-- **Subjects**: Define subjects and subject groups.
-- **Timetable**: Schedule classes and manage conflicts.
-- **Assessment Plans**: Set up exam structures and grading schemes.
-- **Results**: Enter and manage student marks.
-- **Report Cards**: Configure and generate student report cards.
-- **Report Delivery Exclusions**: During report approval/signoff, mark selected learners as **Data Issue** so their reports are not sent to parents until corrected.
-
-#### Financial Management
-- **Fees**: Set up fee structures and student fee assignments.
-- **Payments**: Process and track fee payments.
-- **Invoices**: Generate and manage invoices.
-- **PayNow Integration**: Configure mobile payment options.
-
-#### Boarding Management (if applicable)
-- **Dormitories**: Manage dorm assignments and capacity.
-- **Meal Management**: Set up meal menus and track attendance.
-- **Exeat System**: Manage student leave requests.
-- **Tuck Shop**: Monitor student accounts for purchases.
-
-#### Staff Management
-- **HR Integration**: Coordinate with HR for staff details.
-- **Permissions**: Set role-based access controls.
-
-#### Communication
-- **Announcements**: Post school-wide notices.
-- **Messaging**: Send targeted messages to parents/teachers.
-
-#### Reports and Analytics
-- **Analytics**: View school performance metrics.
-- **Reports**: Generate various administrative reports.
-- **Audit Log**: Monitor system activities.
-
-#### System Settings
-- **School Settings**: Customize school information, colors, and branding.
-- **Report Card Configuration**: Design report card layouts.
-- **Academic Periods**: Set terms and academic years.
-
-### Tips for Admins
-- Regularly review the dashboard for updates.
-- Ensure all user accounts are set up correctly.
-- Monitor financial transactions and outstanding fees.
-- Keep academic calendars and timetables up to date.
-
-## Teacher Role
-
-### Overview
-Teachers can manage their classes, enter marks, track attendance, and communicate with parents.
-
-### Getting Started as Teacher
-1. Log in with your teacher credentials.
-2. Review your assigned classes and subjects.
-3. Set up your profile if needed.
-
-### Key Features
-
-#### Dashboard
-- View your classes, upcoming lessons, and recent activities.
-
-#### Class Management
-- **My Classes**: View and manage assigned classes.
-- **Students**: See student lists for each class.
-
-#### Academic Tasks
-- **Marks/Results**: Enter and edit student marks for assessments.
-- **Homework**: Assign and track homework submissions.
-- **Assignments**: Create graded assignments with deadlines, late-submission rules, and file attachments.
-- **Past Exam Papers**: Upload curriculum/level papers for student practice.
-- **Generated Tests**:
-  - Generate draft tests from uploaded past papers.
-  - Edit questions, marks, schedules, and report-card mapping.
-  - Publish tests to students.
-  - Grade long answers and finalize attempts/results.
-- **Attendance**: Mark daily class attendance.
-- **Subject Feedback**: Provide comments and effort grades.
-
-#### Communication
-- **Messages**: Send messages to parents.
-- **Conferences**: Schedule and manage parent-teacher conferences.
-- **Complaints**: Handle student complaints.
-
-#### Performance
-- **Performance Reports**: View class performance analytics.
-
-### Tips for Teachers
-- Mark attendance daily.
-- Enter marks promptly after assessments.
-- Communicate regularly with parents about student progress.
-- Use homework assignments to reinforce learning.
-
-## Student Role
-
-### Overview
-Students can view their grades, timetable, homework, and access boarding features if applicable.
-
-### Getting Started as Student
-1. Log in with your student credentials (usually student number).
-2. Complete your profile if prompted.
-3. Review your dashboard for important information.
-
-### Key Features
-
-#### Dashboard
-- View recent announcements, upcoming homework, and grades.
-
-#### Academic Information
-- **Timetable**: View your class schedule.
-- **Marks/Results**: Check your grades and report cards.
-- **Homework**: View assignments and submit work.
-- **Assignments**: Submit assignment text/files and track grading/feedback.
-- **Past Exam Papers**: Download subject papers available for your level.
-- **Tests**: Start and complete timed generated tests; auto-submit when time expires.
-- **Attendance**: Monitor your attendance record.
-
-#### Activities
-- **Activities**: View and enroll in extracurricular activities.
-- **Announcements**: Read school news and updates.
-
-#### Profile
-- **Profile**: Update personal information and preferences.
-
-#### Boarding (if applicable)
-- **Boarding**: Access dorm information, meal menus, and tuck shop balance.
-
-### Tips for Students
-- Check the timetable regularly for schedule changes.
-- Submit homework on time.
-- Review your marks and seek help if needed.
-- Participate in school activities.
-
-## Parent Role
-
-### Overview
-Parents can monitor their children's progress, pay fees, and communicate with teachers.
-
-### Getting Started as Parent
-1. Log in with your parent credentials.
-2. Link your account to your children if not already done.
-3. Review the dashboard for an overview of your children's activities.
-
-### Key Features
-
-#### Dashboard
-- View children's recent grades, homework, and announcements.
-
-#### Children Management
-- **My Children**: View linked children's profiles and progress.
-
-#### Academic Monitoring
-- **Results**: View children's report cards and grades.
-- **Homework**: Check assignments and submissions.
-- **Performance**: Monitor academic progress and attendance.
-
-#### Communication
-- **Messages**: Send and receive messages from teachers.
-- **Conferences**: Schedule parent-teacher meetings.
-- **Weekly Messages**: Receive regular updates from teachers.
-
-#### Financial
-- **Fees**: View outstanding fees and payment history.
-- **Payments**: Make fee payments online.
-
-#### Boarding (if applicable)
-- **Boarding**: Monitor children's boarding activities and tuck shop usage.
-
-### Tips for Parents
-- Regularly check for messages from teachers.
-- Review your children's grades and attendance.
-- Pay fees promptly to avoid penalties.
-- Schedule conferences to discuss progress.
-
-## Superadmin Role (Platform Owner)
-
-### Overview
-Superadmin manages all schools on the platform, security posture, and platform-wide auditability.
-
-### Key Features
-- **Platform Dashboard**: View totals (schools, users, learners) plus financial and system health metrics.
-- **School Directory**: Create schools, suspend/activate, reset admin passwords, and view setup completeness.
-- **Locked Accounts Manager**: Review and unlock locked user/admin accounts across all schools.
-- **Platform Audit Logs**: Filter actions by school, user, date, action, and model; export to CSV.
-- **Assessment Activity Widget**: Track recent generated-test actions (`GeneratedTest` / `TestAttempt`) and jump directly into filtered audit logs.
-
-## HR Role
-
-### Overview
-HR manages staff, payroll, leaves, and operational aspects like cleaning and visitor logs.
-
-### Getting Started as HR
-1. Log in with your HR credentials.
-2. Review staff records and organizational structure.
-
-### Key Features
-
-#### Dashboard
-- View staff statistics and recent activities.
-
-#### Staff Management
-- **Staff**: Manage employee records, positions, and details.
-- **Attendance**: Track staff attendance.
-
-#### Payroll and Leaves
-- **Payroll**: Process salaries and manage payment requests.
-- **Leaves**: Approve and track employee leave requests.
-
-#### Operational Management
-- **Meetings**: Schedule and manage staff meetings.
-- **Incidents**: Record and manage workplace incidents.
-- **Visitor Logs**: Monitor school visitors.
-- **Cleaning Schedules**: Assign and track cleaning tasks.
-
-#### Boarding Support (if applicable)
-- **Boarding**: Assist with boarding staff and operations.
-
-### Tips for HR
-- Keep staff records up to date.
-- Process payroll and leaves timely.
-- Monitor incident reports and visitor logs for security.
-
-## Accountant Role
-
-### Overview
-Accountants manage school finances, including fees, payments, and financial reporting.
-
-### Getting Started as Accountant
-1. Log in with your accountant credentials.
-2. Review financial summaries and outstanding items.
-
-### Key Features
-
-#### Dashboard
-- View financial overview and key metrics.
-
-#### Fee Management
-- **Fees**: Set up and manage fee structures.
-
-#### Payment Processing
-- **Payments**: Process and track fee payments.
-- **Invoices**: Generate and manage invoices.
-
-#### Reporting
-- **Reports**: Generate financial reports and statements.
-
-### Tips for Accountants
-- Regularly reconcile payments.
-- Generate reports for management review.
-- Ensure fee structures are current.
-
-## Security Role
-
-### Overview
-Security personnel manage visitor logs and incident reports.
-
-### Getting Started as Security
-1. Log in with your security credentials.
-2. Review current visitor logs and incident reports.
-
-### Key Features
-
-#### Dashboard
-- View security-related statistics.
-
-#### Visitor Management
-- **Visitor Logs**: Record and monitor school visitors.
-
-#### Incident Management
-- **Incidents**: Report and track security incidents.
-
-#### Attendance
-- **Attendance**: Monitor staff/student attendance if assigned.
-
-### Tips for Security
-- Log all visitors accurately.
-- Report incidents immediately.
-- Maintain security protocols.
-
-## Cleaner Role
-
-### Overview
-Cleaners manage their assigned cleaning tasks and track attendance.
-
-### Getting Started as Cleaner
-1. Log in with your cleaner credentials.
-2. Review your assigned tasks and schedule.
-
-### Key Features
-
-#### Dashboard
-- View your tasks and schedule.
-
-#### Task Management
-- **Tasks**: View and update cleaning task status.
-
-#### Attendance
-- **Attendance**: Mark your attendance and work hours.
-
-### Tips for Cleaners
-- Update task status as completed.
-- Mark attendance daily.
-- Report any maintenance issues.
-
-## Librarian Role
-
-### Overview
-Librarians manage the school library, including books and loans.
-
-### Getting Started as Librarian
-1. Log in with your librarian credentials.
-2. Review the book catalog and current loans.
-
-### Key Features
-
-#### Dashboard
-- View library statistics and recent activities.
-
-#### Book Management
-- **Books**: Add, edit, and categorize books.
-
-#### Loan Management
-- **Loans**: Issue books, track due dates, and manage returns.
-
-### Tips for Librarians
-- Keep the catalog up to date.
-- Monitor overdue books and send reminders.
-- Organize books by category for easy access.
-
-## General Tips
-
-- **Password Security**: Use strong passwords and change them regularly.
-- **Notifications**: Check the notification bell for important updates.
-- **Mobile Access**: The system is mobile-responsive for on-the-go access.
-- **Support**: Contact your school administrator or IT support for technical issues.
-- **Data Privacy**: Handle student and staff data confidentially.
-- **Regular Backups**: The system handles data backups, but be aware of data retention policies.
-
-## Troubleshooting
-
-- **Login Issues**: Ensure correct username/password; try password reset.
-- **Slow Loading**: Check internet connection; clear browser cache.
-- **Permission Errors**: Contact admin if you can't access required features.
-- **Data Not Updating**: Refresh the page or log out and back in.
-
-For additional support, refer to your school administrator.
+Guide Version: `v1.1`
+Last Updated: `28 April 2026`
+
+This guide is written for first-time users. It explains what to do step by step for each role.
+
+Link format in this guide:
+- All pages are highlighted like this: **`/admin/students`**
+- If you are already logged in, use the sidebar menu to find the same page name.
+
+## 1. Start Here (All Users)
+1. Open your school URL.
+2. Login with your username and password.
+3. If asked for 2FA code, enter it.
+4. Open your profile and confirm your phone/email is correct.
+5. If you cannot find a page in this guide, ask Admin/HR to enable your permission.
+
+## 2. Admin User Guide
+
+### First Day Setup (in order)
+1. Open **`/admin/settings`**.
+What to do: set school profile, term dates, accommodation type.
+Success check: school info saves and term dates appear correctly.
+
+2. Open **`/admin/customization`**.
+What to do: set logo/colors/font.
+Success check: dashboard branding updates.
+
+3. Open **`/admin/users`**.
+What to do: create accounts for HR, Accountant, Librarian, Security, Cleaner, Sports Director, and Teachers.
+Success check: each account can log in.
+
+4. Open **`/admin/classes`**.
+What to do: create all classes/streams.
+Success check: classes appear in dropdowns elsewhere.
+
+5. Open **`/admin/subjects`**.
+What to do: create subjects and map them to classes.
+Success check: teachers can select subjects.
+
+6. Open **`/admin/students`**.
+What to do: add/import students with class and student number.
+Success check: students appear in class lists.
+
+7. Open **`/admin/teachers`**.
+What to do: create teacher profiles and assign classes/subjects.
+Success check: teacher dashboards show class data.
+
+8. Open **`/admin/parent-requests`**.
+What to do: approve parent-child links.
+Success check: parents can see their children.
+
+9. Open **`/admin/assessment-plans`**.
+What to do: define CA/test/exam structure and weights.
+Success check: mark entry follows configured components.
+
+10. Open **`/admin/timetable`**.
+What to do: create periods and assign teacher/subject/class.
+Success check: teacher and student timetable pages are populated.
+
+11. If your school uses boarding, open **`/admin/boarding`**.
+What to do: create boarding structures and assign learners to boarding records.
+Success check: boarding data is visible to allowed users.
+
+12. Open **`/admin/report-config`**.
+What to do: configure report layout and comment options.
+Success check: report preview/download works as expected.
+
+13. Open **`/admin/fees`**.
+What to do: create fee types and assign charges.
+Success check: invoices/balances can be generated.
+
+14. Open **`/admin/invoices`** and **`/admin/payments`**.
+What to do: run a small invoice/payment test for one learner.
+Success check: payment posts correctly and balance updates.
+
+15. Open **`/admin/permissions`** and **`/admin/2fa-compliance`**.
+What to do: finalize access and security.
+Success check: each role sees only intended modules.
+
+### Daily Admin Routine
+1. Open **`/admin`** and review alerts.
+2. Clear pending approvals in **`/admin/parent-requests`** and user-related pages.
+3. Check academics in **`/admin/results`**, **`/admin/analytics`**, **`/admin/at-risk-students`**.
+4. Check finance in **`/admin/payments`**, **`/admin/invoices`**, **`/admin/fees`**.
+5. End with review in **`/admin/audit-logs`**.
+
+## 3. HR User Guide
+
+### First-Time HR Setup
+1. Open **`/hr/staff`** and verify all staff records.
+2. Open **`/hr/leaves`** and confirm leave workflow rules.
+3. Open **`/hr/attendance`** and confirm attendance capture process.
+
+### Daily HR Routine
+1. Review attendance exceptions in **`/hr/attendance`**.
+2. Process leave approvals in **`/hr/leaves`**.
+3. Update staff records in **`/hr/staff`**.
+4. Review operations in **`/hr/visitor-logs`**, **`/hr/incidents`**, **`/hr/cleaning`**.
+5. Share unresolved items with Admin.
+
+## 4. Accountant User Guide
+
+### First-Time Accountant Setup
+1. Open **`/accountant/fees`** and verify fee structures.
+2. Open **`/accountant/invoices`** and test invoice generation.
+3. Open **`/accountant/payments`** and confirm payment posting flow.
+
+### Daily Accountant Routine
+1. Post incoming payments in **`/accountant/payments`**.
+2. Reconcile against invoices in **`/accountant/invoices`**.
+3. Review overdue balances and produce follow-up list.
+4. Generate summaries in **`/accountant/reports`**.
+
+## 5. Teacher User Guide
+
+### First-Time Teacher Setup
+1. Open **`/teacher/classes`** and confirm assigned classes.
+2. Open **`/teacher/students`** and verify learner lists.
+3. Open **`/teacher/attendance`** and check timetable/class mapping.
+
+### Daily Teacher Routine
+1. Mark attendance in **`/teacher/attendance`**.
+2. Post class work in **`/teacher/homework`** or **`/teacher/assignments`**.
+3. Capture assessment marks in **`/teacher/marks`**.
+4. Communicate with parents via **`/teacher/messages`**.
+5. Track learner performance in **`/teacher/performance`**.
+
+### End-of-Term Teacher Routine
+1. Finalize marks in **`/teacher/marks`**.
+2. Enter report comments in **`/teacher/report-feedback`**.
+3. Verify no learner is missing a mark/result.
+
+## 6. Student User Guide
+
+### First-Time Student Steps
+1. Open **`/student`** dashboard.
+2. Check **`/student/timetable`**.
+3. Check **`/student/announcements`** for current notices.
+
+### Daily Student Routine
+1. Start with **`/student/timetable`**.
+2. Complete tasks from **`/student/homework`** and **`/student/assignments`**.
+3. Take tests from **`/student/tests`**.
+4. Monitor progress in **`/student/marks`** and **`/student/results`**.
+
+## 7. Parent User Guide
+
+### First-Time Parent Steps
+1. Register at **`/register/parent`** (if you do not already have an account).
+2. Login and open **`/parent`**.
+3. Confirm child appears in **`/parent/children`**.
+If not visible: contact admin to approve parent-child link.
+
+### Daily/Weekly Parent Routine
+1. Check progress in **`/parent/performance`** and **`/parent/results`**.
+2. Check school work in **`/parent/homework`**.
+3. Check balances in **`/parent/fees`** and **`/parent/fees-summary`**.
+4. Message teachers in **`/parent/chat`** when support is needed.
+
+## 8. Librarian User Guide
+
+### First-Time Setup
+1. Open **`/librarian/books`** and verify catalog.
+2. Add missing titles/copies.
+
+### Daily Routine
+1. Record loans/returns in **`/librarian/loans`**.
+2. Update book availability in **`/librarian/books`**.
+3. Track and follow up overdue books.
+
+## 9. Security User Guide
+
+### First-Time Setup
+1. Confirm visitor and incident policy with Admin/HR.
+
+### Daily Routine
+1. Log all visitors in **`/security/visitors`**.
+2. Log incidents in **`/security/incidents`** immediately.
+3. Update duty attendance in **`/security/attendance`**.
+
+## 10. Cleaner User Guide
+
+### First-Time Setup
+1. Review assigned cleaning areas and schedule.
+
+### Daily Routine
+1. Check tasks in **`/cleaner/tasks`**.
+2. Complete and update each task status.
+3. Record attendance in **`/cleaner/attendance`**.
+4. Report hazards or supply shortages to supervisor.
+
+## 11. Sports Director User Guide
+
+### First-Time Setup
+1. Open **`/sports-director/activities`**.
+2. Create/confirm activities, teams, and participants.
+
+### Daily/Weekly Routine
+1. Track participation and updates in **`/sports-director/activities`**.
+2. Review outcomes and trends in **`/sports-director/analysis`**.
+3. Share performance updates with Admin.
+
+## 12. Boarding (Only if School Uses Boarding)
+1. Admin maintains boarding setup in **`/admin/boarding`**.
+2. HR/support users may manage operations in **`/hr/boarding`**.
+3. Students/parents check boarding pages only if enabled for the school.
+
+## 13. New User Troubleshooting
+- Page not visible: permission not enabled for your role.
+- No child data (parent): parent-child link not approved yet.
+- No marks/results: teacher may not have finalized entries.
+- No fees/invoices: fee setup may be incomplete.
+- Account locked: too many failed attempts; contact school admin.
+
+## 14. Field-by-Field Examples (Use These Formats)
+Use these examples when creating records to avoid validation issues.
+
+- School setup:
+`School Name`: `Greenfield High School`
+`Accommodation Type`: `day` or `boarding` or `both`
+`Term Start`: `2026-01-13`
+`Term End`: `2026-04-10`
+
+- Class creation:
+`Class Name`: `Form 1A`, `Grade 6 Blue`
+`Class Teacher`: select existing teacher user
+
+- Student creation:
+`First Name`: `Tariro`
+`Last Name`: `Moyo`
+`Student Number`: `GH-2026-0012` (keep a consistent school format)
+`Class`: select one class only
+`Guardian Phone`: `+2637XXXXXXXX`
+
+- Subject creation:
+`Subject Name`: `Mathematics`
+`Subject Code`: `MATH-F1`
+`Class Mapping`: select all classes that learn the subject
+
+- Teacher assignment:
+`Teacher`: select user with teacher role
+`Assigned Subject`: e.g., `Mathematics`
+`Assigned Classes`: e.g., `Form 1A`, `Form 1B`
+
+- Fee setup:
+`Fee Type`: `Tuition`, `Boarding`, `Transport`, `Exam Fee`
+`Amount`: numeric only, e.g., `150.00`
+`Billing Scope`: class-level or student-level
+
+## 15. Common Mistakes to Avoid
+1. Do not create subjects before classes are created.
+2. Do not change term dates after marks entry has started unless absolutely required.
+3. Do not create duplicate student profiles for the same learner.
+4. Do not assign a teacher to subjects they do not teach.
+5. Do not publish reports before checking missing marks and comments.
+6. Do not post payments without checking the correct student invoice.
+7. Do not remove permissions during school hours without notifying affected staff.
+
+## 16. Role Handoff Points (Who Takes Over Next)
+1. Admin -> HR:
+After user setup and permissions are complete, HR takes over staff attendance, leave, and staff records.
+
+2. Admin -> Accountant:
+After fees are configured, Accountant takes over daily invoicing, payment posting, and reconciliation.
+
+3. Admin -> Teacher:
+After classes, subjects, timetable, and assessment plans are ready, teachers take over attendance, teaching tasks, and marks.
+
+4. Admin -> Parent:
+After parent-child links are approved, parents can monitor performance, homework, and fees.
+
+5. Teacher -> Admin:
+At term end, teachers finalize marks/comments, then Admin validates and releases reports.
+
+## 17. Time-Based Checklists
+### Daily Checklist
+1. Admin: review approvals, alerts, and exceptions.
+2. HR: attendance and leave actions.
+3. Accountant: payment posting and reconciliation.
+4. Teacher: attendance and class task updates.
+5. Student: timetable, tasks, and submissions.
+6. Parent: progress, homework, and fee updates.
+
+### Weekly Checklist
+1. Admin: data quality review (missing marks, pending approvals).
+2. HR: staff attendance and leave summary.
+3. Accountant: collections and arrears summary.
+4. Teacher: markbook completeness check.
+5. Librarian/Security/Cleaner/Sports: submit weekly operational summaries.
+
+### Month-End Checklist
+1. Accountant: full reconciliation and outstanding balances report.
+2. HR: staffing and attendance trend report.
+3. Admin: compliance and audit review.
+
+### Term-End Checklist
+1. Teachers finalize marks and comments.
+2. Admin verifies results and report settings.
+3. Reports are released.
+4. Promotions/rollover planning is prepared.
+
+## 18. Process Flows
+### Parent Registration -> Child Link Approval
+1. Parent registers at **`/register/parent`**.
+2. Parent logs in and waits for link approval.
+3. Admin reviews in **`/admin/parent-requests`**.
+4. After approval, parent sees child data in **`/parent/children`**.
+
+### Marks Entry -> Report Release
+1. Admin defines assessment structure in **`/admin/assessment-plans`**.
+2. Teacher enters marks in **`/teacher/marks`**.
+3. Teacher enters comments in **`/teacher/report-feedback`**.
+4. Admin validates in **`/admin/results`**.
+5. Admin confirms layout in **`/admin/report-config`**.
+6. Reports are released.
+
+### Fee Setup -> Invoice -> Payment -> Balance Update
+1. Admin/Accountant creates fees in **`/admin/fees`** or **`/accountant/fees`**.
+2. Invoice is generated in **`/admin/invoices`** or **`/accountant/invoices`**.
+3. Payment is posted in **`/admin/payments`** or **`/accountant/payments`**.
+4. Balance is rechecked on fee summary pages.
+
+## 19. Issue Escalation Matrix
+1. Login/password/2FA issues:
+User -> School Admin -> HR (if staff account support needed)
+
+2. Missing role access/page not visible:
+User -> School Admin (permissions update)
+
+3. Missing student marks/results:
+Student/Parent -> Teacher -> Admin
+
+4. Wrong fee balance/payment mismatch:
+Parent/Student -> Accountant -> Admin
+
+5. Staff record/leave/attendance issues:
+Staff -> HR -> Admin
+
+6. Critical incident/security risk:
+Security -> HR/Admin immediately
+
+## 20. Glossary (Simple Terms)
+- Assessment Plan: rules for how tests/exams/coursework are weighted.
+- CA: Continuous Assessment marks earned during the term.
+- Timetable: class schedule by day and time.
+- Parent-Child Link: approval that connects a parent account to a learner.
+- Reconciliation: checking payments against invoices to ensure balances are correct.
+- At-Risk Student: learner flagged for performance or progress concerns.
+- Arrears: unpaid fee balance.
+- Boarding Allocation: assigning boarders to dorm/boarding structures.
+
+## 21. Quick Start One-Pagers
+### Admin First 60 Minutes
+1. Complete **`/admin/settings`** and **`/admin/customization`**.
+2. Create users in **`/admin/users`**.
+3. Create classes and subjects.
+4. Add students and teachers.
+5. Configure assessments and fees.
+6. Set permissions and run one end-to-end test (invoice -> payment -> balance).
+
+### Teacher First 60 Minutes
+1. Confirm classes/students.
+2. Confirm timetable.
+3. Mark one attendance session.
+4. Post one homework/assignment.
+5. Enter one sample mark.
+
+### Parent First 60 Minutes
+1. Register/login.
+2. Confirm child link approval.
+3. Check performance and homework.
+4. Check current fee status.
+5. Send one message to teacher if needed.

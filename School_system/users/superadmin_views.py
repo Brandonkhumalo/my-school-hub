@@ -23,7 +23,7 @@ from rest_framework.response import Response
 
 from academics.models import Class, Parent, ParentChildLink, Student
 from finances.models import Invoice, StudentPaymentRecord
-from users.models import AuditLog, CustomUser, School, SchoolSettings
+from users.models import AuditLog, CustomUser, Notification, School, SchoolSettings
 from users.token import JWTAuthentication
 
 logger = logging.getLogger(__name__)
@@ -264,6 +264,11 @@ def superadmin_stats(request):
             "total_students": Student.objects.count(),
             "total_teachers": CustomUser.objects.filter(role="teacher").count(),
             "total_parents": CustomUser.objects.filter(role="parent").count(),
+            "total_hr": CustomUser.objects.filter(role="hr").count(),
+            "total_accountants": CustomUser.objects.filter(role="accountant").count(),
+            "total_security": CustomUser.objects.filter(role="security").count(),
+            "total_librarians": CustomUser.objects.filter(role="librarian").count(),
+            "total_cleaners": CustomUser.objects.filter(role="cleaner").count(),
             "schools_active": schools_qs.filter(is_suspended=False).count(),
             "schools_suspended": schools_qs.filter(is_suspended=True).count(),
             "schools_by_type": list(by_type),
@@ -303,9 +308,16 @@ def create_school_with_admin(request):
     admin_email = request.data.get("admin_email")
     admin_phone = request.data.get("admin_phone")
     admin_password = request.data.get("admin_password")
+    student_limit = request.data.get("student_limit")
 
-    if not all([school_name, school_location, admin_email, admin_phone, admin_password]):
+    if not all([school_name, school_location, admin_email, admin_phone, admin_password, student_limit]):
         return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        student_limit = int(student_limit)
+        if student_limit < 1:
+            raise ValueError
+    except Exception:
+        return Response({"error": "student_limit must be a positive number"}, status=status.HTTP_400_BAD_REQUEST)
     if School.objects.filter(name__iexact=school_name).exists():
         return Response({"error": "School with this name already exists"}, status=status.HTTP_400_BAD_REQUEST)
     if CustomUser.objects.filter(email=admin_email).exists():
@@ -324,6 +336,7 @@ def create_school_with_admin(request):
                 school_type=school_type,
                 accommodation_type=accommodation_type,
                 curriculum=curriculum,
+                student_limit=student_limit,
             )
 
             admin_username = school_name.lower().replace(" ", "_")[:20] + "_admin"
@@ -348,7 +361,12 @@ def create_school_with_admin(request):
                 model_name="School",
                 object_id=school.id,
                 object_repr=f"Created school {school.name}",
-                changes={"school_code": school.code, "admin_user_id": admin_user.id, "admin_email": admin_user.email},
+                changes={
+                    "school_code": school.code,
+                    "admin_user_id": admin_user.id,
+                    "admin_email": admin_user.email,
+                    "student_limit": student_limit,
+                },
                 response_status=201,
                 school=None,
             )
@@ -360,6 +378,7 @@ def create_school_with_admin(request):
                     "school_code": school.code,
                     "admin_username": admin_user.username,
                     "admin_email": admin_user.email,
+                    "student_limit": school.student_limit,
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -387,6 +406,7 @@ def list_schools_with_admins(request):
                 "accommodation_type": school.accommodation_type,
                 "accommodation_type_display": school.get_accommodation_type_display(),
                 "curriculum": school.curriculum,
+                "student_limit": school.student_limit,
                 "is_suspended": school.is_suspended,
                 "admin_username": admin.username if admin else "N/A",
                 "admin_email": admin.email if admin else "N/A",
@@ -427,9 +447,21 @@ def school_detail_panel(request, school_id):
             },
             "counts": {
                 "students": Student.objects.filter(user__school=school).count(),
+                "active_students": Student.objects.filter(user__school=school, user__is_active=True).count(),
+                "pending_activation_students": Student.objects.filter(
+                    user__school=school, pending_activation_due_to_limit=True
+                ).count(),
                 "teachers": CustomUser.objects.filter(school=school, role="teacher").count(),
+                "hr": CustomUser.objects.filter(school=school, role="hr").count(),
+                "accountants": CustomUser.objects.filter(school=school, role="accountant").count(),
+                "security": CustomUser.objects.filter(school=school, role="security").count(),
+                "librarians": CustomUser.objects.filter(school=school, role="librarian").count(),
+                "cleaners": CustomUser.objects.filter(school=school, role="cleaner").count(),
                 "parents": Parent.objects.filter(schools=school).distinct().count(),
                 "staff": CustomUser.objects.filter(school=school, role__in=["admin", "hr", "accountant", "security", "cleaner", "librarian"]).count(),
+            },
+            "capacity": {
+                "student_limit": school.student_limit,
             },
             "finance": {
                 "revenue_collected": str(revenue),
@@ -571,7 +603,7 @@ def update_school_profile(request, school_id):
     except School.DoesNotExist:
         return Response({"error": "School not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    allowed_fields = {"school_type", "accommodation_type", "curriculum", "city", "name"}
+    allowed_fields = {"school_type", "accommodation_type", "curriculum", "city", "name", "student_limit"}
     incoming = {k: v for k, v in request.data.items() if k in allowed_fields}
 
     if "accommodation_type" in incoming:
@@ -586,10 +618,54 @@ def update_school_profile(request, school_id):
         valid = {choice[0] for choice in School.CURRICULUM_CHOICES}
         if incoming["curriculum"] not in valid:
             return Response({"error": "Invalid curriculum"}, status=status.HTTP_400_BAD_REQUEST)
+    if "student_limit" in incoming:
+        try:
+            incoming["student_limit"] = int(incoming["student_limit"])
+            if incoming["student_limit"] < 1:
+                raise ValueError
+        except Exception:
+            return Response({"error": "student_limit must be a positive number"}, status=status.HTTP_400_BAD_REQUEST)
 
     for field, value in incoming.items():
         setattr(school, field, value)
     school.save(update_fields=list(incoming.keys()) + ["updated_at"] if incoming else ["updated_at"])
+
+    activated_count = 0
+    if "student_limit" in incoming:
+        active_students = Student.objects.filter(user__school=school, user__is_active=True).count()
+        free_slots = max(0, school.student_limit - active_students)
+        if free_slots > 0:
+            pending_students = list(
+                Student.objects.filter(
+                    user__school=school,
+                    pending_activation_due_to_limit=True,
+                    user__is_active=False,
+                ).select_related("user").order_by("id")[:free_slots]
+            )
+            pending_ids = [student.id for student in pending_students]
+            if pending_ids:
+                Student.objects.filter(id__in=pending_ids).update(pending_activation_due_to_limit=False)
+                CustomUser.objects.filter(student__id__in=pending_ids).update(is_active=True)
+                activated_count = len(pending_ids)
+
+    if activated_count > 0:
+        admin_users = CustomUser.objects.filter(school=school, role="admin", is_active=True)
+        note_message = (
+            f"{activated_count} student account(s) were automatically activated "
+            "after your student limit was increased."
+        )
+        Notification.objects.bulk_create(
+            [
+                Notification(
+                    user=admin_user,
+                    title="Student Limit Increased",
+                    message=note_message,
+                    notification_type="student_limit",
+                    link="/admin/settings",
+                )
+                for admin_user in admin_users
+            ]
+        )
 
     _audit(
         request,
@@ -613,7 +689,9 @@ def update_school_profile(request, school_id):
                 "accommodation_type_display": school.get_accommodation_type_display(),
                 "curriculum": school.curriculum,
                 "city": school.city,
+                "student_limit": school.student_limit,
             },
+            "activated_students": activated_count,
         }
     )
 
