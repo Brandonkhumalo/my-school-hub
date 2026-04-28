@@ -351,6 +351,7 @@ const apiService = {
     const q = new URLSearchParams(params).toString();
     return request(`/academics/reports/approval-requests/${q ? `?${q}` : ''}`, "GET");
   },
+  setReportDeliveryExclusion: (data) => request("/academics/reports/delivery-exclusions/", "POST", data),
   reviewReportApprovalRequest: (requestId, data) =>
     request(`/academics/reports/approval-requests/${requestId}/review/`, "POST", data),
 
@@ -406,14 +407,27 @@ const apiService = {
   markClassAttendance: (data) => request("/teachers/attendance/class/mark/", "POST", data),
 
   // Subject attendance (per subject per class)
-  getSubjectAttendanceRegister: (date, classId, subjectId) => {
+  getSubjectAttendanceRegister: (date, classId, subjectId, periodNumber = null, periodLabel = '') => {
     const params = new URLSearchParams();
     if (date) params.append('date', date);
     if (classId) params.append('class_id', classId);
     if (subjectId) params.append('subject_id', subjectId);
+    if (periodNumber !== null && periodNumber !== undefined && periodNumber !== '') params.append('period_number', periodNumber);
+    if (periodLabel) params.append('period_label', periodLabel);
     return request(`/teachers/attendance/subject/register/?${params.toString()}`, "GET");
   },
   markSubjectAttendance: (data) => request("/teachers/attendance/subject/mark/", "POST", data),
+  setAttendancePeriodTrackingStartDate: (startDate) =>
+    request("/academics/attendance/period-tracking-start-date/", "POST", { start_date: startDate }),
+  getAttendancePermissions: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/academics/attendance/permissions/${qs ? `?${qs}` : ''}`, "GET");
+  },
+  createAttendancePermission: (data) => request("/academics/attendance/permissions/", "POST", data),
+  editClassAttendance: (attendanceId, data) =>
+    request(`/academics/attendance/class/${attendanceId}/edit/`, "PATCH", data),
+  editSubjectAttendance: (attendanceId, data) =>
+    request(`/academics/attendance/subject/${attendanceId}/edit/`, "PATCH", data),
 
   // Admin Parent-Child Link Management endpoints
   getPendingParentLinkRequests: () => request("/academics/parent-link-requests/", "GET"),
@@ -431,9 +445,9 @@ const apiService = {
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
 
   // Admin conversation review
-  adminListConversations: () => request("/messages/admin/conversations/", "GET"),
+  adminListConversations: () => request("/admin/conversations/", "GET"),
   adminGetConversation: (teacherId, parentId) =>
-    request(`/messages/admin/conversations/${teacherId}/${parentId}/`, "GET"),
+    request(`/admin/conversations/${teacherId}/${parentId}/`, "GET"),
 
   // Assessment Plans (admin/HR-boss configures; teacher/parent/student read)
   listAssessmentPlans: (params = {}) => {
@@ -611,13 +625,24 @@ const apiService = {
   },
 
   // Assignment submissions (student)
+  getStudentAssignments: () => request("/students/assignments/", "GET"),
   getMySubmission: (assignmentId) => request(`/students/assignments/${assignmentId}/submit/`, "GET"),
   submitAssignment: (assignmentId, formData) =>
     requestMultipart(`/students/assignments/${assignmentId}/submit/`, "POST", formData),
 
   // Assignment submissions (teacher)
+  getTeacherAssignments: () => request("/teachers/assignments/", "GET"),
+  createTeacherAssignment: (data) => request("/teachers/assignments/", "POST", data),
+  getTeacherAssignment: (assignmentId) => request(`/teachers/assignments/${assignmentId}/`, "GET"),
+  updateTeacherAssignment: (assignmentId, data) => request(`/teachers/assignments/${assignmentId}/`, "PATCH", data),
+  deleteTeacherAssignment: (assignmentId) => request(`/teachers/assignments/${assignmentId}/`, "DELETE"),
   getAssignmentSubmissions: (assignmentId) => request(`/teachers/assignments/${assignmentId}/submissions/`, "GET"),
   gradeSubmission: (submissionId, data) => request(`/teachers/submissions/${submissionId}/grade/`, "POST", data),
+  uploadAssignmentAttachmentFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestMultipart("/services/papers/upload", "POST", formData);
+  },
 
   // PayNow Zimbabwe payments
   initiatePaynowPayment: (data) => request("/finances/payments/paynow/initiate/", "POST", data),
@@ -641,6 +666,53 @@ const apiService = {
 
   // Page visibility registry (admin customization)
   getAvailablePages: () => request("/auth/school/available-pages/", "GET"),
+
+  // Past exam papers — file lives on go-services, metadata in Django.
+  // Step 1: upload the file to go-services (returns file_key + size + page_count)
+  uploadPastPaperFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestMultipart("/services/papers/upload", "POST", formData);
+  },
+  // Step 2: persist metadata in Django, referencing the file_key from step 1
+  createPastPaper: (data) => request("/academics/past-papers/", "POST", data),
+  listPastPapers: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/academics/past-papers/${qs ? '?' + qs : ''}`, "GET");
+  },
+  getPastPaper: (id) => request(`/academics/past-papers/${id}/`, "GET"),
+  deletePastPaper: (id) => request(`/academics/past-papers/${id}/`, "DELETE"),
+  extractPastPaperQuestions: (id) => request(`/academics/past-papers/${id}/extract/`, "POST"),
+  // Fetch the raw file as a Blob so the caller can render it inline / trigger download.
+  // (A plain <a href> link would not include the Authorization header.)
+  downloadPastPaperFile: (fileKey) =>
+    requestFile(`/services/papers/file?key=${encodeURIComponent(fileKey)}`),
+
+  // Generated tests (teacher)
+  generateTestFromPaper: (data) => request("/teachers/tests/generate-from-paper/", "POST", data),
+  listTeacherTests: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/teachers/tests/${qs ? `?${qs}` : ""}`, "GET");
+  },
+  getTeacherTest: (testId) => request(`/teachers/tests/${testId}/`, "GET"),
+  updateTeacherTest: (testId, data) => request(`/teachers/tests/${testId}/`, "PATCH", data),
+  replaceTeacherTestQuestions: (testId, questions) =>
+    request(`/teachers/tests/${testId}/questions/`, "POST", { action: "replace", questions }),
+  upsertTeacherTestQuestion: (testId, question) =>
+    request(`/teachers/tests/${testId}/questions/`, "POST", { action: "upsert", question }),
+  deleteTeacherTestQuestion: (testId, questionId) =>
+    request(`/teachers/tests/${testId}/questions/`, "POST", { action: "delete", question_id: questionId }),
+  publishTeacherTest: (testId) => request(`/teachers/tests/${testId}/publish/`, "POST", {}),
+  getTeacherTestAttempts: (testId) => request(`/teachers/tests/${testId}/attempts/`, "GET"),
+  getTeacherAttemptDetail: (attemptId) => request(`/teachers/attempts/${attemptId}/grade/`, "GET"),
+  gradeTeacherTestAttempt: (attemptId, data) => request(`/teachers/attempts/${attemptId}/grade/`, "POST", data),
+  finalizeTeacherTest: (testId) => request(`/teachers/tests/${testId}/finalize/`, "POST", {}),
+
+  // Generated tests (student)
+  getStudentTests: () => request("/students/tests/", "GET"),
+  startStudentTest: (testId) => request(`/students/tests/${testId}/start/`, "POST", {}),
+  getStudentAttemptDetail: (attemptId) => request(`/students/attempts/${attemptId}/`, "GET"),
+  submitStudentAttempt: (attemptId, data) => request(`/students/attempts/${attemptId}/submit/`, "POST", data),
 
   // Report card config (admin)
   getReportCardConfig: () => request("/auth/school/report-config/", "GET"),

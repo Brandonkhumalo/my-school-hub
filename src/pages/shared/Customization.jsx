@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSchoolSettings } from '../../context/SchoolSettingsContext';
 import apiService from '../../services/apiService';
-import { Palette, Upload, Save, CheckCircle, Type, MessageSquare, Sparkles, EyeOff, Lock } from 'lucide-react';
+import { Palette, Upload, Save, CheckCircle, Type, MessageSquare, Sparkles, EyeOff, Lock, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const COLOR_PRESETS = [
@@ -45,6 +45,10 @@ function Customization() {
   const [parentBlockMessage, setParentBlockMessage] = useState('');
   const [parentBlockedUntil, setParentBlockedUntil] = useState('');
 
+  // Late assignment-submission penalty (admin only)
+  const [latePenaltyMode, setLatePenaltyMode] = useState('none');
+  const [latePenaltyPercent, setLatePenaltyPercent] = useState(0);
+
   useEffect(() => {
     loadSettings();
     if (isAdmin) {
@@ -79,6 +83,8 @@ function Customization() {
       } else {
         setParentBlockedUntil('');
       }
+      if (data.late_assignment_penalty_mode) setLatePenaltyMode(data.late_assignment_penalty_mode);
+      if (data.late_assignment_penalty_percent != null) setLatePenaltyPercent(Number(data.late_assignment_penalty_percent));
     } catch {
       toast.error('Failed to load customization settings.');
     } finally {
@@ -116,6 +122,8 @@ function Customization() {
         payload.parent_login_blocked_until = parentBlockedUntil
           ? new Date(parentBlockedUntil).toISOString()
           : null;
+        payload.late_assignment_penalty_mode = latePenaltyMode;
+        payload.late_assignment_penalty_percent = Number(latePenaltyPercent) || 0;
       }
       await apiService.updateSchoolCustomization(payload);
       toast.success('Customization saved!');
@@ -528,6 +536,61 @@ function Customization() {
             <p className="text-xs text-gray-500 pl-7">
               Previous message (will be shown again if you re-enable the block): &quot;{parentBlockMessage}&quot;
             </p>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 space-y-4">
+          <div className="flex items-center space-x-3 text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-700 pb-4">
+            <Clock className="w-6 h-6 text-[var(--accent)]" />
+            <h2 className="text-lg font-semibold">Late Assignment Penalty</h2>
+            <span className="text-sm text-gray-500 dark:text-gray-400 font-normal">
+              — Applied automatically when a student submits after the deadline (only if the teacher allowed late submissions)
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Penalty mode
+            </label>
+            <select
+              value={latePenaltyMode}
+              onChange={(e) => setLatePenaltyMode(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+            >
+              <option value="none">No automatic penalty (teacher decides)</option>
+              <option value="flat">Flat percentage off late submissions</option>
+              <option value="per_day">Percentage off per day late</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Choose how late submissions are penalised school-wide.
+            </p>
+          </div>
+
+          {latePenaltyMode !== 'none' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Penalty percentage
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={latePenaltyPercent}
+                  onChange={(e) => setLatePenaltyPercent(e.target.value)}
+                  className="w-28 px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+                />
+                <span className="text-sm text-gray-600 dark:text-gray-300">%</span>
+                <span className="text-xs text-gray-500">
+                  {latePenaltyMode === 'per_day'
+                    ? 'deducted per day late (capped at 100%)'
+                    : 'deducted from any late submission'}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       )}

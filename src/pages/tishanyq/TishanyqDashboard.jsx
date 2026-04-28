@@ -84,6 +84,32 @@ export default function TishanyqDashboard() {
                 Schools
               </Link>
             </li>
+            <li>
+              <Link
+                to="/tishanyq/admin/audit-logs"
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+                  isActive("/tishanyq/admin/audit-logs")
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                <i className="fas fa-clipboard-list w-5"></i>
+                Audit Logs
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/tishanyq/admin/locked-accounts"
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+                  isActive("/tishanyq/admin/locked-accounts")
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                <i className="fas fa-lock w-5"></i>
+                Locked Accounts
+              </Link>
+            </li>
           </ul>
         </nav>
 

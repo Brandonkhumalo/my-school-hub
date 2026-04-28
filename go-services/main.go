@@ -45,6 +45,12 @@ func main() {
 	// ── WhatsApp (internal — called by Django/Celery) ──
 	mux.HandleFunc("POST /api/v1/services/whatsapp/send", WhatsAppSendHandler())
 
+	// ── Past Exam Papers (file storage + question extraction) ──
+	mux.HandleFunc("POST /api/v1/services/papers/upload", PaperUploadHandler())
+	mux.HandleFunc("GET /api/v1/services/papers/file", PaperDownloadHandler())
+	mux.HandleFunc("DELETE /api/v1/services/papers/file", PaperDeleteHandler())
+	mux.HandleFunc("POST /api/v1/services/papers/extract", PaperExtractHandler())
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      AuthCheckMiddleware(mux),

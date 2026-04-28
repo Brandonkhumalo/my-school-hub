@@ -101,18 +101,23 @@ cp School_system/.env.example School_system/.env
 ```bash
 # Development
 cat .env.development
-# VITE_API_BASE_URL=http://localhost:8000/api/v1
+# VITE_API_BASE_URL=http://localhost:8080/api/v1
 ```
-3. Start services:
+3. Ensure go-services paper storage path is set in backend env:
+```bash
+# School_system/.env
+PAPERS_STORAGE_DIR=/var/lib/papers-svc
+```
+4. Start services:
 ```bash
 docker compose up --build
 ```
-4. Verify health:
+5. Verify health:
 ```bash
 curl http://localhost:8080/health/
 curl http://localhost:8080/api/v1/
 ```
-5. Open Swagger docs:
+6. Open Swagger docs:
 - `http://localhost:8080/api/v1/docs/`
 
 Useful commands:

@@ -10,6 +10,10 @@ export default function SchoolsList() {
   const [deleting, setDeleting] = useState(null);
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [schoolDetail, setSchoolDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [unlockingInDetail, setUnlockingInDetail] = useState(null);
 
   useEffect(() => {
     fetchSchools();
@@ -59,12 +63,51 @@ export default function SchoolsList() {
 
       if (!response.ok) throw new Error("Failed to reset password");
 
-      const data = await response.json();
-      alert(`Password reset successfully! New password: ${data.new_password}`);
+      await response.json();
+      alert("Password reset successfully.");
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
       setResetting(null);
+    }
+  };
+
+  const openSchoolDetail = async (school) => {
+    setSelectedSchool(school);
+    setDetailLoading(true);
+    setSchoolDetail(null);
+    try {
+      const token = localStorage.getItem("tishanyq_token");
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/${school.id}/detail/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to load school details");
+      setSchoolDetail(data);
+    } catch (err) {
+      alert("Error: " + err.message);
+      setSelectedSchool(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const unlockFromDetail = async (userId) => {
+    setUnlockingInDetail(userId);
+    try {
+      const token = localStorage.getItem("tishanyq_token");
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/locked-accounts/${userId}/unlock/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to unlock account");
+      if (selectedSchool) {
+        await openSchoolDetail(selectedSchool);
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setUnlockingInDetail(null);
     }
   };
 
@@ -230,7 +273,7 @@ export default function SchoolsList() {
                   <tr key={school.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="font-semibold text-gray-800">{school.name}</p>
+                        <button className="font-semibold text-gray-800 hover:text-blue-700" onClick={() => openSchoolDetail(school)}>{school.name}</button>
                         <p className="text-sm text-gray-500">{school.city} | {school.school_type}</p>
                         <p className="text-xs text-gray-400">{school.accommodation_type_display || school.accommodation_type || 'day'} | {school.curriculum}</p>
                       </div>
@@ -310,6 +353,82 @@ export default function SchoolsList() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {selectedSchool && (
+        <div className="fixed inset-0 bg-black/50 z-40 flex justify-end">
+          <div className="w-full max-w-xl bg-white h-full overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">{selectedSchool.name} Details</h3>
+              <button onClick={() => setSelectedSchool(null)} className="text-gray-500 hover:text-gray-700">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            {detailLoading ? (
+              <div className="text-gray-500">Loading details...</div>
+            ) : schoolDetail ? (
+              <div className="space-y-4 text-sm">
+                <section className="border rounded-lg p-3">
+                  <p className="font-semibold mb-2">Counts</p>
+                  <p>Students: {schoolDetail.counts?.students ?? 0}</p>
+                  <p>Teachers: {schoolDetail.counts?.teachers ?? 0}</p>
+                  <p>Parents: {schoolDetail.counts?.parents ?? 0}</p>
+                  <p>Staff: {schoolDetail.counts?.staff ?? 0}</p>
+                </section>
+                <section className="border rounded-lg p-3">
+                  <p className="font-semibold mb-2">Finance</p>
+                  <p>Revenue: ${schoolDetail.finance?.revenue_collected ?? "0"}</p>
+                  <p>Outstanding: ${schoolDetail.finance?.outstanding_fees ?? "0"}</p>
+                </section>
+                <section className="border rounded-lg p-3">
+                  <p className="font-semibold mb-2">Setup & Security</p>
+                  <p>Admin Last Login: {schoolDetail.admin_last_login || "Never"}</p>
+                  <p>2FA Enforced: {schoolDetail.setup?.two_factor_enforced ? "Yes" : "No"}</p>
+                  <p>Setup Complete: {schoolDetail.setup?.is_setup_complete ? "Yes" : "No"}</p>
+                  <p>Has Logo: {schoolDetail.setup?.has_logo ? "Yes" : "No"}</p>
+                  <p>Academic Period Configured: {schoolDetail.setup?.has_academic_period ? "Yes" : "No"}</p>
+                  <p>Classes Created: {schoolDetail.setup?.classes_count ?? 0}</p>
+                </section>
+                <section className="border rounded-lg p-3">
+                  <p className="font-semibold mb-2">Locked Accounts</p>
+                  {(schoolDetail.locked_accounts || []).length === 0 ? (
+                    <p className="text-gray-500">No locked users</p>
+                  ) : (
+                    schoolDetail.locked_accounts.map((u) => (
+                      <div key={u.id} className="flex justify-between items-center border-b py-1">
+                        <div>
+                          <span>{u.name} ({u.role})</span>
+                          <p className="text-xs text-gray-500">{u.account_locked_until}</p>
+                        </div>
+                        <button
+                          onClick={() => unlockFromDetail(u.id)}
+                          disabled={unlockingInDetail === u.id}
+                          className="px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:opacity-50"
+                        >
+                          {unlockingInDetail === u.id ? "Unlocking..." : "Unlock"}
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </section>
+                <section className="border rounded-lg p-3">
+                  <p className="font-semibold mb-2">Recent Audit Logs</p>
+                  {(schoolDetail.recent_audit_logs || []).length === 0 ? (
+                    <p className="text-gray-500">No recent audit activity</p>
+                  ) : (
+                    schoolDetail.recent_audit_logs.map((log) => (
+                      <div key={log.id} className="border-b py-2">
+                        <p className="text-xs text-gray-500">{log.timestamp}</p>
+                        <p className="text-sm font-medium">{log.action} {log.model_name}</p>
+                        <p className="text-xs text-gray-600">{log.object_repr}</p>
+                      </div>
+                    ))
+                  )}
+                </section>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

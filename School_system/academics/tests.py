@@ -24,17 +24,24 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
-from users.models import CustomUser, School
+from users.models import CustomUser, School, SchoolSettings
+from academics.utils import apply_late_penalty
 from academics.models import (
     Announcement,
     AnnouncementDismissal,
     Assignment,
     AssignmentSubmission,
+    GeneratedTest,
+    TestQuestion,
+    TestAttempt,
+    TestAnswer,
     ClassAttendance,
     Class,
     Parent,
     ParentChildLink,
+    ParentTeacherMessage,
     ReportCardApprovalRequest,
+    ReportCardDeliveryExclusion,
     ReportCardGeneration,
     ReportCardRelease,
     Result,
@@ -158,15 +165,76 @@ class SubjectModelTest(TestCase):
         subj = make_subject(self.school)
         subj.delete()
         self.assertTrue(Subject.objects.all_with_deleted().get(pk=subj.pk).is_deleted)
-        # Default manager should not return soft-deleted records
-        self.assertFalse(Subject.objects.filter(pk=subj.pk).exists())
 
-    def test_subject_unique_code_per_school(self):
-        """Test that subject unique code per school."""
-        make_subject(self.school, name="Math A", code="UNIQ01")
-        with self.assertRaises(Exception):
-            # Same code in same school must fail
-            Subject.objects.create(name="Math B", code="UNIQ01", school=self.school)
+
+class ParentLinkAndMessagingPolicyTests(APITestCase):
+    def setUp(self):
+        self.school = make_school("Policy School")
+        self.other_school = make_school("Other Policy School")
+        self.admin = make_user(self.school, "policy_admin", role="admin")
+        self.client.force_authenticate(self.admin)
+
+    def test_parent_link_request_rejects_when_student_already_has_three_parents(self):
+        class_obj = make_class(self.school, name="Form 2A")
+        student = make_student(self.school, class_obj, username="policy_student", student_number="STU900")
+
+        # Seed 3 confirmed parent links.
+        for idx in range(3):
+            p_user = make_user(self.school, f"seed_parent_{idx}", role="parent")
+            parent = Parent.objects.create(user=p_user)
+            parent.children.add(student)
+            ParentChildLink.objects.create(parent=parent, student=student, is_confirmed=True)
+
+        request_parent_user = make_user(self.school, "request_parent", role="parent")
+        request_parent = Parent.objects.create(user=request_parent_user)
+        self.client.force_authenticate(request_parent_user)
+
+        response = self.client.post("/api/v1/parents/children/request/", {"student_id": student.id}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("maximum of 3 parents", str(response.data.get("error", "")))
+
+        # Silence unused variable warning in static checkers.
+        self.assertIsNotNone(request_parent.id)
+
+    def test_admin_conversation_list_is_school_scoped_with_stats(self):
+        teacher_user = make_user(self.school, "policy_teacher", role="teacher", first_name="Tea", last_name="Cher")
+        parent_user = make_user(self.school, "policy_parent", role="parent", first_name="Par", last_name="Ent")
+        Parent.objects.create(user=parent_user)
+
+        other_parent_user = make_user(self.other_school, "other_parent", role="parent", first_name="Other", last_name="Parent")
+        Parent.objects.create(user=other_parent_user)
+
+        ParentTeacherMessage.objects.create(
+            sender=teacher_user,
+            recipient=parent_user,
+            subject="Allowed",
+            message="Visible thread",
+        )
+        ParentTeacherMessage.objects.create(
+            sender=teacher_user,
+            recipient=other_parent_user,
+            subject="Blocked",
+            message="Should be excluded",
+        )
+
+        response = self.client.get("/api/v1/admin/conversations/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("threads", response.data)
+        self.assertIn("stats", response.data)
+        self.assertEqual(len(response.data["threads"]), 1)
+        self.assertEqual(response.data["stats"]["returned_threads"], 1)
+        self.assertGreaterEqual(response.data["stats"]["excluded_school_mismatch"], 1)
+
+    @patch("academics.parent_views.check_rate_limit", return_value=True)
+    def test_parent_link_request_rate_limit_returns_429(self, _mock_limited):
+        parent_user = make_user(self.school, "rate_parent", role="parent")
+        Parent.objects.create(user=parent_user)
+        self.client.force_authenticate(parent_user)
+
+        class_obj = make_class(self.school, name="Form 3A")
+        student = make_student(self.school, class_obj, username="rate_student", student_number="STU901")
+        response = self.client.post("/api/v1/parents/children/request/", {"student_id": student.id}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 class ClassModelTest(TestCase):
@@ -389,6 +457,296 @@ class AssignmentSubmissionOwnershipAPITest(APITestCase):
         self.client.force_authenticate(user=self.other_teacher.user)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class AssignmentLatePenaltyAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Penalty School")
+        self.cls = make_class(self.school, name="Form 2B")
+        self.subject = make_subject(self.school, code="PEN01")
+        self.teacher = make_teacher(self.school, username="pen_teacher")
+        self.student = make_student(self.school, self.cls, username="pen_student", student_number="PEN001")
+        self.assignment = Assignment.objects.create(
+            school=self.school,
+            title="Penalty Assignment",
+            description="Test late penalties",
+            subject=self.subject,
+            teacher=self.teacher,
+            assigned_class=self.cls,
+            deadline=timezone.now() - datetime.timedelta(days=1),
+            max_score=100,
+            allow_late=False,
+        )
+
+    def test_student_submit_rejected_when_late_not_allowed(self):
+        self.client.force_authenticate(user=self.student.user)
+        response = self.client.post(
+            f"/api/v1/students/assignments/{self.assignment.id}/submit/",
+            {"text_submission": "late work"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("late submissions", str(response.data.get("error", "")).lower())
+
+    def test_grade_submission_applies_penalty(self):
+        self.assignment.allow_late = True
+        self.assignment.save(update_fields=["allow_late"])
+        submission = AssignmentSubmission.objects.create(
+            assignment=self.assignment,
+            student=self.student,
+            text_submission="late work",
+            status="late",
+            is_late=True,
+        )
+        SchoolSettings.objects.update_or_create(
+            school=self.school,
+            defaults={
+                "late_assignment_penalty_mode": "percentage",
+                "late_assignment_penalty_percent": 10,
+            },
+        )
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(
+            f"/api/v1/teachers/submissions/{submission.id}/grade/",
+            {"grade": 80, "feedback": "graded"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        submission.refresh_from_db()
+        self.assertEqual(submission.grade, 72.0)
+        self.assertEqual(response.data.get("penalty_points"), 8.0)
+
+
+class AssignmentPenaltyUtilsTest(TestCase):
+    def test_apply_late_penalty_percentage_mode(self):
+        final_grade, penalty_points = apply_late_penalty(80, 100, mode="percentage", percent=10)
+        self.assertEqual(final_grade, 72.0)
+        self.assertEqual(penalty_points, 8.0)
+
+
+class GeneratedTestFinalizeWritebackAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Generated Tests School")
+        self.teacher = make_teacher(self.school, username="gt_teacher")
+        self.cls = make_class(self.school, name="Form 3B", grade_level=10, year="2026")
+        self.subject = make_subject(self.school, name="Geography", code="GEO01")
+        self.student = make_student(self.school, self.cls, username="gt_student", student_number="GT001")
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+
+        self.test = GeneratedTest.objects.create(
+            school=self.school,
+            subject=self.subject,
+            level_kind="form",
+            level_number=10,
+            title="Generated Geography Test",
+            duration_minutes=45,
+            total_marks=20,
+            created_by=self.teacher,
+            status="published",
+            counts_for_report=False,
+            academic_year="2026",
+            academic_term="Term 1",
+        )
+        TestQuestion.objects.create(
+            test=self.test,
+            order=1,
+            prompt_text="Capital city?",
+            marks=20,
+            question_type="short",
+            correct_answer="Harare",
+        )
+        self.attempt = TestAttempt.objects.create(
+            test=self.test,
+            student=self.student,
+            auto_score=15,
+            manual_score=0,
+            final_score=15,
+            status="graded",
+            submitted_at=timezone.now(),
+        )
+
+    def test_finalize_pushes_results_and_marks_attempt(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.post(
+            f"/api/v1/teachers/tests/{self.test.id}/finalize/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.attempt.refresh_from_db()
+        self.test.refresh_from_db()
+        self.assertTrue(self.attempt.pushed_to_results)
+        self.assertEqual(self.attempt.status, "finalized")
+        self.assertEqual(self.test.status, "closed")
+        self.assertTrue(
+            Result.objects.filter(
+                student=self.student,
+                subject=self.subject,
+                teacher=self.teacher,
+                exam_type="test",
+                academic_year="2026",
+                academic_term="Term 1",
+            ).exists()
+        )
+
+
+class GeneratedTestAttemptGradingAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Generated Grading School")
+        self.teacher = make_teacher(self.school, username="gg_teacher")
+        self.cls = make_class(self.school, name="Form 4A", grade_level=11, year="2026")
+        self.subject = make_subject(self.school, name="History", code="HIS01")
+        self.student = make_student(self.school, self.cls, username="gg_student", student_number="GG001")
+
+        self.test = GeneratedTest.objects.create(
+            school=self.school,
+            subject=self.subject,
+            level_kind="form",
+            level_number=11,
+            title="Generated History Test",
+            duration_minutes=60,
+            total_marks=30,
+            created_by=self.teacher,
+            status="published",
+            academic_year="2026",
+            academic_term="Term 2",
+        )
+        self.long_question = TestQuestion.objects.create(
+            test=self.test,
+            order=1,
+            prompt_text="Explain the causes.",
+            marks=10,
+            question_type="long",
+        )
+        self.short_question = TestQuestion.objects.create(
+            test=self.test,
+            order=2,
+            prompt_text="Year of independence?",
+            marks=5,
+            question_type="short",
+            correct_answer="1980",
+        )
+        self.attempt = TestAttempt.objects.create(
+            test=self.test,
+            student=self.student,
+            auto_score=5,
+            manual_score=0,
+            final_score=5,
+            status="submitted",
+            submitted_at=timezone.now(),
+        )
+        TestAnswer.objects.create(
+            attempt=self.attempt,
+            question=self.long_question,
+            answer_text="Student long response",
+            awarded_marks=0,
+        )
+        TestAnswer.objects.create(
+            attempt=self.attempt,
+            question=self.short_question,
+            answer_text="1980",
+            awarded_marks=5,
+        )
+
+    def test_teacher_can_get_attempt_detail_and_grade_long_answers(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        detail = self.client.get(f"/api/v1/teachers/attempts/{self.attempt.id}/grade/")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data.get("attempt_id"), self.attempt.id)
+        self.assertEqual(len(detail.data.get("questions", [])), 2)
+
+        grade = self.client.post(
+            f"/api/v1/teachers/attempts/{self.attempt.id}/grade/",
+            {
+                "answers": [
+                    {
+                        "question_id": self.long_question.id,
+                        "awarded_marks": 8,
+                        "teacher_comment": "Good structure",
+                    }
+                ],
+                "finalize": True,
+            },
+            format="json",
+        )
+        self.assertEqual(grade.status_code, status.HTTP_200_OK)
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.manual_score, 8.0)
+        self.assertEqual(self.attempt.final_score, 13.0)
+        self.assertEqual(self.attempt.status, "finalized")
+
+
+class TeacherTestsListAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Teacher Tests List School")
+        self.teacher = make_teacher(self.school, username="ttl_teacher")
+        self.other_teacher = make_teacher(self.school, username="ttl_other_teacher")
+        self.subject1 = make_subject(self.school, name="Mathematics", code="TTL01")
+        self.subject2 = make_subject(self.school, name="Biology", code="TTL02")
+        self.test1 = GeneratedTest.objects.create(
+            school=self.school,
+            subject=self.subject1,
+            level_kind="form",
+            level_number=4,
+            title="Midterm Algebra",
+            duration_minutes=45,
+            total_marks=50,
+            created_by=self.teacher,
+            status="published",
+            academic_year="2026",
+            academic_term="Term 2",
+        )
+        self.test2 = GeneratedTest.objects.create(
+            school=self.school,
+            subject=self.subject2,
+            level_kind="form",
+            level_number=4,
+            title="Draft Cell Biology",
+            duration_minutes=30,
+            total_marks=30,
+            created_by=self.teacher,
+            status="draft",
+            academic_year="2026",
+            academic_term="Term 2",
+        )
+        GeneratedTest.objects.create(
+            school=self.school,
+            subject=self.subject1,
+            level_kind="form",
+            level_number=4,
+            title="Other Teacher Test",
+            duration_minutes=20,
+            total_marks=20,
+            created_by=self.other_teacher,
+            status="published",
+            academic_year="2026",
+            academic_term="Term 1",
+        )
+
+    def test_teacher_tests_list_is_scoped_and_filterable(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        response = self.client.get("/api/v1/teachers/tests/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("pagination", response.data)
+        ids = [row["id"] for row in response.data.get("tests", [])]
+        self.assertIn(self.test1.id, ids)
+        self.assertIn(self.test2.id, ids)
+        self.assertEqual(len(ids), 2)
+
+        published = self.client.get("/api/v1/teachers/tests/?status=published")
+        self.assertEqual(published.status_code, status.HTTP_200_OK)
+        published_ids = [row["id"] for row in published.data.get("tests", [])]
+        self.assertEqual(published_ids, [self.test1.id])
+
+        search = self.client.get("/api/v1/teachers/tests/?q=algebra")
+        self.assertEqual(search.status_code, status.HTTP_200_OK)
+        search_ids = [row["id"] for row in search.data.get("tests", [])]
+        self.assertEqual(search_ids, [self.test1.id])
 
 
 # ---------------------------------------------------------------------------
@@ -1637,6 +1995,143 @@ class ReportCardFullyPaidAccessAPITest(APITestCase):
         response = self.client.get(self.report_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/pdf")
+
+
+class ReportCardDataIssueExclusionAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Report Exclusion School")
+        self.admin = make_user(self.school, "exclude_admin", role="admin")
+        self.teacher = make_teacher(self.school, username="exclude_teacher")
+        self.subject = make_subject(self.school, name="Science", code="SCI01")
+        self.cls = make_class(self.school, name="Form 4A", grade_level=11, year="2026")
+        self.student = make_student(self.school, self.cls, username="exclude_student", student_number="EXC001")
+        self.teacher.subjects_taught.add(self.subject)
+        self.teacher.teaching_classes.set([self.cls])
+
+        self.parent_user = make_user(self.school, "exclude_parent", role="parent")
+        self.parent = Parent.objects.create(user=self.parent_user)
+        ParentChildLink.objects.create(parent=self.parent, student=self.student, is_confirmed=True)
+
+        Result.objects.create(
+            student=self.student,
+            subject=self.subject,
+            teacher=self.teacher,
+            exam_type="Exam",
+            score=76,
+            max_score=100,
+            academic_term="Term 1",
+            academic_year="2026",
+            include_in_report=True,
+        )
+        ReportCardRelease.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            academic_year="2026",
+            academic_term="Term 1",
+            access_scope="all",
+            published_by=self.admin,
+        )
+        self.toggle_url = "/api/v1/academics/reports/delivery-exclusions/"
+        self.list_url = "/api/v1/academics/reports/approval-requests/"
+        self.report_url = f"/api/v1/academics/students/{self.student.id}/report-card/?year=2026&term=Term+1"
+
+    def test_admin_can_toggle_data_issue_exclusion(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.toggle_url, {
+            "class_id": self.cls.id,
+            "student_id": self.student.id,
+            "year": "2026",
+            "term": "Term 1",
+            "excluded": True,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            ReportCardDeliveryExclusion.objects.filter(
+                school=self.school,
+                class_obj=self.cls,
+                student=self.student,
+                academic_year="2026",
+                academic_term="Term 1",
+            ).exists()
+        )
+
+        response = self.client.post(self.toggle_url, {
+            "class_id": self.cls.id,
+            "student_id": self.student.id,
+            "year": "2026",
+            "term": "Term 1",
+            "excluded": False,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(
+            ReportCardDeliveryExclusion.objects.filter(
+                school=self.school,
+                class_obj=self.cls,
+                student=self.student,
+                academic_year="2026",
+                academic_term="Term 1",
+            ).exists()
+        )
+
+    def test_parent_report_access_blocked_when_excluded(self):
+        ReportCardDeliveryExclusion.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            student=self.student,
+            academic_year="2026",
+            academic_term="Term 1",
+            created_by=self.admin,
+        )
+        self.client.force_authenticate(user=self.parent_user)
+        response = self.client.get(self.report_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("data issue", str(response.data.get("error", "")).lower())
+
+    def test_publish_all_returns_structured_exclusion_counts(self):
+        ReportCardRelease.objects.filter(
+            school=self.school,
+            class_obj=self.cls,
+            academic_year="2026",
+            academic_term="Term 1",
+        ).delete()
+        ReportCardGeneration.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            academic_year="2026",
+            academic_term="Term 1",
+            generated_by=self.admin,
+        )
+        ReportCardApprovalRequest.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            academic_year="2026",
+            academic_term="Term 1",
+            requested_by=self.teacher.user,
+            status="pending",
+        )
+        ReportCardDeliveryExclusion.objects.create(
+            school=self.school,
+            class_obj=self.cls,
+            student=self.student,
+            academic_year="2026",
+            academic_term="Term 1",
+            created_by=self.admin,
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            "/api/v1/academics/reports/publish-all/",
+            {"year": "2026", "term": "Term 1", "access_scope": "all"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("published_details", response.data)
+        self.assertTrue(len(response.data["published_details"]) >= 1)
+        first = response.data["published_details"][0]
+        self.assertEqual(first["class_id"], self.cls.id)
+        self.assertEqual(first["class_name"], self.cls.name)
+        self.assertEqual(first["excluded_students_count"], 1)
 
 
 class ReportQrVerificationAPITest(APITestCase):

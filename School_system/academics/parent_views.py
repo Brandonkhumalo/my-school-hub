@@ -9,8 +9,9 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 from datetime import datetime
 from .models import (
-    Parent, Student, ParentChildLink, Result, ClassAttendance, Timetable
+    Parent, Student, ParentChildLink, Result, ClassAttendance, SubjectAttendance, Timetable
 )
+from .utils import MAX_PARENTS_PER_CHILD, check_rate_limit, log_school_audit
 from finances.models import StudentFee, Payment, StudentPaymentRecord, PaymentTransaction
 from finances.fee_calculator import build_school_fee_breakdown, get_additional_fees_for_student
 
@@ -179,6 +180,9 @@ def request_child_link(request):
         return Response({'error': 'Only parents can access this endpoint'}, 
                        status=status.HTTP_403_FORBIDDEN)
     
+    if check_rate_limit(request, group='parent_link_request', rate='10/m'):
+        return Response({'error': 'Too many requests. Please try again shortly.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
     try:
         parent = request.user.parent
         student_id = request.data.get('student_id')
@@ -193,11 +197,11 @@ def request_child_link(request):
             return Response({'error': 'Student not found'}, 
                            status=status.HTTP_404_NOT_FOUND)
 
-        # Enforce max 3 parents per child
+        # Enforce max parents per child
         current_parent_count = Parent.objects.filter(children=student).count()
-        if current_parent_count >= 3:
+        if current_parent_count >= MAX_PARENTS_PER_CHILD:
             return Response({
-                'error': 'This student already has the maximum of 3 parents linked.'
+                'error': f'This student already has the maximum of {MAX_PARENTS_PER_CHILD} parents linked.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if link already exists
@@ -218,6 +222,16 @@ def request_child_link(request):
             parent=parent,
             student=student,
             is_confirmed=False  # Only admins can set to True
+        )
+        log_school_audit(
+            user=request.user,
+            action='CREATE',
+            model_name='ParentChildLinkRequest',
+            object_id=link.id,
+            object_repr=f"Parent {parent.id} requested student {student.id}",
+            changes={'student_id': student.id, 'parent_id': parent.id, 'is_confirmed': False},
+            status_code=status.HTTP_201_CREATED,
+            ip_address=request.META.get('REMOTE_ADDR'),
         )
         
         return Response({
@@ -253,17 +267,27 @@ def confirm_child(request, child_id):
             return Response({'message': 'Link already confirmed'}, 
                            status=status.HTTP_400_BAD_REQUEST)
 
-        # Enforce max 3 parents per child before confirming
+        # Enforce max parents per child before confirming
         current_parent_count = Parent.objects.filter(children=link.student).count()
-        if current_parent_count >= 3:
+        if current_parent_count >= MAX_PARENTS_PER_CHILD:
             return Response({
-                'error': 'Cannot approve link: this student already has 3 parents linked.'
+                'error': f'Cannot approve link: this student already has {MAX_PARENTS_PER_CHILD} parents linked.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         link.is_confirmed = True
         link.confirmed_date = timezone.now()
         link.save()
         link.parent.children.add(link.student)
+        log_school_audit(
+            user=request.user,
+            action='APPROVE',
+            model_name='ParentChildLink',
+            object_id=link.id,
+            object_repr=f"Approved parent {link.parent_id} -> student {link.student_id}",
+            changes={'is_confirmed': True, 'student_id': link.student_id, 'parent_id': link.parent_id},
+            status_code=status.HTTP_200_OK,
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
         
         return Response({
             'id': link.student.id,
@@ -338,6 +362,7 @@ def child_dashboard_stats(request, child_id):
             status__in=['present', 'late']
         ).count()
         attendance_percentage = round((present_days / total_days * 100), 1) if total_days > 0 else 100
+        bunked_periods = SubjectAttendance.objects.filter(student=student, bunk_flag=True).count()
         
         # Calculate outstanding fees using the same logic/path as the Parent Fees page.
         school = request.user.school
@@ -366,6 +391,7 @@ def child_dashboard_stats(request, child_id):
             'total_subjects': total_subjects,
             'subjects': subjects,
             'attendance_percentage': attendance_percentage,
+            'bunked_periods': bunked_periods,
             'outstanding_fees': float(outstanding_fees)
         }
         
@@ -600,3 +626,5 @@ def child_fees(request, child_id):
     except Parent.DoesNotExist:
         return Response({'error': 'Parent profile not found'}, 
                        status=status.HTTP_404_NOT_FOUND)
+    if check_rate_limit(request, group='parent_link_approve', rate='20/m'):
+        return Response({'error': 'Too many requests. Please try again shortly.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)

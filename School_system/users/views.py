@@ -950,6 +950,8 @@ def school_customization_view(request):
             'parent_login_blocked': settings_obj.parent_login_blocked,
             'parent_login_blocked_until': settings_obj.parent_login_blocked_until,
             'parent_login_block_message': settings_obj.parent_login_block_message,
+            'late_assignment_penalty_mode': settings_obj.late_assignment_penalty_mode,
+            'late_assignment_penalty_percent': settings_obj.late_assignment_penalty_percent,
         }
 
     if request.method == 'GET':
@@ -970,6 +972,33 @@ def school_customization_view(request):
             changed.append(field)
 
     if privileged:
+        if 'late_assignment_penalty_mode' in request.data:
+            mode = request.data.get('late_assignment_penalty_mode')
+            valid_modes = {choice[0] for choice in SchoolSettings.LATE_PENALTY_MODE_CHOICES}
+            if mode not in valid_modes:
+                return Response(
+                    {'error': f'late_assignment_penalty_mode must be one of {sorted(valid_modes)}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            settings_obj.late_assignment_penalty_mode = mode
+            changed.append('late_assignment_penalty_mode')
+
+        if 'late_assignment_penalty_percent' in request.data:
+            try:
+                pct = float(request.data.get('late_assignment_penalty_percent'))
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'late_assignment_penalty_percent must be a number'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if pct < 0 or pct > 100:
+                return Response(
+                    {'error': 'late_assignment_penalty_percent must be between 0 and 100'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            settings_obj.late_assignment_penalty_percent = pct
+            changed.append('late_assignment_penalty_percent')
+
         if 'hidden_pages' in request.data:
             settings_obj.hidden_pages = validate_hidden_pages(request.data.get('hidden_pages'))
             changed.append('hidden_pages')

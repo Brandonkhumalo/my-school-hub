@@ -3,8 +3,19 @@ import apiService from "../../services/apiService";
 import Header from "../../components/Header";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { formatDate } from "../../utils/dateFormat";
+import { useSchoolSettings } from "../../context/SchoolSettingsContext";
+
+function getNextAcademicYear(currentAcademicYear) {
+  const raw = String(currentAcademicYear || "").trim();
+  const match = raw.match(/\d{4}/);
+  if (match) {
+    return String(Number(match[0]) + 1);
+  }
+  return String(new Date().getFullYear() + 1);
+}
 
 export default function AdminPromotions() {
+  const { currentAcademicYear } = useSchoolSettings();
   const [activeTab, setActiveTab] = useState("process"); // "process" | "history"
 
   // Process tab state
@@ -22,6 +33,12 @@ export default function AdminPromotions() {
   const [history, setHistory] = useState([]);
   const [historyYear, setHistoryYear] = useState("");
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (!academicYear) {
+      setAcademicYear(getNextAcademicYear(currentAcademicYear));
+    }
+  }, [currentAcademicYear, academicYear]);
 
   // Load classes on mount
   useEffect(() => {
@@ -210,7 +227,7 @@ export default function AdminPromotions() {
                 <input
                   type="text"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. 2026"
+                  placeholder="Auto from settings (next year)"
                   value={academicYear}
                   onChange={(e) => setAcademicYear(e.target.value)}
                 />

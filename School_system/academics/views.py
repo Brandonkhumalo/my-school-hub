@@ -25,7 +25,7 @@ from email_service import (
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
     Timetable, Announcement, AnnouncementDismissal, Complaint, Suspension,
-    ClassAttendance, BulkImportJob
+    ClassAttendance, SubjectAttendance, AttendancePermission, BulkImportJob
 )
 from .serializers import (
     SubjectSerializer, ClassSerializer, StudentSerializer, TeacherSerializer,
@@ -35,6 +35,8 @@ from .serializers import (
     UpdateStudentSerializer, UpdateTeacherSerializer, UpdateParentSerializer,
     TransferredStudentSerializer,
 )
+from .utils import MAX_PARENTS_PER_CHILD, check_rate_limit, log_school_audit
+from users.models import SchoolSettings
 
 
 BULK_IMPORT_PARAMETER_LIBRARY = {
@@ -218,7 +220,12 @@ class SubjectListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
+            return (
+                Subject.objects
+                .filter(school=user.school)
+                .prefetch_related('teachers__user')
+                .order_by('name', 'id')
+            )
         return Subject.objects.none()
 
     def perform_create(self, serializer):
@@ -233,7 +240,12 @@ class SubjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Subject.objects.filter(school=user.school).prefetch_related('teachers__user')
+            return (
+                Subject.objects
+                .filter(school=user.school)
+                .prefetch_related('teachers__user')
+                .order_by('name', 'id')
+            )
         return Subject.objects.none()
 
 
@@ -1066,9 +1078,9 @@ def approve_parent_link_request(request, link_id):
         ).get(id=link_id, is_confirmed=False, student__user__school=school)
 
         current_parent_count = Parent.objects.filter(children=link.student).count()
-        if current_parent_count >= 3:
+        if current_parent_count >= MAX_PARENTS_PER_CHILD:
             return Response(
-                {'error': 'Cannot approve link: this student already has 3 parents linked.'},
+                {'error': f'Cannot approve link: this student already has {MAX_PARENTS_PER_CHILD} parents linked.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -1087,6 +1099,16 @@ def approve_parent_link_request(request, link_id):
             if not link.parent.user.school_id:
                 link.parent.user.school = child_school
                 link.parent.user.save(update_fields=['school'])
+        log_school_audit(
+            user=request.user,
+            action='APPROVE',
+            model_name='ParentChildLink',
+            object_id=link.id,
+            object_repr=f"Approved parent {link.parent_id} -> student {link.student_id}",
+            changes={'is_confirmed': True, 'student_id': link.student_id, 'parent_id': link.parent_id},
+            status_code=status.HTTP_200_OK,
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
 
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}".strip()
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}".strip()
@@ -1134,7 +1156,20 @@ def decline_parent_link_request(request, link_id):
         link = ParentChildLink.objects.get(id=link_id, is_confirmed=False, student__user__school=school)
         parent_name = f"{link.parent.user.first_name} {link.parent.user.last_name}"
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}"
+        link_pk = link.id
+        parent_pk = link.parent_id
+        student_pk = link.student_id
         link.delete()
+        log_school_audit(
+            user=request.user,
+            action='DELETE',
+            model_name='ParentChildLink',
+            object_id=link_pk,
+            object_repr=f"Declined parent {parent_pk} -> student {student_pk}",
+            changes={'is_confirmed': False, 'student_id': student_pk, 'parent_id': parent_pk},
+            status_code=status.HTTP_200_OK,
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
         
         return Response({
             'message': 'Parent-child link request declined',
@@ -1424,6 +1459,11 @@ def generate_report_card(request, student_id):
                     },
                     status=status.HTTP_403_FORBIDDEN
                 )
+        if student.id in _excluded_student_ids_for_delivery(school, student.student_class, year, term):
+            return Response(
+                {'error': 'Report delivery is temporarily blocked due to a data issue. Please contact the school office.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
     # ── Build PDF ───────────────────────────────────────────────────────
     # Only include results marked for the report card.
@@ -3167,6 +3207,18 @@ def _announce_report_release(author, class_obj, term, year):
         Notification.objects.bulk_create(payload)
 
 
+def _excluded_student_ids_for_delivery(school, class_obj, year, term):
+    from .models import ReportCardDeliveryExclusion
+    return set(
+        ReportCardDeliveryExclusion.objects.filter(
+            school=school,
+            class_obj=class_obj,
+            academic_year=year,
+            academic_term=term,
+        ).values_list('student_id', flat=True)
+    )
+
+
 def _publish_class_reports(school, class_obj, year, term, actor, access_scope='all'):
     from .models import ReportCardRelease
     release, created = ReportCardRelease.objects.get_or_create(
@@ -3181,7 +3233,8 @@ def _publish_class_reports(school, class_obj, year, term, actor, access_scope='a
         release.save(update_fields=['access_scope'])
     if created:
         _announce_report_release(actor, class_obj, term, year)
-    return release, created
+    excluded_count = len(_excluded_student_ids_for_delivery(school, class_obj, year, term))
+    return release, created, excluded_count
 
 
 @api_view(['POST'])
@@ -3291,7 +3344,9 @@ def publish_reports(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    release, created = _publish_class_reports(school, class_obj, year, term, request.user, access_scope=access_scope)
+    release, created, excluded_count = _publish_class_reports(
+        school, class_obj, year, term, request.user, access_scope=access_scope
+    )
     if not created:
         return Response({'message': f'Reports for {class_obj.name} - {term} {year} were already published',
                          'already_published': True})
@@ -3315,6 +3370,7 @@ def publish_reports(request):
         'message': f'Reports published for {class_obj.name} - {term} {year}',
         'class_name': class_obj.name,
         'access_scope': release.access_scope,
+        'excluded_students_count': excluded_count,
         'published': True,
     }, status=status.HTTP_201_CREATED)
 
@@ -3344,6 +3400,7 @@ def publish_all_reports(request):
 
     from .models import ReportCardApprovalRequest, ReportCardGeneration
     published = []
+    published_details = []
     skipped = []
 
     for class_obj in classes:
@@ -3366,7 +3423,7 @@ def publish_all_reports(request):
         if not approval:
             skipped.append(class_obj.name)
             continue
-        _, created = _publish_class_reports(
+        _, created, excluded_count = _publish_class_reports(
             school,
             class_obj,
             year,
@@ -3379,13 +3436,22 @@ def publish_all_reports(request):
             approval.reviewed_by = request.user
             approval.reviewed_at = timezone.now()
             approval.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
-            published.append(class_obj.name)
+            label = class_obj.name
+            if excluded_count:
+                label = f"{label} ({excluded_count} excluded)"
+            published.append(label)
+            published_details.append({
+                'class_id': class_obj.id,
+                'class_name': class_obj.name,
+                'excluded_students_count': excluded_count,
+            })
         else:
             skipped.append(class_obj.name)
 
     return Response({
         'message': f'{len(published)} class(es) published, {len(skipped)} already published',
         'published_classes': published,
+        'published_details': published_details,
         'skipped_classes': skipped,
     }, status=status.HTTP_201_CREATED)
 
@@ -3423,7 +3489,7 @@ def list_report_approval_requests(request):
     if request.user.role not in ('admin', 'superadmin'):
         return Response({'error': 'Only admins can view this'}, status=status.HTTP_403_FORBIDDEN)
 
-    from .models import ReportCardApprovalRequest
+    from .models import ReportCardApprovalRequest, ReportCardDeliveryExclusion
     qs = ReportCardApprovalRequest.objects.filter(
         school=request.user.school
     ).select_related('class_obj', 'requested_by', 'reviewed_by').order_by('-submitted_at')
@@ -3441,20 +3507,100 @@ def list_report_approval_requests(request):
     if class_id:
         qs = qs.filter(class_obj_id=class_id)
 
-    data = [{
-        'id': r.id,
-        'class_id': r.class_obj_id,
-        'class_name': r.class_obj.name,
-        'academic_year': r.academic_year,
-        'academic_term': r.academic_term,
-        'status': r.status,
-        'submitted_at': r.submitted_at.isoformat(),
-        'requested_by': r.requested_by.full_name if r.requested_by else None,
-        'reviewed_at': r.reviewed_at.isoformat() if r.reviewed_at else None,
-        'reviewed_by': r.reviewed_by.full_name if r.reviewed_by else None,
-        'admin_note': r.admin_note,
-    } for r in qs]
+    data = []
+    for r in qs:
+        students = Student.objects.filter(student_class_id=r.class_obj_id).select_related('user')
+        exclusion_ids = set(
+            ReportCardDeliveryExclusion.objects.filter(
+                school=request.user.school,
+                class_obj_id=r.class_obj_id,
+                academic_year=r.academic_year,
+                academic_term=r.academic_term,
+            ).values_list('student_id', flat=True)
+        )
+        data.append({
+            'id': r.id,
+            'class_id': r.class_obj_id,
+            'class_name': r.class_obj.name,
+            'academic_year': r.academic_year,
+            'academic_term': r.academic_term,
+            'status': r.status,
+            'submitted_at': r.submitted_at.isoformat(),
+            'requested_by': r.requested_by.full_name if r.requested_by else None,
+            'reviewed_at': r.reviewed_at.isoformat() if r.reviewed_at else None,
+            'reviewed_by': r.reviewed_by.full_name if r.reviewed_by else None,
+            'admin_note': r.admin_note,
+            'excluded_students_count': len(exclusion_ids),
+            'students': [
+                {
+                    'id': s.id,
+                    'full_name': s.user.full_name,
+                    'student_number': s.user.student_number or '',
+                    'excluded_data_issue': s.id in exclusion_ids,
+                }
+                for s in students
+            ],
+        })
     return Response({'requests': data})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def set_report_delivery_exclusion(request):
+    """Admin toggles 'data issue' exclusion for student report delivery."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Only admins can do this'}, status=status.HTTP_403_FORBIDDEN)
+
+    class_id = request.data.get('class_id')
+    student_id = request.data.get('student_id')
+    year = _normalize_report_year(request.data.get('year'))
+    term = _normalize_report_term(request.data.get('term'))
+    excluded_raw = request.data.get('excluded', True)
+    excluded = str(excluded_raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    if not all([class_id, student_id, year, term]):
+        return Response({'error': 'class_id, student_id, year and term are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    try:
+        class_obj = Class.objects.get(id=class_id, school=school)
+        student = Student.objects.select_related('user').get(id=student_id, student_class=class_obj)
+    except (Class.DoesNotExist, Student.DoesNotExist):
+        return Response({'error': 'Class or student not found for this school'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import ReportCardDeliveryExclusion
+    if excluded:
+        _, created = ReportCardDeliveryExclusion.objects.get_or_create(
+            school=school,
+            class_obj=class_obj,
+            student=student,
+            academic_year=year,
+            academic_term=term,
+            defaults={'created_by': request.user, 'reason': ReportCardDeliveryExclusion.REASON_DATA_ISSUE},
+        )
+        action_word = 'added' if created else 'kept'
+    else:
+        ReportCardDeliveryExclusion.objects.filter(
+            school=school,
+            class_obj=class_obj,
+            student=student,
+            academic_year=year,
+            academic_term=term,
+        ).delete()
+        action_word = 'removed'
+
+    log_school_audit(
+        user=request.user,
+        action='UPDATE',
+        model_name='ReportCardDeliveryExclusion',
+        object_id=student.id,
+        object_repr=f"{student.user.full_name} / {class_obj.name} / {term} {year}",
+        changes={'excluded': excluded, 'reason': 'data_issue', 'action': action_word},
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({'message': f'Delivery exclusion {action_word}.', 'excluded': excluded}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -3513,7 +3659,7 @@ def review_report_approval_request(request, request_id):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    _, created = _publish_class_reports(
+    _, created, excluded_count = _publish_class_reports(
         request.user.school,
         approval.class_obj,
         approval.academic_year,
@@ -3543,6 +3689,7 @@ def review_report_approval_request(request, request_id):
         'message': 'Report request approved and reports are now visible to parents/students.',
         'status': approval.status,
         'published_now': created,
+        'excluded_students_count': excluded_count,
     })
 
 
@@ -3698,4 +3845,227 @@ def admin_at_risk_students(request):
             'subject_id': subject_id,
             'class_id': class_id,
         }
+    })
+    if check_rate_limit(request, group='admin_parent_link_approve', rate='30/m'):
+        return Response({'error': 'Too many requests. Please try again shortly.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+    if check_rate_limit(request, group='admin_parent_link_decline', rate='30/m'):
+        return Response({'error': 'Too many requests. Please try again shortly.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def attendance_permissions(request):
+    """List or create attendance permission entries (admin/HR only)."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can manage attendance permissions.'},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if request.method == 'GET':
+        student_id = request.query_params.get('student_id')
+        date_val = request.query_params.get('date')
+        qs = (AttendancePermission.objects
+              .filter(class_assigned__school=school)
+              .select_related('student__user', 'class_assigned', 'approved_by', 'created_by')
+              .order_by('-date', '-id'))
+        if student_id:
+            qs = qs.filter(student_id=student_id)
+        if date_val:
+            qs = qs.filter(date=date_val)
+        return Response([
+            {
+                'id': p.id,
+                'student_id': p.student_id,
+                'student_name': p.student.user.full_name,
+                'class_id': p.class_assigned_id,
+                'class_name': p.class_assigned.name,
+                'date': p.date.isoformat(),
+                'period_number': p.period_number,
+                'period_label': p.period_label,
+                'reason': p.reason,
+                'approved': p.approved,
+                'approved_by': p.approved_by.full_name if p.approved_by else None,
+                'created_by': p.created_by.full_name if p.created_by else None,
+            }
+            for p in qs[:200]
+        ])
+
+    student_id = request.data.get('student_id')
+    class_id = request.data.get('class_id')
+    date_val = request.data.get('date')
+    period_number = request.data.get('period_number')
+    period_label = (request.data.get('period_label') or '').strip()
+    reason = (request.data.get('reason') or '').strip()
+    approved = bool(request.data.get('approved', True))
+
+    if not student_id or not class_id or not date_val:
+        return Response({'error': 'student_id, class_id, and date are required.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        from datetime import datetime
+        parsed_date = datetime.strptime(date_val, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        student = Student.objects.get(id=student_id, user__school=school)
+        class_obj = Class.objects.get(id=class_id, school=school)
+    except (Student.DoesNotExist, Class.DoesNotExist):
+        return Response({'error': 'Student or class not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    parsed_period_number = None
+    if period_number not in (None, ''):
+        try:
+            parsed_period_number = int(period_number)
+            if parsed_period_number < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'period_number must be a positive integer.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    permission = AttendancePermission.objects.create(
+        student=student,
+        class_assigned=class_obj,
+        date=parsed_date,
+        period_number=parsed_period_number,
+        period_label=period_label,
+        reason=reason,
+        approved=approved,
+        approved_by=request.user if approved else None,
+        created_by=request.user,
+    )
+    return Response({'id': permission.id, 'message': 'Attendance permission saved.'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def attendance_period_tracking_start_date(request):
+    """Set effective date from which period-level bunk detection is enforced."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Only admin/HR can update this setting.'},
+                        status=status.HTTP_403_FORBIDDEN)
+    raw_date = request.data.get('start_date')
+    if not raw_date:
+        return Response({'error': 'start_date is required (YYYY-MM-DD).'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        from datetime import datetime
+        parsed_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    settings, _ = SchoolSettings.objects.get_or_create(school=request.user.school)
+    settings.attendance_period_tracking_start_date = parsed_date
+    settings.save(update_fields=['attendance_period_tracking_start_date'])
+    return Response({
+        'message': 'Period attendance tracking start date updated.',
+        'start_date': settings.attendance_period_tracking_start_date.isoformat(),
+    })
+
+
+def _attendance_admin_allowed(user):
+    return user.role in ('admin', 'hr', 'superadmin')
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def edit_class_attendance(request, attendance_id):
+    """Admin/HR edit for daily class attendance records."""
+    if not _attendance_admin_allowed(request.user):
+        return Response({'error': 'Only admin/HR can edit class attendance.'},
+                        status=status.HTTP_403_FORBIDDEN)
+    record = ClassAttendance.objects.filter(
+        id=attendance_id,
+        class_assigned__school=request.user.school,
+    ).select_related('student__user', 'class_assigned').first()
+    if not record:
+        return Response({'error': 'Attendance record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get('status')
+    remarks = request.data.get('remarks')
+    if status_value is not None:
+        if status_value not in {'present', 'absent', 'late', 'excused'}:
+            return Response({'error': 'Invalid status value.'}, status=status.HTTP_400_BAD_REQUEST)
+        record.status = status_value
+    if remarks is not None:
+        record.remarks = str(remarks)
+    record.recorded_by = request.user
+    record.save(update_fields=['status', 'remarks', 'recorded_by'])
+
+    return Response({
+        'message': 'Class attendance updated.',
+        'id': record.id,
+        'student_id': record.student_id,
+        'date': record.date.isoformat(),
+        'status': record.status,
+        'remarks': record.remarks or '',
+    })
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def edit_subject_attendance(request, attendance_id):
+    """Admin/HR edit for subject/period attendance records."""
+    if not _attendance_admin_allowed(request.user):
+        return Response({'error': 'Only admin/HR can edit subject attendance.'},
+                        status=status.HTTP_403_FORBIDDEN)
+    record = SubjectAttendance.objects.filter(
+        id=attendance_id,
+        class_assigned__school=request.user.school,
+    ).select_related('student__user', 'class_assigned').first()
+    if not record:
+        return Response({'error': 'Attendance record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get('status')
+    remarks = request.data.get('remarks')
+    if status_value is not None:
+        if status_value not in {'present', 'absent', 'late', 'excused'}:
+            return Response({'error': 'Invalid status value.'}, status=status.HTTP_400_BAD_REQUEST)
+        record.status = status_value
+    if remarks is not None:
+        record.remarks = str(remarks)
+
+    has_permission = AttendancePermission.objects.filter(
+        student=record.student,
+        class_assigned=record.class_assigned,
+        date=record.date,
+        approved=True,
+    ).filter(
+        Q(period_number=record.period_number) |
+        Q(period_number__isnull=True)
+    ).exists()
+    settings = SchoolSettings.objects.filter(school=request.user.school).first()
+    tracking_active = bool(
+        settings and settings.attendance_period_tracking_start_date and
+        record.date >= settings.attendance_period_tracking_start_date
+    )
+    daily = ClassAttendance.objects.filter(student=record.student, date=record.date).first()
+    bunk_flag = bool(
+        tracking_active and
+        record.status == 'absent' and
+        not has_permission and
+        daily and daily.status in ('present', 'late')
+    )
+
+    record.marked_with_permission = has_permission
+    record.bunk_flag = bunk_flag
+    record.bunk_reason = 'Absent during period without approved permission' if bunk_flag else ''
+    record.recorded_by = request.user
+    record.save(update_fields=[
+        'status', 'remarks', 'marked_with_permission', 'bunk_flag', 'bunk_reason', 'recorded_by',
+    ])
+
+    return Response({
+        'message': 'Subject attendance updated.',
+        'id': record.id,
+        'student_id': record.student_id,
+        'date': record.date.isoformat(),
+        'status': record.status,
+        'remarks': record.remarks or '',
+        'period_number': record.period_number,
+        'period_label': record.period_label,
+        'marked_with_permission': record.marked_with_permission,
+        'bunk_flag': record.bunk_flag,
+        'bunk_reason': record.bunk_reason,
     })

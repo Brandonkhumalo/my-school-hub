@@ -1,4 +1,8 @@
 import logging
+import os
+import json as _json
+import urllib.request
+import urllib.error
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.db.models import Avg, Count, Q, Max, Min
@@ -12,8 +16,13 @@ from datetime import datetime, timedelta
 from .models import (
     Teacher, Student, Subject, Result, ClassAttendance, SubjectAttendance, Class, Timetable,
     SubjectTermFeedback, AssessmentPlan, ReportCardApprovalRequest, ReportCardGeneration,
+    AttendancePermission,
 )
 from .serializers import ResultSerializer, ClassAttendanceSerializer, SubjectAttendanceSerializer
+from users.models import SchoolSettings
+from .utils import apply_late_penalty, log_school_audit
+
+MAX_PAGE_SIZE = 200
 
 
 def _normalize_report_year(year):
@@ -33,6 +42,30 @@ def _normalize_report_term(term):
         '3': 'Term 3',
     }
     return mapping.get(compact, raw)
+
+
+def _paginate_queryset(request, qs, default_page_size=25):
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except Exception:
+        page = 1
+    try:
+        page_size = int(request.GET.get("page_size", default_page_size))
+    except Exception:
+        page_size = default_page_size
+    page_size = max(1, min(MAX_PAGE_SIZE, page_size))
+
+    total = qs.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    return qs[start:end], {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size,
+        "has_next": end < total,
+        "has_prev": page > 1,
+    }
 
 
 def _teacher_authorized_class_ids(teacher, subject_id=None, fallback_to_school=True):
@@ -70,6 +103,782 @@ def _report_batch_generated(school, class_id, year, term):
         academic_year=year,
         academic_term=term,
     ).exists()
+
+
+def _parse_attachment_rows(raw_items):
+    import json
+    if isinstance(raw_items, str):
+        try:
+            raw_items = json.loads(raw_items)
+        except Exception:
+            raw_items = []
+    rows = []
+    if not isinstance(raw_items, list):
+        return rows
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        file_key = str(item.get('file_key') or '').strip()
+        if not file_key:
+            continue
+        rows.append({
+            'file_key': file_key,
+            'original_filename': str(item.get('original_filename') or file_key).strip()[:255],
+            'mime_type': str(item.get('mime_type') or '').strip()[:100],
+            'size_bytes': int(item.get('size_bytes') or 0),
+        })
+    return rows
+
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _extract_questions_from_file_key(*, file_key, user):
+    base = os.environ.get('GO_SERVICES_INTERNAL_URL') or os.environ.get('GO_SERVICES_UPSTREAM') or 'http://localhost:8082'
+    url = f'{base}/api/v1/services/papers/extract'
+    body = _json.dumps({'file_key': file_key}).encode('utf-8')
+    req = urllib.request.Request(url, data=body, method='POST')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('X-Gateway-Auth', 'true')
+    req.add_header('X-User-ID', str(user.id))
+    req.add_header('X-User-Role', user.role)
+    req.add_header('X-User-School-ID', str(user.school.id))
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return _json.loads(resp.read().decode('utf-8'))
+
+
+def _normalize_candidate_questions(payload_questions):
+    normalized = []
+    if not isinstance(payload_questions, list):
+        return normalized
+    for i, q in enumerate(payload_questions, start=1):
+        if not isinstance(q, dict):
+            continue
+        prompt = (
+            q.get('prompt_text')
+            or q.get('question')
+            or q.get('text')
+            or q.get('prompt')
+            or ''
+        ).strip()
+        if not prompt:
+            continue
+        q_type = (q.get('question_type') or q.get('type') or 'short').strip().lower()
+        if q_type not in ('short', 'long', 'mcq'):
+            q_type = 'short'
+        try:
+            marks = float(q.get('marks') or 1)
+        except (TypeError, ValueError):
+            marks = 1
+        normalized.append({
+            'order': i,
+            'prompt_text': prompt,
+            'marks': marks if marks > 0 else 1,
+            'question_type': q_type,
+            'options': q.get('options') if isinstance(q.get('options'), list) else [],
+            'correct_answer': str(q.get('correct_answer') or q.get('answer') or '').strip()[:255],
+            'source_page': q.get('source_page') or q.get('page'),
+        })
+    return normalized
+
+
+def _serialize_generated_test(test):
+    return {
+        'id': test.id,
+        'title': test.title,
+        'subject_id': test.subject_id,
+        'subject_name': test.subject.name,
+        'level_kind': test.level_kind,
+        'level_number': test.level_number,
+        'duration_minutes': test.duration_minutes,
+        'total_marks': test.total_marks,
+        'status': test.status,
+        'counts_for_report': test.counts_for_report,
+        'assessment_plan_id': test.assessment_plan_id,
+        'component_index': test.component_index,
+        'schedule_mode': test.schedule_mode,
+        'available_from': test.available_from.isoformat() if test.available_from else None,
+        'available_until': test.available_until.isoformat() if test.available_until else None,
+        'academic_year': test.academic_year,
+        'academic_term': test.academic_term,
+        'source_paper_id': test.source_paper_id,
+        'questions': [
+            {
+                'id': q.id,
+                'order': q.order,
+                'prompt_text': q.prompt_text,
+                'marks': q.marks,
+                'question_type': q.question_type,
+                'options': q.options,
+                'correct_answer': q.correct_answer,
+                'source_page': q.source_page,
+            }
+            for q in test.questions.all().order_by('order', 'id')
+        ],
+    }
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_test_from_paper(request):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import Teacher, PastExamPaper, GeneratedTest, TestQuestion
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    source_paper_id = request.data.get('source_paper_id')
+    title = (request.data.get('title') or '').strip()
+    duration_minutes = request.data.get('duration_minutes') or 60
+    if not source_paper_id or not title:
+        return Response({'error': 'source_paper_id and title are required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        duration_minutes = int(duration_minutes)
+    except (TypeError, ValueError):
+        return Response({'error': 'duration_minutes must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+    if duration_minutes <= 0:
+        return Response({'error': 'duration_minutes must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        paper = PastExamPaper.objects.get(id=source_paper_id, school=request.user.school)
+    except PastExamPaper.DoesNotExist:
+        return Response({'error': 'Past paper not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        payload = _extract_questions_from_file_key(file_key=paper.file_key, user=request.user)
+    except urllib.error.HTTPError as e:
+        return Response({'error': f'Extraction failed: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+    except (urllib.error.URLError, TimeoutError) as e:
+        return Response({'error': f'go-services unreachable: {e}'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    candidates = _normalize_candidate_questions(payload.get('questions', []))
+    total_marks = sum(float(q['marks']) for q in candidates) if candidates else 0
+    test = GeneratedTest.objects.create(
+        school=request.user.school,
+        subject=paper.subject,
+        level_kind=paper.level_kind,
+        level_number=paper.level_number,
+        source_paper=paper,
+        title=title,
+        duration_minutes=duration_minutes,
+        total_marks=total_marks if total_marks > 0 else 100,
+        created_by=teacher,
+        status='draft',
+        academic_year=str(request.data.get('academic_year') or timezone.now().year),
+        academic_term=str(request.data.get('academic_term') or 'Term 1'),
+    )
+    for item in candidates:
+        TestQuestion.objects.create(test=test, **item)
+    test.total_marks = sum(float(q.marks) for q in test.questions.all()) or test.total_marks
+    test.save(update_fields=['total_marks'])
+    log_school_audit(
+        user=request.user,
+        action='CREATE',
+        model_name='GeneratedTest',
+        object_id=test.id,
+        object_repr=test.title,
+        changes={'source_paper_id': paper.id, 'question_count': len(candidates)},
+        status_code=201,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'test': _serialize_generated_test(test)}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_test_detail(request, test_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import GeneratedTest, Teacher, AssessmentPlan
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        test = GeneratedTest.objects.select_related('subject', 'assessment_plan').prefetch_related('questions').get(
+            id=test_id, school=request.user.school, created_by=teacher
+        )
+    except (Teacher.DoesNotExist, GeneratedTest.DoesNotExist):
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({'test': _serialize_generated_test(test)})
+
+    before = {
+        'title': test.title,
+        'duration_minutes': test.duration_minutes,
+        'total_marks': float(test.total_marks or 0),
+        'academic_year': test.academic_year,
+        'academic_term': test.academic_term,
+        'status': test.status,
+        'schedule_mode': test.schedule_mode,
+        'counts_for_report': test.counts_for_report,
+        'assessment_plan_id': test.assessment_plan_id,
+        'component_index': test.component_index,
+        'available_from': test.available_from.isoformat() if test.available_from else None,
+        'available_until': test.available_until.isoformat() if test.available_until else None,
+    }
+
+    for field in ('title', 'duration_minutes', 'total_marks', 'academic_year', 'academic_term', 'status', 'schedule_mode'):
+        if field in request.data:
+            setattr(test, field, request.data.get(field))
+    if 'counts_for_report' in request.data:
+        test.counts_for_report = _as_bool(request.data.get('counts_for_report'))
+    if 'component_index' in request.data:
+        raw_component_index = request.data.get('component_index')
+        test.component_index = int(raw_component_index) if raw_component_index not in (None, '') else None
+    if 'assessment_plan_id' in request.data or 'assessment_plan' in request.data:
+        plan_id = request.data.get('assessment_plan_id', request.data.get('assessment_plan'))
+        if plan_id in (None, ''):
+            test.assessment_plan = None
+        else:
+            try:
+                test.assessment_plan = AssessmentPlan.objects.get(id=plan_id, school=request.user.school)
+            except AssessmentPlan.DoesNotExist:
+                return Response({'error': 'Assessment plan not found'}, status=status.HTTP_404_NOT_FOUND)
+    if 'available_from' in request.data:
+        test.available_from = request.data.get('available_from') or None
+    if 'available_until' in request.data:
+        test.available_until = request.data.get('available_until') or None
+    try:
+        test.full_clean()
+    except Exception as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    test.save()
+    after = {
+        'title': test.title,
+        'duration_minutes': test.duration_minutes,
+        'total_marks': float(test.total_marks or 0),
+        'academic_year': test.academic_year,
+        'academic_term': test.academic_term,
+        'status': test.status,
+        'schedule_mode': test.schedule_mode,
+        'counts_for_report': test.counts_for_report,
+        'assessment_plan_id': test.assessment_plan_id,
+        'component_index': test.component_index,
+        'available_from': test.available_from.isoformat() if test.available_from else None,
+        'available_until': test.available_until.isoformat() if test.available_until else None,
+    }
+    changes = {k: {'from': before[k], 'to': after[k]} for k in after.keys() if before.get(k) != after.get(k)}
+    if changes:
+        log_school_audit(
+            user=request.user,
+            action='UPDATE',
+            model_name='GeneratedTest',
+            object_id=test.id,
+            object_repr=test.title,
+            changes=changes,
+            status_code=200,
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+    return Response({'test': _serialize_generated_test(test)})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_tests(request):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import GeneratedTest, Teacher
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    status_filter = str(request.query_params.get('status') or '').strip().lower()
+    search = str(request.query_params.get('q') or '').strip()
+    ordering = str(request.query_params.get('ordering') or '-updated_at').strip()
+
+    qs = GeneratedTest.objects.filter(
+        school=request.user.school,
+        created_by=teacher,
+    ).select_related('subject')
+    if status_filter in ('draft', 'published', 'closed'):
+        qs = qs.filter(status=status_filter)
+    if search:
+        qs = qs.filter(Q(title__icontains=search) | Q(subject__name__icontains=search))
+
+    ordering_map = {
+        'updated_at': ('updated_at', 'id'),
+        '-updated_at': ('-updated_at', '-id'),
+        'title': ('title', 'id'),
+        '-title': ('-title', '-id'),
+        'status': ('status', 'id'),
+        '-status': ('-status', '-id'),
+    }
+    qs = qs.order_by(*(ordering_map.get(ordering) or ordering_map['-updated_at']))
+    page_qs, page_meta = _paginate_queryset(request, qs, default_page_size=25)
+
+    tests = []
+    for t in page_qs:
+        tests.append({
+            'id': t.id,
+            'title': t.title,
+            'subject_name': t.subject.name,
+            'status': t.status,
+            'duration_minutes': t.duration_minutes,
+            'total_marks': t.total_marks,
+            'academic_year': t.academic_year,
+            'academic_term': t.academic_term,
+            'updated_at': t.updated_at.isoformat() if t.updated_at else None,
+            'attempts_count': t.attempts.count(),
+        })
+    return Response({'tests': tests, 'pagination': page_meta})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_test_questions(request, test_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import GeneratedTest, Teacher, TestQuestion
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        test = GeneratedTest.objects.get(id=test_id, school=request.user.school, created_by=teacher)
+    except (Teacher.DoesNotExist, GeneratedTest.DoesNotExist):
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    action = (request.data.get('action') or 'replace').strip().lower()
+    before_count = test.questions.count()
+    before_total_marks = float(test.total_marks or 0)
+    if action == 'replace':
+        questions = _normalize_candidate_questions(request.data.get('questions') or [])
+        TestQuestion.objects.filter(test=test).delete()
+        for q in questions:
+            TestQuestion.objects.create(test=test, **q)
+    elif action == 'delete':
+        qid = request.data.get('question_id')
+        TestQuestion.objects.filter(test=test, id=qid).delete()
+    else:  # upsert
+        q = request.data.get('question') or {}
+        qid = q.get('id')
+        payload = _normalize_candidate_questions([q])
+        if not payload:
+            return Response({'error': 'Invalid question payload'}, status=status.HTTP_400_BAD_REQUEST)
+        row = payload[0]
+        if qid:
+            TestQuestion.objects.filter(test=test, id=qid).update(**row)
+        else:
+            TestQuestion.objects.create(test=test, **row)
+
+    test.total_marks = sum(float(x.marks) for x in test.questions.all()) or test.total_marks
+    test.save(update_fields=['total_marks'])
+    after_count = test.questions.count()
+    log_school_audit(
+        user=request.user,
+        action='UPDATE',
+        model_name='GeneratedTest',
+        object_id=test.id,
+        object_repr=test.title,
+        changes={
+            'questions_action': action,
+            'question_count': {'from': before_count, 'to': after_count},
+            'total_marks': {'from': before_total_marks, 'to': float(test.total_marks or 0)},
+        },
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'test': _serialize_generated_test(test)})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def publish_test(request, test_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import GeneratedTest, Teacher
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        test = GeneratedTest.objects.get(id=test_id, school=request.user.school, created_by=teacher)
+    except (Teacher.DoesNotExist, GeneratedTest.DoesNotExist):
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+    test.status = 'published'
+    try:
+        test.full_clean()
+    except Exception as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    test.save(update_fields=['status', 'updated_at'])
+    log_school_audit(
+        user=request.user,
+        action='APPROVE',
+        model_name='GeneratedTest',
+        object_id=test.id,
+        object_repr=test.title,
+        changes={'status': 'published'},
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'message': 'Test published.', 'test': _serialize_generated_test(test)})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_test_attempts(request, test_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import GeneratedTest, Teacher
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        test = GeneratedTest.objects.get(id=test_id, school=request.user.school, created_by=teacher)
+    except (Teacher.DoesNotExist, GeneratedTest.DoesNotExist):
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+    attempts = test.attempts.select_related('student__user').order_by('-started_at')
+    return Response({
+        'attempts': [
+            {
+                'id': a.id,
+                'student_id': a.student_id,
+                'student_name': a.student.user.full_name,
+                'started_at': a.started_at.isoformat() if a.started_at else None,
+                'submitted_at': a.submitted_at.isoformat() if a.submitted_at else None,
+                'auto_score': a.auto_score,
+                'manual_score': a.manual_score,
+                'final_score': a.final_score,
+                'status': a.status,
+                'pushed_to_results': a.pushed_to_results,
+            }
+            for a in attempts
+        ]
+    })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def grade_test_attempt(request, attempt_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import Teacher, TestAttempt, TestAnswer
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        attempt = TestAttempt.objects.select_related('test', 'student__user').get(
+            id=attempt_id, test__school=request.user.school, test__created_by=teacher
+        )
+    except (Teacher.DoesNotExist, TestAttempt.DoesNotExist):
+        return Response({'error': 'Attempt not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        question_map = {q.id: q for q in attempt.test.questions.all().order_by('order', 'id')}
+        answer_map = {a.question_id: a for a in attempt.answers.all()}
+        rows = []
+        for qid, q in question_map.items():
+            ans = answer_map.get(qid)
+            rows.append({
+                'question_id': q.id,
+                'order': q.order,
+                'question_type': q.question_type,
+                'prompt_text': q.prompt_text,
+                'marks': q.marks,
+                'correct_answer': q.correct_answer,
+                'student_answer': ans.answer_text if ans else '',
+                'awarded_marks': ans.awarded_marks if ans and ans.awarded_marks is not None else 0,
+                'teacher_comment': ans.teacher_comment if ans else '',
+                'is_auto_graded': q.question_type in ('mcq', 'short'),
+            })
+        return Response({
+            'attempt_id': attempt.id,
+            'test_id': attempt.test_id,
+            'test_title': attempt.test.title,
+            'student_name': attempt.student.user.full_name,
+            'status': attempt.status,
+            'auto_score': attempt.auto_score,
+            'manual_score': attempt.manual_score,
+            'final_score': attempt.final_score,
+            'questions': rows,
+        })
+
+    answers_payload = request.data.get('answers') or []
+    for row in answers_payload:
+        if not isinstance(row, dict):
+            continue
+        qid = row.get('question_id')
+        if not qid:
+            continue
+        marks = row.get('awarded_marks', 0) or 0
+        comment = row.get('teacher_comment') or ''
+        ans, _ = TestAnswer.objects.get_or_create(attempt=attempt, question_id=qid)
+        ans.awarded_marks = float(marks)
+        ans.teacher_comment = comment
+        ans.save(update_fields=['awarded_marks', 'teacher_comment'])
+
+    long_answer_ids = set(attempt.test.questions.filter(question_type='long').values_list('id', flat=True))
+    manual_score = sum(
+        float(a.awarded_marks or 0)
+        for a in attempt.answers.filter(question_id__in=long_answer_ids)
+    )
+    attempt.manual_score = manual_score
+    attempt.final_score = float(attempt.auto_score or 0) + float(manual_score or 0)
+    finalize = _as_bool(request.data.get('finalize'), default=False)
+    attempt.status = 'finalized' if finalize else 'graded'
+    attempt.save(update_fields=['manual_score', 'final_score', 'status'])
+    log_school_audit(
+        user=request.user,
+        action='UPDATE',
+        model_name='TestAttempt',
+        object_id=attempt.id,
+        object_repr=f'{attempt.test.title} / {attempt.student.user.full_name}',
+        changes={
+            'status': attempt.status,
+            'manual_score': attempt.manual_score,
+            'final_score': attempt.final_score,
+            'graded_answers': len([r for r in answers_payload if isinstance(r, dict) and r.get('question_id')]),
+        },
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({
+        'attempt_id': attempt.id,
+        'auto_score': attempt.auto_score,
+        'manual_score': attempt.manual_score,
+        'final_score': attempt.final_score,
+        'status': attempt.status,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def finalize_test_results(request, test_id):
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can do this'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import Teacher, GeneratedTest, TestAttempt, Result
+    try:
+        teacher = Teacher.objects.get(user=request.user)
+        test = GeneratedTest.objects.select_related('subject', 'assessment_plan').get(
+            id=test_id, school=request.user.school, created_by=teacher
+        )
+    except (Teacher.DoesNotExist, GeneratedTest.DoesNotExist):
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    attempts = TestAttempt.objects.filter(
+        test=test, submitted_at__isnull=False, pushed_to_results=False
+    ).select_related('student')
+    pushed = 0
+    for attempt in attempts:
+        if attempt.status not in ('graded', 'finalized'):
+            continue
+        score = float(attempt.final_score or 0)
+        Result.objects.update_or_create(
+            student=attempt.student,
+            subject=test.subject,
+            teacher=teacher,
+            exam_type='test',
+            academic_term=test.academic_term,
+            academic_year=test.academic_year,
+            assessment_plan=test.assessment_plan if test.counts_for_report else None,
+            component_kind='test' if test.counts_for_report else '',
+            component_index=test.component_index if test.counts_for_report else None,
+            defaults={
+                'score': score,
+                'max_score': float(test.total_marks or 100),
+                'include_in_report': True,
+                'report_term': test.academic_term,
+            },
+        )
+        attempt.pushed_to_results = True
+        attempt.status = 'finalized'
+        attempt.save(update_fields=['pushed_to_results', 'status'])
+        pushed += 1
+
+    if test.status != 'closed':
+        test.status = 'closed'
+        test.save(update_fields=['status', 'updated_at'])
+
+    log_school_audit(
+        user=request.user,
+        action='APPROVE',
+        model_name='GeneratedTest',
+        object_id=test.id,
+        object_repr=test.title,
+        changes={'pushed_attempts': pushed, 'status': test.status},
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'message': f'Finalized test and pushed {pushed} result(s).', 'pushed': pushed})
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_assignments(request):
+    """Teacher list/create assignments with optional file-key attachments."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import Assignment, AssignmentAttachment
+
+    if request.method == 'GET':
+        qs = Assignment.objects.filter(
+            teacher=teacher, school=request.user.school
+        ).select_related('subject', 'assigned_class').prefetch_related('attachments').order_by('-date_created')
+        data = []
+        for a in qs:
+            data.append({
+                'id': a.id,
+                'title': a.title,
+                'description': a.description,
+                'subject_id': a.subject_id,
+                'subject_name': a.subject.name,
+                'class_id': a.assigned_class_id,
+                'class_name': a.assigned_class.name,
+                'deadline': a.deadline.isoformat(),
+                'max_score': a.max_score,
+                'allow_late': a.allow_late,
+                'date_created': a.date_created.isoformat(),
+                'attachments': [
+                    {
+                        'id': att.id,
+                        'file_key': att.file_key,
+                        'original_filename': att.original_filename,
+                        'mime_type': att.mime_type,
+                        'size_bytes': att.size_bytes,
+                    }
+                    for att in a.attachments.all()
+                ],
+            })
+        return Response({'assignments': data})
+
+    title = (request.data.get('title') or '').strip()
+    description = (request.data.get('description') or '').strip()
+    subject_id = request.data.get('subject_id') or request.data.get('subject')
+    class_id = request.data.get('class_id') or request.data.get('assigned_class')
+    deadline = request.data.get('deadline')
+    max_score = request.data.get('max_score', 100)
+    allow_late = _as_bool(request.data.get('allow_late', False))
+    if not all([title, description, subject_id, class_id, deadline]):
+        return Response({'error': 'title, description, subject_id, class_id, deadline are required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        subject = Subject.objects.get(id=subject_id, school=request.user.school)
+        class_obj = Class.objects.get(id=class_id, school=request.user.school)
+    except (Subject.DoesNotExist, Class.DoesNotExist):
+        return Response({'error': 'Subject/class not found'}, status=status.HTTP_404_NOT_FOUND)
+    if not teacher.subjects_taught.filter(id=subject.id).exists():
+        return Response({'error': 'You can only create assignments for your own subjects'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        max_score = float(max_score)
+    except (TypeError, ValueError):
+        return Response({'error': 'max_score must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+    if max_score <= 0:
+        return Response({'error': 'max_score must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+
+    assignment = Assignment.objects.create(
+        school=request.user.school,
+        title=title,
+        description=description,
+        subject=subject,
+        teacher=teacher,
+        assigned_class=class_obj,
+        deadline=deadline,
+        max_score=max_score,
+        allow_late=allow_late,
+    )
+    for row in _parse_attachment_rows(request.data.get('attachments') or []):
+        AssignmentAttachment.objects.create(assignment=assignment, **row)
+    log_school_audit(
+        user=request.user,
+        action='CREATE',
+        model_name='Assignment',
+        object_id=assignment.id,
+        object_repr=assignment.title,
+        changes={'class_id': class_obj.id, 'subject_id': subject.id, 'max_score': assignment.max_score, 'allow_late': assignment.allow_late},
+        status_code=201,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'id': assignment.id, 'message': 'Assignment created successfully.'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def teacher_assignment_detail(request, assignment_id):
+    """Teacher detail/update/delete assignment."""
+    if request.user.role != 'teacher':
+        return Response({'error': 'Only teachers can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        teacher = request.user.teacher
+    except Teacher.DoesNotExist:
+        return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    from .models import Assignment, AssignmentAttachment
+    try:
+        assignment = Assignment.objects.select_related('subject', 'assigned_class').prefetch_related('attachments').get(
+            id=assignment_id, teacher=teacher, school=request.user.school
+        )
+    except Assignment.DoesNotExist:
+        return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'id': assignment.id,
+            'title': assignment.title,
+            'description': assignment.description,
+            'subject_id': assignment.subject_id,
+            'subject_name': assignment.subject.name,
+            'class_id': assignment.assigned_class_id,
+            'class_name': assignment.assigned_class.name,
+            'deadline': assignment.deadline.isoformat(),
+            'max_score': assignment.max_score,
+            'allow_late': assignment.allow_late,
+            'attachments': [
+                {
+                    'id': att.id,
+                    'file_key': att.file_key,
+                    'original_filename': att.original_filename,
+                    'mime_type': att.mime_type,
+                    'size_bytes': att.size_bytes,
+                }
+                for att in assignment.attachments.all()
+            ],
+        })
+
+    if request.method == 'DELETE':
+        title = assignment.title
+        assignment.delete()
+        log_school_audit(
+            user=request.user,
+            action='DELETE',
+            model_name='Assignment',
+            object_id=assignment_id,
+            object_repr=title,
+            status_code=200,
+            ip_address=request.META.get('REMOTE_ADDR'),
+        )
+        return Response({'message': 'Assignment deleted.'})
+
+    changed = {}
+    for field in ('title', 'description', 'deadline'):
+        if field in request.data:
+            setattr(assignment, field, request.data.get(field))
+            changed[field] = request.data.get(field)
+    if 'max_score' in request.data:
+        try:
+            assignment.max_score = float(request.data.get('max_score'))
+            changed['max_score'] = assignment.max_score
+        except (TypeError, ValueError):
+            return Response({'error': 'max_score must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+    if 'allow_late' in request.data:
+        assignment.allow_late = _as_bool(request.data.get('allow_late'))
+        changed['allow_late'] = assignment.allow_late
+    assignment.save()
+    if 'attachments' in request.data:
+        AssignmentAttachment.objects.filter(assignment=assignment).delete()
+        for row in _parse_attachment_rows(request.data.get('attachments') or []):
+            AssignmentAttachment.objects.create(assignment=assignment, **row)
+        changed['attachments_replaced'] = True
+    log_school_audit(
+        user=request.user,
+        action='UPDATE',
+        model_name='Assignment',
+        object_id=assignment.id,
+        object_repr=assignment.title,
+        changes=changed,
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'message': 'Assignment updated.'})
 
 
 @api_view(['GET'])
@@ -642,6 +1451,25 @@ def _parse_date(raw):
 VALID_STATUSES = {'present', 'absent', 'late', 'excused'}
 
 
+def _period_tracking_active(school, attendance_date):
+    settings = SchoolSettings.objects.filter(school=school).first()
+    if not settings or not settings.attendance_period_tracking_start_date:
+        return False
+    return attendance_date >= settings.attendance_period_tracking_start_date
+
+
+def _has_approved_permission(student, class_obj, attendance_date, period_number):
+    permission_qs = AttendancePermission.objects.filter(
+        student=student,
+        class_assigned=class_obj,
+        date=attendance_date,
+        approved=True,
+    )
+    if period_number is not None:
+        permission_qs = permission_qs.filter(Q(period_number=period_number) | Q(period_number__isnull=True))
+    return permission_qs.exists()
+
+
 ## --------------- CLASS attendance ---------------
 
 @api_view(['GET'])
@@ -792,6 +1620,8 @@ def subject_attendance_register(request):
 
         class_id = request.query_params.get('class_id')
         subject_id = request.query_params.get('subject_id')
+        period_number = request.query_params.get('period_number')
+        period_label = (request.query_params.get('period_label') or '').strip()
         if not class_id or not subject_id:
             return Response({'error': 'class_id and subject_id are required'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -814,16 +1644,48 @@ def subject_attendance_register(request):
                     .select_related('user', 'student_class')
                     .order_by('user__last_name', 'user__first_name'))
 
+        parsed_period_number = None
+        if period_number not in (None, ''):
+            try:
+                parsed_period_number = int(period_number)
+                if parsed_period_number < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({'error': 'period_number must be a positive integer'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
         records = SubjectAttendance.objects.filter(
             date=attendance_date, subject=the_subject, student__in=students
         )
-        att_map = {r.student_id: {'status': r.status, 'remarks': r.remarks, 'id': r.id} for r in records}
+        if parsed_period_number is not None:
+            records = records.filter(period_number=parsed_period_number)
+        elif period_label:
+            records = records.filter(period_label=period_label)
+        att_map = {
+            r.student_id: {
+                'status': r.status,
+                'remarks': r.remarks,
+                'id': r.id,
+                'period_number': r.period_number,
+                'period_label': r.period_label,
+                'marked_with_permission': r.marked_with_permission,
+                'bunk_flag': r.bunk_flag,
+                'bunk_reason': r.bunk_reason,
+            }
+            for r in records
+        }
 
         locked = records.exists()
 
         data = []
         for s in students:
-            info = att_map.get(s.id, {'status': None, 'remarks': '', 'id': None})
+            info = att_map.get(
+                s.id,
+                {
+                    'status': None, 'remarks': '', 'id': None, 'period_number': None,
+                    'period_label': '', 'marked_with_permission': False, 'bunk_flag': False, 'bunk_reason': '',
+                }
+            )
             data.append({
                 'student_id': s.id,
                 'student_number': s.user.student_number or '',
@@ -833,6 +1695,11 @@ def subject_attendance_register(request):
                 'attendance_id': info['id'],
                 'status': info['status'],
                 'remarks': info['remarks'],
+                'period_number': info['period_number'],
+                'period_label': info['period_label'],
+                'marked_with_permission': info['marked_with_permission'],
+                'bunk_flag': info['bunk_flag'],
+                'bunk_reason': info['bunk_reason'],
             })
 
         return Response({
@@ -841,6 +1708,8 @@ def subject_attendance_register(request):
             'class_id': the_class.id,
             'subject_name': the_subject.name,
             'subject_id': the_subject.id,
+            'period_number': parsed_period_number,
+            'period_label': period_label,
             'locked': locked,
             'students': data,
         })
@@ -861,6 +1730,8 @@ def mark_subject_attendance(request):
         attendance_date = _parse_date(request.data.get('date', str(datetime.now().date())))
         class_id = request.data.get('class_id')
         subject_id = request.data.get('subject_id')
+        period_number = request.data.get('period_number')
+        period_label = (request.data.get('period_label') or '').strip()
 
         if not attendance_date:
             return Response({'error': 'Invalid date format. Use YYYY-MM-DD'},
@@ -886,10 +1757,25 @@ def mark_subject_attendance(request):
         except (Class.DoesNotExist, Subject.DoesNotExist):
             return Response({'error': 'Class or subject not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        parsed_period_number = None
+        if period_number not in (None, ''):
+            try:
+                parsed_period_number = int(period_number)
+                if parsed_period_number < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({'error': 'period_number must be a positive integer'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
         # Lock check
-        already_exists = SubjectAttendance.objects.filter(
+        existing_qs = SubjectAttendance.objects.filter(
             class_assigned=the_class, subject=the_subject, date=attendance_date
-        ).exists()
+        )
+        if parsed_period_number is not None:
+            existing_qs = existing_qs.filter(period_number=parsed_period_number)
+        elif period_label:
+            existing_qs = existing_qs.filter(period_label=period_label)
+        already_exists = existing_qs.exists()
         if already_exists:
             return Response({'error': 'Subject attendance for this class and date has already been submitted and cannot be changed.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -912,13 +1798,29 @@ def mark_subject_attendance(request):
                 if student.student_class_id != the_class.id:
                     errors.append(f'Student {student_id} is not in this class')
                     continue
+                daily = ClassAttendance.objects.filter(student=student, date=attendance_date).first()
+                has_permission = _has_approved_permission(student, the_class, attendance_date, parsed_period_number)
+                period_rules_active = _period_tracking_active(request.user.school, attendance_date)
+
+                bunk_flag = False
+                bunk_reason = ''
+                if period_rules_active and status_value == 'absent' and not has_permission:
+                    if daily and daily.status in ('present', 'late'):
+                        bunk_flag = True
+                        bunk_reason = 'Absent during period without approved permission'
+
                 SubjectAttendance.objects.create(
                     student=student,
                     class_assigned=the_class,
                     subject=the_subject,
                     date=attendance_date,
+                    period_number=parsed_period_number,
+                    period_label=period_label,
                     status=status_value,
                     remarks=remarks,
+                    marked_with_permission=has_permission,
+                    bunk_flag=bunk_flag,
+                    bunk_reason=bunk_reason,
                     recorded_by=request.user,
                 )
                 created_count += 1
@@ -961,6 +1863,7 @@ def assignment_submissions(request, assignment_id):
         AssignmentSubmission.objects
         .filter(assignment=assignment)
         .select_related('student__user')
+        .prefetch_related('attachments')
         .order_by('submitted_at')
     )
 
@@ -977,6 +1880,17 @@ def assignment_submissions(request, assignment_id):
             'feedback': s.feedback,
             'text_submission': s.text_submission,
             'file_url': s.submitted_file.url if s.submitted_file else None,
+            'is_late': s.is_late,
+            'attachments': [
+                {
+                    'id': att.id,
+                    'file_key': att.file_key,
+                    'original_filename': att.original_filename,
+                    'mime_type': att.mime_type,
+                    'size_bytes': att.size_bytes,
+                }
+                for att in s.attachments.all()
+            ],
         })
 
     total_students = assignment.assigned_class.students.count()
@@ -1022,15 +1936,46 @@ def grade_submission(request, submission_id):
     except (TypeError, ValueError):
         return Response({'error': 'grade must be a number'}, status=status.HTTP_400_BAD_REQUEST)
 
-    submission.grade = grade
+    school_settings = SchoolSettings.objects.filter(school=request.user.school).first()
+    penalty_mode = (school_settings.late_assignment_penalty_mode if school_settings else 'none')
+    penalty_percent = (school_settings.late_assignment_penalty_percent if school_settings else 0.0)
+    final_grade, penalty_points = apply_late_penalty(
+        raw_grade=grade,
+        max_score=submission.assignment.max_score,
+        mode=penalty_mode if submission.is_late else 'none',
+        percent=penalty_percent if submission.is_late else 0.0,
+    )
+
+    submission.grade = final_grade
     submission.feedback = feedback
     submission.status = 'graded'
-    submission.save(update_fields=['grade', 'feedback', 'status'])
+    submission.returned_at = timezone.now()
+    submission.save(update_fields=['grade', 'feedback', 'status', 'returned_at'])
+    log_school_audit(
+        user=request.user,
+        action='UPDATE',
+        model_name='AssignmentSubmission',
+        object_id=submission.id,
+        object_repr=f"{submission.assignment.title} - {submission.student.user.full_name}",
+        changes={
+            'raw_grade': grade,
+            'final_grade': final_grade,
+            'penalty_points': penalty_points,
+            'penalty_mode': penalty_mode if submission.is_late else 'none',
+            'penalty_percent': penalty_percent if submission.is_late else 0.0,
+        },
+        status_code=200,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
 
     return Response({
         'message': 'Graded successfully.',
         'submission_id': submission_id,
         'grade': submission.grade,
+        'raw_grade': grade,
+        'penalty_points': penalty_points,
+        'penalty_mode': penalty_mode if submission.is_late else 'none',
+        'penalty_percent': penalty_percent if submission.is_late else 0.0,
         'feedback': submission.feedback,
     })
 

@@ -1,0 +1,86 @@
+My School Hub - Codex Context
+Last updated: 2026-04-28
+
+System summary
+- Multi-tenant SaaS school management platform by Tishanyq Digital.
+- Core stack: React 19 + Vite 7 frontend, Django 5.2 + DRF backend, optional Go gateway/workers/services.
+- Main domains: academics, attendance, report cards, boarding, finance/payments, HR/staff, library, messaging, audit/compliance.
+
+Architecture
+- Frontend: `src/` (role-based pages, centralized API client in `src/services/apiService.jsx`).
+- Backend: `School_system/` Django project.
+  - Apps: `users`, `academics`, `finances`, `staff`, `library`, `whatsapp_intergration`.
+- API base path: `/api/v1/`.
+- Docs: `/api/v1/docs/`.
+
+Roles supported
+- `superadmin`, `admin`, `teacher`, `student`, `parent`, `hr`, `accountant`, `security`, `cleaner`, `librarian`, `sports_director`.
+
+Key backend mounts
+- `/api/v1/auth/`
+- `/api/v1/academics/`
+- `/api/v1/students/`
+- `/api/v1/teachers/`
+- `/api/v1/parents/`
+- `/api/v1/messages/`
+- `/api/v1/boarding/`
+- `/api/v1/finances/`
+- `/api/v1/staff/`
+- `/api/v1/library/`
+
+Multi-tenancy and access model
+- Tenant isolation is school-based (`school` FK across domain data).
+- Permission controls include role checks plus HR/accountant page-level profiles.
+- Root HR capability is represented via `HRPermissionProfile.is_root_boss`.
+
+Attendance model (current)
+- Daily attendance: `ClassAttendance` (class teacher marks per day).
+- Lesson/period attendance: `SubjectAttendance` (teacher marks per class/subject/date, now supports period metadata).
+- Statuses: `present`, `absent`, `late`, `excused`.
+
+Recent attendance enhancements (implemented)
+- `SubjectAttendance` now includes:
+  - `period_number`, `period_label`
+  - `marked_with_permission`
+  - `bunk_flag`, `bunk_reason`
+- New `AttendancePermission` model for approved absences (day-level or period-level).
+- New school setting on `SchoolSettings`:
+  - `attendance_period_tracking_start_date`
+  - Purpose: start applying period-bunk logic from a chosen date without rewriting historical data.
+
+Bunk detection logic
+- Applies only when `attendance_date >= attendance_period_tracking_start_date`.
+- A period can be flagged bunked when:
+  - period status is `absent`,
+  - no approved permission exists,
+  - daily class status is `present` or `late`.
+
+Attendance admin/HR controls
+- Admin/HR can configure tracking start date:
+  - `POST /api/v1/academics/attendance/period-tracking-start-date/`
+- Admin/HR can manage permissions:
+  - `GET/POST /api/v1/academics/attendance/permissions/`
+- Admin/HR can edit locked attendance records:
+  - `PATCH /api/v1/academics/attendance/class/<attendance_id>/edit/`
+  - `PATCH /api/v1/academics/attendance/subject/<attendance_id>/edit/`
+
+Frontend API methods available
+- `setAttendancePeriodTrackingStartDate(startDate)`
+- `getAttendancePermissions(params)`
+- `createAttendancePermission(data)`
+- `editClassAttendance(attendanceId, data)`
+- `editSubjectAttendance(attendanceId, data)`
+- Note: methods exist in `apiService.jsx`; visible admin UI wiring may still be pending.
+
+Operational notes
+- Run migrations after pull/change:
+  - `cd School_system`
+  - `python manage.py migrate`
+- If env has non-boolean `DEBUG` values (e.g., `release`), use explicit override for manage.py commands:
+  - `DEBUG=False python manage.py <command>`
+
+Useful references
+- `README.md`
+- `CLAUDE.md`
+- `system.md`
+- `BACKEND_API_DOCUMENTATION.md`

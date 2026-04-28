@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from .models import ParentTeacherMessage, Teacher, Student, Parent
+from .utils import check_rate_limit, log_school_audit, parent_belongs_to_school
 
 logger = logging.getLogger(__name__)
 from .serializers import ParentTeacherMessageSerializer, TeacherSerializer
@@ -183,6 +184,16 @@ def send_message(request):
             message=message_text,
             student_id=student_id,
             parent_message_id=parent_message_id
+        )
+        log_school_audit(
+            user=user,
+            action='CREATE',
+            model_name='ParentTeacherMessage',
+            object_id=message.id,
+            object_repr=f"{user.id} -> {recipient.id}",
+            changes={'recipient_id': recipient.id, 'subject': (subject or '')[:120], 'student_id': student_id},
+            status_code=status.HTTP_201_CREATED,
+            ip_address=request.META.get('REMOTE_ADDR'),
         )
 
         # Email the parent when a teacher sends them a message
@@ -426,7 +437,15 @@ def admin_list_conversations(request):
                        status=status.HTTP_403_FORBIDDEN)
 
     if not user.school_id:
-        return Response([])
+        return Response({
+            'threads': [],
+            'stats': {
+                'total_messages_considered': 0,
+                'excluded_not_teacher_parent': 0,
+                'excluded_school_mismatch': 0,
+                'returned_threads': 0,
+            },
+        })
 
     school_id = user.school_id
     qs = ParentTeacherMessage.objects.filter(
@@ -435,6 +454,11 @@ def admin_list_conversations(request):
     ).select_related('sender', 'recipient')
 
     membership_cache = {}
+    counters = {
+        'total_messages_considered': 0,
+        'excluded_not_teacher_parent': 0,
+        'excluded_school_mismatch': 0,
+    }
 
     def belongs_to_school(member_user):
         cache_key = member_user.id
@@ -455,11 +479,14 @@ def admin_list_conversations(request):
 
     threads = {}
     for msg in qs:
+        counters['total_messages_considered'] += 1
         if msg.sender.role == msg.recipient.role:
+            counters['excluded_not_teacher_parent'] += 1
             continue
         teacher_user = msg.sender if msg.sender.role == 'teacher' else msg.recipient
         parent_user = msg.sender if msg.sender.role == 'parent' else msg.recipient
         if not belongs_to_school(teacher_user) or not belongs_to_school(parent_user):
+            counters['excluded_school_mismatch'] += 1
             continue
         key = (teacher_user.id, parent_user.id)
         thread = threads.get(key)
@@ -484,7 +511,13 @@ def admin_list_conversations(request):
         key=lambda t: t['last_message_date'] or timezone.now(),
         reverse=True,
     )
-    return Response(result)
+    return Response({
+        'threads': result,
+        'stats': {
+            **counters,
+            'returned_threads': len(result),
+        },
+    })
 
 
 @api_view(['GET'])
@@ -507,10 +540,8 @@ def admin_get_conversation(request, teacher_id, parent_id):
         return Response([])
 
     teacher_in_school = teacher_user.school_id == school_id
-    parent_in_school = (
-        parent_user.school_id == school_id or
-        Parent.objects.filter(user=parent_user, schools__id=school_id).exists()
-    )
+    parent_profile = Parent.objects.filter(user=parent_user).first()
+    parent_in_school = parent_belongs_to_school(parent_profile, school_id)
     if not teacher_in_school or not parent_in_school:
         return Response([])
 
@@ -524,3 +555,14 @@ def admin_get_conversation(request, teacher_id, parent_id):
 
     serializer = ParentTeacherMessageSerializer(messages, many=True)
     return Response(serializer.data)
+    if check_rate_limit(request, group='messages_send', rate='30/m'):
+        return Response({'error': 'Too many messages sent too quickly. Please try again shortly.'},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+    if check_rate_limit(request, group='messages_search_teachers', rate='40/m'):
+        return Response({'error': 'Too many search requests. Please try again shortly.'},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+    if check_rate_limit(request, group='messages_search_parents', rate='40/m'):
+        return Response({'error': 'Too many search requests. Please try again shortly.'},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS)

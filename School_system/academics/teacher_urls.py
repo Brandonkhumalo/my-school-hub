@@ -17,8 +17,18 @@ urlpatterns = [
     path('classes/', teacher_views.teacher_classes, name='teacher-classes'),
     path('classes/<int:class_id>/subjects/', teacher_views.teacher_class_subjects, name='teacher-class-subjects'),
     
+    path('assignments/', teacher_views.teacher_assignments, name='teacher-assignments'),
+    path('assignments/<int:assignment_id>/', teacher_views.teacher_assignment_detail, name='teacher-assignment-detail'),
     path('assignments/<int:assignment_id>/submissions/', teacher_views.assignment_submissions, name='assignment-submissions'),
     path('submissions/<int:submission_id>/grade/', teacher_views.grade_submission, name='grade-submission'),
+    path('tests/generate-from-paper/', teacher_views.generate_test_from_paper, name='tests-generate-from-paper'),
+    path('tests/', teacher_views.teacher_tests, name='teacher-tests'),
+    path('tests/<int:test_id>/', teacher_views.teacher_test_detail, name='teacher-test-detail'),
+    path('tests/<int:test_id>/questions/', teacher_views.teacher_test_questions, name='teacher-test-questions'),
+    path('tests/<int:test_id>/publish/', teacher_views.publish_test, name='teacher-test-publish'),
+    path('tests/<int:test_id>/attempts/', teacher_views.teacher_test_attempts, name='teacher-test-attempts'),
+    path('attempts/<int:attempt_id>/grade/', teacher_views.grade_test_attempt, name='teacher-attempt-grade'),
+    path('tests/<int:test_id>/finalize/', teacher_views.finalize_test_results, name='teacher-test-finalize'),
 
     path('homework/', homework_views.teacher_homework_list, name='teacher-homework-list'),
     path('homework/create/', homework_views.teacher_create_homework, name='teacher-create-homework'),

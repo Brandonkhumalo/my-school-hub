@@ -62,6 +62,7 @@ The Admin role has full access to manage all aspects of the school, including st
 - **Assessment Plans**: Set up exam structures and grading schemes.
 - **Results**: Enter and manage student marks.
 - **Report Cards**: Configure and generate student report cards.
+- **Report Delivery Exclusions**: During report approval/signoff, mark selected learners as **Data Issue** so their reports are not sent to parents until corrected.
 
 #### Financial Management
 - **Fees**: Set up fee structures and student fee assignments.
@@ -121,6 +122,13 @@ Teachers can manage their classes, enter marks, track attendance, and communicat
 #### Academic Tasks
 - **Marks/Results**: Enter and edit student marks for assessments.
 - **Homework**: Assign and track homework submissions.
+- **Assignments**: Create graded assignments with deadlines, late-submission rules, and file attachments.
+- **Past Exam Papers**: Upload curriculum/level papers for student practice.
+- **Generated Tests**:
+  - Generate draft tests from uploaded past papers.
+  - Edit questions, marks, schedules, and report-card mapping.
+  - Publish tests to students.
+  - Grade long answers and finalize attempts/results.
 - **Attendance**: Mark daily class attendance.
 - **Subject Feedback**: Provide comments and effort grades.
 
@@ -157,6 +165,9 @@ Students can view their grades, timetable, homework, and access boarding feature
 - **Timetable**: View your class schedule.
 - **Marks/Results**: Check your grades and report cards.
 - **Homework**: View assignments and submit work.
+- **Assignments**: Submit assignment text/files and track grading/feedback.
+- **Past Exam Papers**: Download subject papers available for your level.
+- **Tests**: Start and complete timed generated tests; auto-submit when time expires.
 - **Attendance**: Monitor your attendance record.
 
 #### Activities
@@ -215,6 +226,18 @@ Parents can monitor their children's progress, pay fees, and communicate with te
 - Review your children's grades and attendance.
 - Pay fees promptly to avoid penalties.
 - Schedule conferences to discuss progress.
+
+## Superadmin Role (Platform Owner)
+
+### Overview
+Superadmin manages all schools on the platform, security posture, and platform-wide auditability.
+
+### Key Features
+- **Platform Dashboard**: View totals (schools, users, learners) plus financial and system health metrics.
+- **School Directory**: Create schools, suspend/activate, reset admin passwords, and view setup completeness.
+- **Locked Accounts Manager**: Review and unlock locked user/admin accounts across all schools.
+- **Platform Audit Logs**: Filter actions by school, user, date, action, and model; export to CSV.
+- **Assessment Activity Widget**: Track recent generated-test actions (`GeneratedTest` / `TestAttempt`) and jump directly into filtered audit logs.
 
 ## HR Role
 
@@ -375,4 +398,4 @@ Librarians manage the school library, including books and loans.
 - **Permission Errors**: Contact admin if you can't access required features.
 - **Data Not Updating**: Refresh the page or log out and back in.
 
-For additional support, refer to your school's IT department or system administrator.
+For additional support, refer to your school administrator.

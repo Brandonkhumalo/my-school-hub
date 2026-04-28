@@ -15,6 +15,7 @@ export default function CreateSchool() {
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
+  const [lastSubmittedPassword, setLastSubmittedPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -24,6 +25,7 @@ export default function CreateSchool() {
     setLoading(true);
 
     try {
+      setLastSubmittedPassword(formData.admin_password);
       const token = localStorage.getItem("tishanyq_token");
       const API_BASE_URL = "/api/v1";
       const response = await fetch(`${API_BASE_URL}/auth/superadmin/create-school/`, {
@@ -83,7 +85,7 @@ export default function CreateSchool() {
               <p><strong>School Code:</strong> <span className="font-mono bg-gray-100 px-2 py-1 rounded">{success.school_code}</span></p>
               <p><strong>Admin Username:</strong> <span className="font-mono bg-gray-100 px-2 py-1 rounded">{success.admin_username}</span></p>
               <p><strong>Admin Email:</strong> {success.admin_email}</p>
-              <p><strong>Admin Password:</strong> <span className="font-mono bg-yellow-100 px-2 py-1 rounded text-yellow-800">{success.admin_password}</span></p>
+              <p><strong>Admin Password:</strong> <span className="font-mono bg-yellow-100 px-2 py-1 rounded text-yellow-800">{lastSubmittedPassword}</span></p>
             </div>
             <p className="mt-4 text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
               <i className="fas fa-exclamation-triangle mr-2"></i>

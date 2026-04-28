@@ -289,6 +289,22 @@ class SchoolSettings(models.Model):
     timezone = models.CharField(max_length=50, default='Africa/Harare')
     max_students_per_class = models.IntegerField(default=40)
     late_fee_percentage = models.FloatField(default=0.0, help_text='Percentage charged on overdue fees')
+
+    # Late assignment-submission policy (school-wide)
+    LATE_PENALTY_MODE_CHOICES = [
+        ('none', 'No automatic penalty (teacher decides)'),
+        ('flat', 'Flat percentage off late submissions'),
+        ('per_day', 'Percentage off per day late'),
+    ]
+    late_assignment_penalty_mode = models.CharField(
+        max_length=10, choices=LATE_PENALTY_MODE_CHOICES, default='none',
+        help_text='How late assignment submissions are penalised when allow_late is on'
+    )
+    late_assignment_penalty_percent = models.FloatField(
+        default=0.0,
+        help_text='Penalty percentage applied to late submissions (0–100). Used with mode flat or per_day.'
+    )
+
     paynow_integration_id = models.CharField(max_length=100, blank=True, help_text='PayNow Zimbabwe integration ID for this school')
     paynow_integration_key = models.CharField(max_length=255, blank=True, help_text='PayNow Zimbabwe integration key for this school')
 
@@ -324,6 +340,11 @@ class SchoolSettings(models.Model):
     )
     enforce_2fa_started_at = models.DateTimeField(null=True, blank=True, help_text='When 2FA enforcement was activated')
     enforce_2fa_grace_period_days = models.IntegerField(default=14, help_text='Days users have to set up 2FA before enforcement')
+    attendance_period_tracking_start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Date from which period-level bunk detection rules apply.',
+    )
 
     def __str__(self):
         return f"Settings for {self.school.name}"

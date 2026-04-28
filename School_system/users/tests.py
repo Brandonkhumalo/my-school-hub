@@ -427,6 +427,245 @@ class SuperadminRegisterSecurityTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(CustomUser.objects.filter(email="superadmin@testschool.com", role="superadmin").exists())
 
+    @patch.dict("os.environ", {"SUPERADMIN_SECRET_KEY": "TOP_SECRET"}, clear=True)
+    def test_register_forbidden_after_first_superadmin_exists(self):
+        CustomUser.objects.create_user(
+            username="existing_super",
+            email="existing_super@testschool.com",
+            password="SuperPass123!",
+            first_name="Existing",
+            last_name="Root",
+            role="superadmin",
+        )
+        response = self.client.post(self.url, self.payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SuperadminEndpointsTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Super School", code="SCHSUP01")
+        self.superadmin = CustomUser.objects.create_user(
+            username="root_super",
+            email="root_super@testschool.com",
+            password="RootPass123!",
+            first_name="Root",
+            last_name="Admin",
+            role="superadmin",
+        )
+        self.superadmin_login_url = "/api/v1/auth/superadmin/login/"
+        self.client.force_authenticate(user=self.superadmin)
+
+    def test_superadmin_login_locks_after_repeated_failures(self):
+        for _ in range(5):
+            response = self.client.post(self.superadmin_login_url, {
+                "email": "root_super@testschool.com",
+                "password": "wrong-password",
+            }, format="json")
+            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        response = self.client.post(self.superadmin_login_url, {
+            "email": "root_super@testschool.com",
+            "password": "RootPass123!",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_423_LOCKED)
+
+        self.superadmin.refresh_from_db()
+        self.assertIsNotNone(self.superadmin.account_locked_until)
+        self.assertGreaterEqual(self.superadmin.failed_login_attempts, 5)
+
+    def test_create_school_response_does_not_include_admin_password(self):
+        payload = {
+            "school_name": "No Password Academy",
+            "school_location": "Harare",
+            "school_type": "secondary",
+            "accommodation_type": "day",
+            "curriculum": "zimsec",
+            "admin_email": "admin.nopass@example.com",
+            "admin_phone": "+263771234500",
+            "admin_password": "TempPass123!",
+        }
+        response = self.client.post("/api/v1/auth/superadmin/create-school/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertNotIn("admin_password", response.data)
+
+    def test_superadmin_stats_returns_extended_payload(self):
+        response = self.client.get("/api/v1/auth/superadmin/stats/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expected_keys = [
+            "schools", "admins", "total_students", "total_teachers", "total_parents",
+            "schools_active", "schools_suspended", "schools_by_type", "schools_by_curriculum",
+            "schools_created_monthly", "platform_revenue_collected", "platform_outstanding_fees",
+            "locked_admin_accounts",
+        ]
+        for key in expected_keys:
+            self.assertIn(key, response.data)
+
+    def test_superadmin_audit_logs_and_export_available(self):
+        AuditLog.objects.create(
+            user=self.superadmin, school=None, action="LOGIN", model_name="CustomUser", object_repr="seed"
+        )
+        response = self.client.get("/api/v1/auth/superadmin/audit-logs/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+
+        export_response = self.client.get("/api/v1/auth/superadmin/audit-logs/export/")
+        self.assertEqual(export_response.status_code, status.HTTP_200_OK)
+        self.assertIn("text/csv", export_response["Content-Type"])
+        csv_text = export_response.content.decode("utf-8")
+        self.assertIn("seed", csv_text)
+
+    def test_superadmin_audit_export_honors_filters(self):
+        school_two = make_school(name="Second School", code="SCHSUP02")
+        user_two = make_user(self.school, "audit_user_two", role="admin", email="audit.two@example.com")
+        other_user = make_user(school_two, "audit_user_other", role="admin", email="audit.other@example.com")
+
+        first_log = AuditLog.objects.create(
+            user=user_two,
+            school=self.school,
+            action="UPDATE",
+            model_name="School",
+            object_repr="target-log",
+        )
+        AuditLog.objects.create(
+            user=other_user,
+            school=school_two,
+            action="DELETE",
+            model_name="School",
+            object_repr="exclude-log",
+        )
+
+        from_date = first_log.timestamp.date().isoformat()
+        to_date = first_log.timestamp.date().isoformat()
+        url = (
+            "/api/v1/auth/superadmin/audit-logs/export/"
+            f"?action=UPDATE&school_id={self.school.id}&user_id={user_two.id}"
+            f"&user_q={user_two.email}&school_q=Super&date_from={from_date}&date_to={to_date}"
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.content.decode("utf-8")
+        self.assertIn("target-log", body)
+        self.assertNotIn("exclude-log", body)
+
+    def test_superadmin_audit_logs_pagination_and_search(self):
+        for idx in range(3):
+            AuditLog.objects.create(
+                user=self.superadmin,
+                school=self.school,
+                action="UPDATE",
+                model_name="School",
+                object_repr=f"Updated School {idx}",
+            )
+        response = self.client.get("/api/v1/auth/superadmin/audit-logs/?page=1&page_size=2&school_q=Super&user_q=root")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get("page_size"), 2)
+        self.assertEqual(response.data.get("page"), 1)
+        self.assertTrue(response.data.get("total", 0) >= 3)
+        self.assertEqual(len(response.data.get("results", [])), 2)
+
+    def test_superadmin_locked_accounts_and_unlock(self):
+        locked_user = make_user(self.school, "locked_u", role="admin")
+        from django.utils import timezone
+        import datetime
+        locked_user.failed_login_attempts = 6
+        locked_user.account_locked_until = timezone.now() + datetime.timedelta(minutes=5)
+        locked_user.save(update_fields=["failed_login_attempts", "account_locked_until"])
+
+        response = self.client.get("/api/v1/auth/superadmin/locked-accounts/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(response.data.get("total", 0), 1)
+
+        unlock_response = self.client.post(f"/api/v1/auth/superadmin/locked-accounts/{locked_user.id}/unlock/", {}, format="json")
+        self.assertEqual(unlock_response.status_code, status.HTTP_200_OK)
+        locked_user.refresh_from_db()
+        self.assertEqual(locked_user.failed_login_attempts, 0)
+        self.assertIsNone(locked_user.account_locked_until)
+
+    def test_superadmin_locked_accounts_pagination_and_query(self):
+        for idx in range(3):
+            user = make_user(self.school, f"locked_batch_{idx}", role="teacher", email=f"locked{idx}@example.com")
+            from django.utils import timezone
+            import datetime
+            user.failed_login_attempts = 4
+            user.account_locked_until = timezone.now() + datetime.timedelta(minutes=15)
+            user.save(update_fields=["failed_login_attempts", "account_locked_until"])
+        response = self.client.get("/api/v1/auth/superadmin/locked-accounts/?page=1&page_size=2&q=locked")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get("page_size"), 2)
+        self.assertEqual(len(response.data.get("results", [])), 2)
+
+    def test_superadmin_system_health_endpoint(self):
+        response = self.client.get("/api/v1/auth/superadmin/system-health/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("database_ok", response.data)
+        self.assertIn("python_version", response.data)
+        self.assertIn("django_version", response.data)
+
+    def test_superadmin_school_detail_panel_payload(self):
+        from academics.models import Class, Parent, ParentChildLink, Student
+        from django.utils import timezone
+        import datetime
+
+        teacher = make_user(self.school, "detail_teacher", role="teacher")
+        parent_user = make_user(self.school, "detail_parent", role="parent")
+        parent = Parent.objects.create(user=parent_user)
+        student_user = make_user(self.school, "detail_student", role="student")
+        class_obj = Class.objects.create(
+            name="Form Detail A",
+            grade_level=1,
+            academic_year="2026",
+            class_teacher=teacher,
+            school=self.school,
+        )
+        student = Student.objects.create(
+            user=student_user,
+            student_class=class_obj,
+            admission_date=date.today(),
+        )
+        ParentChildLink.objects.create(parent=parent, student=student, is_confirmed=True)
+        parent.children.add(student)
+        parent.schools.add(self.school)
+
+        self.school.logo = "https://example.com/logo.png"
+        self.school.save(update_fields=["logo"])
+
+        locked_user = make_user(self.school, "detail_locked", role="admin")
+        locked_user.failed_login_attempts = 5
+        locked_user.account_locked_until = timezone.now() + datetime.timedelta(minutes=10)
+        locked_user.save(update_fields=["failed_login_attempts", "account_locked_until"])
+
+        AuditLog.objects.create(
+            user=self.superadmin,
+            school=self.school,
+            action="UPDATE",
+            model_name="School",
+            object_repr="Detail panel activity",
+        )
+
+        response = self.client.get(f"/api/v1/auth/superadmin/schools/{self.school.id}/detail/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.assertIn("counts", response.data)
+        self.assertIn("setup", response.data)
+        self.assertIn("locked_accounts", response.data)
+        self.assertIn("recent_audit_logs", response.data)
+
+        counts = response.data["counts"]
+        self.assertGreaterEqual(counts.get("students", 0), 1)
+        self.assertGreaterEqual(counts.get("teachers", 0), 1)
+        self.assertGreaterEqual(counts.get("parents", 0), 1)
+
+        setup = response.data["setup"]
+        self.assertTrue(setup.get("has_logo"))
+        self.assertTrue(setup.get("has_classes"))
+        self.assertIn("has_academic_period", setup)
+        self.assertIn("two_factor_enforced", setup)
+
+        locked_ids = [u["id"] for u in response.data["locked_accounts"]]
+        self.assertIn(locked_user.id, locked_ids)
+        self.assertGreaterEqual(len(response.data["recent_audit_logs"]), 1)
+
 
 # ---------------------------------------------------------------------------
 # API tests — Logout

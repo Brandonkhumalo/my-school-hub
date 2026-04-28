@@ -18,6 +18,37 @@ from .serializers import (
 )
 
 
+def _parse_attachment_rows(raw_items):
+    import json
+    if isinstance(raw_items, str):
+        try:
+            raw_items = json.loads(raw_items)
+        except Exception:
+            raw_items = []
+    rows = []
+    if not isinstance(raw_items, list):
+        return rows
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        file_key = str(item.get('file_key') or '').strip()
+        if not file_key:
+            continue
+        rows.append({
+            'file_key': file_key,
+            'original_filename': str(item.get('original_filename') or file_key).strip()[:255],
+            'mime_type': str(item.get('mime_type') or '').strip()[:100],
+            'size_bytes': int(item.get('size_bytes') or 0),
+        })
+    return rows
+
+
+def _level_kind_from_school_type(school_type):
+    if school_type == 'primary':
+        return 'grade'
+    return 'form'
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def student_profile(request):
@@ -448,8 +479,13 @@ def student_attendance(request):
             'id': r.id,
             'date': r.date.strftime('%Y-%m-%d'),
             'subject': r.subject.name,
+            'period_number': r.period_number,
+            'period_label': r.period_label,
             'status': r.status,
             'remarks': r.remarks or '',
+            'marked_with_permission': r.marked_with_permission,
+            'bunk_flag': r.bunk_flag,
+            'bunk_reason': r.bunk_reason,
         }
         for r in subj_qs[:100]
     ]
@@ -478,6 +514,253 @@ def student_attendance(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_assignments(request):
+    """List assignments for the logged-in student's class."""
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    if not student.student_class_id:
+        return Response({'assignments': []})
+
+    from .models import Assignment, AssignmentSubmission, AssignmentSubmissionAttachment
+    assignments = Assignment.objects.filter(
+        assigned_class_id=student.student_class_id,
+        school=request.user.school,
+    ).select_related('subject', 'teacher__user').prefetch_related('attachments').order_by('-date_created')
+
+    submission_map = {
+        s.assignment_id: s for s in AssignmentSubmission.objects.filter(
+            assignment__in=assignments, student=student
+        ).prefetch_related('attachments')
+    }
+    data = []
+    for a in assignments:
+        sub = submission_map.get(a.id)
+        data.append({
+            'id': a.id,
+            'title': a.title,
+            'description': a.description,
+            'subject_id': a.subject_id,
+            'subject_name': a.subject.name,
+            'teacher_name': a.teacher.user.full_name,
+            'deadline': a.deadline.isoformat(),
+            'max_score': a.max_score,
+            'allow_late': a.allow_late,
+            'attachments': [
+                {
+                    'id': att.id,
+                    'file_key': att.file_key,
+                    'original_filename': att.original_filename,
+                    'mime_type': att.mime_type,
+                    'size_bytes': att.size_bytes,
+                }
+                for att in a.attachments.all()
+            ],
+            'submission': None if not sub else {
+                'id': sub.id,
+                'status': sub.status,
+                'submitted_at': sub.submitted_at.isoformat(),
+                'grade': sub.grade,
+                'feedback': sub.feedback,
+                'is_late': sub.is_late,
+                'text_submission': sub.text_submission,
+                'file_url': sub.submitted_file.url if sub.submitted_file else None,
+                'attachments': [
+                    {
+                        'id': att.id,
+                        'file_key': att.file_key,
+                        'original_filename': att.original_filename,
+                        'mime_type': att.mime_type,
+                        'size_bytes': att.size_bytes,
+                    }
+                    for att in sub.attachments.all()
+                ],
+            },
+        })
+    return Response({'assignments': data})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_tests(request):
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+    if not student.student_class_id:
+        return Response({'tests': []})
+
+    from .models import GeneratedTest, TestAttempt, Result
+    now = timezone.now()
+    level_kind = _level_kind_from_school_type(getattr(request.user.school, 'school_type', 'secondary'))
+    subject_ids = list(
+        Result.objects.filter(student=student).values_list('subject_id', flat=True).distinct()
+    )
+    qs = GeneratedTest.objects.filter(
+        school=request.user.school,
+        status='published',
+        level_kind=level_kind,
+        level_number=student.student_class.grade_level,
+    ).select_related('subject')
+    if subject_ids:
+        qs = qs.filter(subject_id__in=subject_ids)
+    else:
+        qs = qs.none()
+    tests = []
+    attempts = {
+        a.test_id: a for a in TestAttempt.objects.filter(test__in=qs, student=student)
+    }
+    for t in qs:
+        if t.schedule_mode == 'scheduled':
+            if t.available_from and now < t.available_from:
+                continue
+            if t.available_until and now > t.available_until:
+                continue
+        a = attempts.get(t.id)
+        tests.append({
+            'id': t.id,
+            'title': t.title,
+            'subject_name': t.subject.name,
+            'duration_minutes': t.duration_minutes,
+            'total_marks': t.total_marks,
+            'academic_year': t.academic_year,
+            'academic_term': t.academic_term,
+            'status': a.status if a else 'not_started',
+        })
+    return Response({'tests': tests})
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def student_start_test(request, test_id):
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        student = request.user.student
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from .models import GeneratedTest, TestAttempt
+    try:
+        test = GeneratedTest.objects.get(id=test_id, school=request.user.school, status='published')
+    except GeneratedTest.DoesNotExist:
+        return Response({'error': 'Test not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    attempt, _ = TestAttempt.objects.get_or_create(
+        test=test,
+        student=student,
+        defaults={'status': 'in_progress'},
+    )
+    if attempt.status == 'submitted':
+        return Response({'error': 'This test is already submitted.'}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({
+        'attempt_id': attempt.id,
+        'status': attempt.status,
+        'started_at': attempt.started_at.isoformat() if attempt.started_at else None,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_attempt_detail(request, attempt_id):
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import TestAttempt
+    try:
+        attempt = TestAttempt.objects.select_related('test').get(
+            id=attempt_id,
+            student__user=request.user,
+            test__school=request.user.school,
+        )
+    except TestAttempt.DoesNotExist:
+        return Response({'error': 'Attempt not found'}, status=status.HTTP_404_NOT_FOUND)
+    elapsed = (timezone.now() - attempt.started_at).total_seconds() if attempt.started_at else 0
+    remaining = max(0, int((attempt.test.duration_minutes * 60) - elapsed))
+    return Response({
+        'attempt_id': attempt.id,
+        'test_id': attempt.test_id,
+        'title': attempt.test.title,
+        'remaining_seconds': remaining,
+        'status': attempt.status,
+        'questions': [
+            {
+                'id': q.id,
+                'order': q.order,
+                'prompt_text': q.prompt_text,
+                'marks': q.marks,
+                'question_type': q.question_type,
+                'options': q.options,
+            }
+            for q in attempt.test.questions.all().order_by('order', 'id')
+        ],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def student_submit_attempt(request, attempt_id):
+    if request.user.role != 'student':
+        return Response({'error': 'Only students can access this endpoint'}, status=status.HTTP_403_FORBIDDEN)
+    from .models import TestAttempt, TestAnswer
+    try:
+        attempt = TestAttempt.objects.select_related('test').get(
+            id=attempt_id,
+            student__user=request.user,
+            test__school=request.user.school,
+        )
+    except TestAttempt.DoesNotExist:
+        return Response({'error': 'Attempt not found'}, status=status.HTTP_404_NOT_FOUND)
+    if attempt.status == 'submitted':
+        return Response({'error': 'Attempt already submitted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    elapsed = (timezone.now() - attempt.started_at).total_seconds() if attempt.started_at else 0
+    if elapsed > (attempt.test.duration_minutes * 60):
+        # allow submit but force as expired; still record answers
+        pass
+    answers = request.data.get('answers') or []
+    question_map = {q.id: q for q in attempt.test.questions.all()}
+    auto_score = 0.0
+    for row in answers:
+        if not isinstance(row, dict):
+            continue
+        qid = row.get('question_id')
+        if qid not in question_map:
+            continue
+        question = question_map[qid]
+        answer_text = str(row.get('answer_text') or '').strip()
+        awarded = 0.0
+        if question.question_type == 'mcq':
+            if answer_text and answer_text.lower() == (question.correct_answer or '').strip().lower():
+                awarded = float(question.marks or 0)
+        elif question.question_type == 'short':
+            if answer_text and answer_text.lower() == (question.correct_answer or '').strip().lower():
+                awarded = float(question.marks or 0)
+        auto_score += awarded
+        TestAnswer.objects.update_or_create(
+            attempt=attempt,
+            question_id=qid,
+            defaults={'answer_text': answer_text, 'awarded_marks': awarded},
+        )
+    attempt.auto_score = round(auto_score, 4)
+    attempt.final_score = round(auto_score + float(attempt.manual_score or 0), 4)
+    attempt.submitted_at = timezone.now()
+    attempt.status = 'submitted'
+    attempt.save(update_fields=['auto_score', 'final_score', 'submitted_at', 'status'])
+    return Response({
+        'attempt_id': attempt.id,
+        'status': attempt.status,
+        'auto_score': attempt.auto_score,
+        'final_score': attempt.final_score,
+    })
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([permissions.IsAuthenticated])
 def student_assignment_submission(request, assignment_id):
@@ -496,7 +779,11 @@ def student_assignment_submission(request, assignment_id):
     from .models import Assignment, AssignmentSubmission
 
     try:
-        assignment = Assignment.objects.get(id=assignment_id, assigned_class=student.student_class)
+        assignment = Assignment.objects.get(
+            id=assignment_id,
+            assigned_class=student.student_class,
+            school=request.user.school,
+        )
     except Assignment.DoesNotExist:
         return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -513,17 +800,31 @@ def student_assignment_submission(request, assignment_id):
             'grade': submission.grade,
             'feedback': submission.feedback,
             'file_url': submission.submitted_file.url if submission.submitted_file else None,
+            'is_late': submission.is_late,
+            'attachments': [
+                {
+                    'id': att.id,
+                    'file_key': att.file_key,
+                    'original_filename': att.original_filename,
+                    'mime_type': att.mime_type,
+                    'size_bytes': att.size_bytes,
+                }
+                for att in submission.attachments.all()
+            ],
         })
 
     # POST
     from django.utils import timezone as tz
     now = tz.now()
     is_late = now > assignment.deadline
+    if is_late and not assignment.allow_late:
+        return Response({'error': 'Late submissions are disabled for this assignment.'}, status=status.HTTP_400_BAD_REQUEST)
     text_submission = request.data.get('text_submission', '')
     submitted_file = request.FILES.get('file')
+    attachment_rows = _parse_attachment_rows(request.data.get('attachments') or request.data.get('file_keys') or [])
 
-    if not text_submission and not submitted_file:
-        return Response({'error': 'Provide text_submission or a file.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not text_submission and not submitted_file and not attachment_rows:
+        return Response({'error': 'Provide text_submission, a file, or attachments.'}, status=status.HTTP_400_BAD_REQUEST)
 
     submission, created = AssignmentSubmission.objects.get_or_create(
         assignment=assignment, student=student,
@@ -531,6 +832,7 @@ def student_assignment_submission(request, assignment_id):
             'text_submission': text_submission,
             'submitted_file': submitted_file,
             'status': 'late' if is_late else 'submitted',
+            'is_late': is_late,
         }
     )
     if not created:
@@ -539,11 +841,16 @@ def student_assignment_submission(request, assignment_id):
         if submitted_file:
             submission.submitted_file = submitted_file
         submission.status = 'late' if is_late else 'submitted'
+        submission.is_late = is_late
         submission.submitted_at = now
-        submission.save()
+        submission.save(update_fields=['text_submission', 'submitted_file', 'status', 'is_late', 'submitted_at'])
+        AssignmentSubmissionAttachment.objects.filter(submission=submission).delete()
+    for row in attachment_rows:
+        AssignmentSubmissionAttachment.objects.create(submission=submission, **row)
 
     return Response({
         'message': 'Submitted successfully.',
         'status': submission.status,
+        'is_late': submission.is_late,
         'submitted_at': submission.submitted_at.isoformat(),
     }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

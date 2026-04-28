@@ -6,6 +6,7 @@ require (
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/joho/godotenv v1.5.1
+	github.com/ledongthuc/pdf v0.0.0-20240201131950-da5b75280b06
 )
 
 require (

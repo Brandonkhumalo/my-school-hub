@@ -13,20 +13,48 @@ export default function AdminMessages() {
   const [search, setSearch] = useState("");
   const [threadsError, setThreadsError] = useState("");
   const [threadError, setThreadError] = useState("");
+  const [stats, setStats] = useState({
+    total_messages_considered: 0,
+    excluded_not_teacher_parent: 0,
+    excluded_school_mismatch: 0,
+    returned_threads: 0,
+  });
+
+  const loadThreads = async () => {
+    try {
+      setLoadingThreads(true);
+      setThreadsError("");
+      const data = await apiService.adminListConversations();
+      const parsedThreads = Array.isArray(data) ? data : (data?.threads || []);
+      setThreads(parsedThreads);
+      if (!Array.isArray(data) && data?.stats) {
+        setStats({
+          total_messages_considered: data.stats.total_messages_considered || 0,
+          excluded_not_teacher_parent: data.stats.excluded_not_teacher_parent || 0,
+          excluded_school_mismatch: data.stats.excluded_school_mismatch || 0,
+          returned_threads: data.stats.returned_threads || parsedThreads.length,
+        });
+      } else {
+        setStats((prev) => ({ ...prev, returned_threads: parsedThreads.length }));
+      }
+    } catch (err) {
+      console.error("Error loading conversations:", err);
+      setThreadsError(err?.message || "Failed to load conversations.");
+      setThreads([]);
+      setStats({
+        total_messages_considered: 0,
+        excluded_not_teacher_parent: 0,
+        excluded_school_mismatch: 0,
+        returned_threads: 0,
+      });
+    } finally {
+      setLoadingThreads(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
-      try {
-        setLoadingThreads(true);
-        setThreadsError("");
-        const data = await apiService.adminListConversations();
-        setThreads(data || []);
-      } catch (err) {
-        console.error("Error loading conversations:", err);
-        setThreadsError(err?.message || "Failed to load conversations.");
-      } finally {
-        setLoadingThreads(false);
-      }
+      await loadThreads();
     })();
   }, []);
 
@@ -65,6 +93,24 @@ export default function AdminMessages() {
             Phone numbers and email addresses are automatically blocked from being sent.
           </p>
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-white rounded-lg shadow-md p-3">
+            <p className="text-xs text-gray-500">Visible Conversations</p>
+            <p className="text-xl font-semibold text-gray-800">{stats.returned_threads}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-3">
+            <p className="text-xs text-gray-500">Messages Considered</p>
+            <p className="text-xl font-semibold text-gray-800">{stats.total_messages_considered}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-3">
+            <p className="text-xs text-gray-500">Excluded: Role Mismatch</p>
+            <p className="text-xl font-semibold text-gray-800">{stats.excluded_not_teacher_parent}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-3">
+            <p className="text-xs text-gray-500">Excluded: School Mismatch</p>
+            <p className="text-xl font-semibold text-gray-800">{stats.excluded_school_mismatch}</p>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Threads list */}
@@ -82,13 +128,19 @@ export default function AdminMessages() {
               <div className="space-y-2 max-h-[70vh] overflow-y-auto">
                 {threadsError && (
                   <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-                    {threadsError}
+                    <div>{threadsError}</div>
+                    <button
+                      onClick={loadThreads}
+                      className="mt-2 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
                 {filtered.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <i className="fas fa-inbox text-3xl mb-2"></i>
-                    <p>No conversations found</p>
+                    <p>No parent-teacher conversations found for this school.</p>
                   </div>
                 )}
                 {filtered.map((t) => {
@@ -146,7 +198,13 @@ export default function AdminMessages() {
               <>
                 {threadError && (
                   <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3 mb-3">
-                    {threadError}
+                    <div>{threadError}</div>
+                    <button
+                      onClick={() => selected && openThread(selected)}
+                      className="mt-2 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
                 <div className="border-b pb-3 mb-3">

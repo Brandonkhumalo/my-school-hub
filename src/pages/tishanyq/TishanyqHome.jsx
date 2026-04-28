@@ -1,127 +1,160 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
+const API_BASE_URL = "/api/v1";
 
 export default function TishanyqHome() {
-  const [stats, setStats] = useState({ schools: 0, admins: 0 });
+  const [stats, setStats] = useState(null);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats();
+    (async () => {
+      const token = localStorage.getItem("tishanyq_token");
+      try {
+        const [statsRes, healthRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/auth/superadmin/stats/`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_BASE_URL}/auth/superadmin/system-health/`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        if (statsRes.ok) setStats(await statsRes.json());
+        if (healthRes.ok) setHealth(await healthRes.json());
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const fetchStats = async () => {
-    try {
-      const token = localStorage.getItem("tishanyq_token");
-      const API_BASE_URL = "/api/v1";
-      const response = await fetch(`${API_BASE_URL}/auth/superadmin/stats/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const kpi = [
+    ["Schools", stats?.schools],
+    ["Admins", stats?.admins],
+    ["Students", stats?.total_students],
+    ["Teachers", stats?.total_teachers],
+    ["Parents", stats?.total_parents],
+    ["Locked Admins", stats?.locked_admin_accounts],
+  ];
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Welcome to Tishanyq Admin</h1>
-        <p className="text-gray-600 mt-2">Manage schools and their administrators from here</p>
+    <div className="p-8 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-800">Platform Overview</h1>
+        <p className="text-gray-600 mt-1">Real-time visibility across all schools and security posture.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">Total Schools</p>
-              <p className="text-3xl font-bold text-gray-800">{loading ? "..." : stats.schools}</p>
-            </div>
-            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
-              <i className="fas fa-school text-blue-600 text-xl"></i>
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {kpi.map(([label, value]) => (
+          <div key={label} className="bg-white rounded-xl shadow p-4">
+            <p className="text-xs text-gray-500">{label}</p>
+            <p className="text-2xl font-semibold text-gray-800">{loading ? "..." : value ?? 0}</p>
           </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">School Admins</p>
-              <p className="text-3xl font-bold text-gray-800">{loading ? "..." : stats.admins}</p>
-            </div>
-            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
-              <i className="fas fa-user-shield text-green-600 text-xl"></i>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">Active Sessions</p>
-              <p className="text-3xl font-bold text-gray-800">1</p>
-            </div>
-            <div className="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
-              <i className="fas fa-users text-yellow-600 text-xl"></i>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            <i className="fas fa-bolt text-yellow-500 mr-2"></i>Quick Actions
-          </h2>
-          <div className="space-y-3">
-            <a
-              href="/tishanyq/admin/create-school"
-              className="flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-            >
-              <span className="font-medium text-blue-700">
-                <i className="fas fa-plus mr-2"></i>Create New School
-              </span>
-              <i className="fas fa-chevron-right text-blue-500"></i>
-            </a>
-            <a
-              href="/tishanyq/admin/schools"
-              className="flex items-center justify-between p-4 bg-green-50 hover:bg-green-100 rounded-lg transition"
-            >
-              <span className="font-medium text-green-700">
-                <i className="fas fa-list mr-2"></i>View All Schools
-              </span>
-              <i className="fas fa-chevron-right text-green-500"></i>
-            </a>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow p-5">
+          <h2 className="font-semibold text-gray-800 mb-3">School Distribution</h2>
+          <div className="space-y-2 text-sm">
+            {(stats?.schools_by_type || []).map((item) => (
+              <div key={`type-${item.school_type}`} className="flex justify-between border-b pb-2">
+                <span className="text-gray-600">{item.school_type}</span>
+                <span className="font-medium">{item.count}</span>
+              </div>
+            ))}
+          </div>
+          <h3 className="font-semibold text-gray-800 mt-4 mb-3">Curriculum</h3>
+          <div className="space-y-2 text-sm">
+            {(stats?.schools_by_curriculum || []).map((item) => (
+              <div key={`cur-${item.curriculum}`} className="flex justify-between border-b pb-2">
+                <span className="text-gray-600">{item.curriculum}</span>
+                <span className="font-medium">{item.count}</span>
+              </div>
+            ))}
+          </div>
+          <h3 className="font-semibold text-gray-800 mt-4 mb-3">Monthly Growth</h3>
+          <div className="space-y-2">
+            {(stats?.schools_created_monthly || []).slice(-6).map((row) => {
+              const max = Math.max(...(stats?.schools_created_monthly || [{ count: 1 }]).map((x) => x.count || 0), 1);
+              const width = `${Math.max(8, Math.round(((row.count || 0) / max) * 100))}%`;
+              return (
+                <div key={row.month} className="text-xs">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-600">{row.month}</span>
+                    <span className="font-medium">{row.count}</span>
+                  </div>
+                  <div className="h-2 rounded bg-gray-100">
+                    <div className="h-2 rounded bg-blue-500" style={{ width }}></div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            <i className="fas fa-info-circle text-blue-500 mr-2"></i>System Info
-          </h2>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between py-2 border-b border-gray-100">
-              <span className="text-gray-600">Platform</span>
-              <span className="font-medium text-gray-800">MySchoolHub</span>
+        <div className="bg-white rounded-xl shadow p-5">
+          <h2 className="font-semibold text-gray-800 mb-3">System Health</h2>
+          <div className="space-y-2 text-sm">
+            <HealthRow label="Database" ok={!!health?.database_ok} />
+            <HealthRow label="Celery Configured" ok={!!health?.celery_configured} />
+            <HealthRow label="Superadmin Secret Set" ok={!!health?.superadmin_secret_key_set} />
+            <HealthRow label="DEBUG Off" ok={health ? !health.debug : false} />
+            <div className="flex justify-between border-b pb-2">
+              <span className="text-gray-600">Python</span>
+              <span className="font-medium">{health?.python_version || "-"}</span>
             </div>
-            <div className="flex justify-between py-2 border-b border-gray-100">
-              <span className="text-gray-600">Developer</span>
-              <span className="font-medium text-gray-800">Tishanyq Digital</span>
-            </div>
-            <div className="flex justify-between py-2 border-b border-gray-100">
-              <span className="text-gray-600">Website</span>
-              <span className="font-medium text-blue-600">tishanyq.co.zw</span>
-            </div>
-            <div className="flex justify-between py-2">
-              <span className="text-gray-600">Version</span>
-              <span className="font-medium text-gray-800">1.0.0</span>
+            <div className="flex justify-between border-b pb-2">
+              <span className="text-gray-600">Blacklisted Tokens</span>
+              <span className="font-medium">{health?.blacklisted_tokens ?? 0}</span>
             </div>
           </div>
         </div>
       </div>
+
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="font-semibold text-gray-800 mb-3">Assessment Activity</h2>
+        <p className="text-xs text-gray-500 mb-3">Recent generated-test lifecycle actions across schools.</p>
+        {(stats?.recent_generated_test_activity || []).length === 0 ? (
+          <p className="text-sm text-gray-500">No generated-test activity logged yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {(stats?.recent_generated_test_activity || []).map((item) => (
+              <div key={item.id} className="text-xs border-b pb-2">
+                <div className="flex justify-between gap-2">
+                  <span className="font-medium text-gray-800">
+                    {item.action} · {item.model_name}
+                  </span>
+                  <span className="text-gray-500">
+                    {item.timestamp ? new Date(item.timestamp).toLocaleString() : "-"}
+                  </span>
+                </div>
+                <div className="text-gray-600">
+                  {item.object_repr || `Object #${item.object_id || "?"}`}
+                </div>
+                <div className="text-gray-500">
+                  School: {item.school_name || "Platform"} · User: {item.user_email || "system"}
+                </div>
+                <div className="mt-1">
+                  <Link
+                    to={`/tishanyq/admin/audit-logs?model_name=${encodeURIComponent(item.model_name)}&action=${encodeURIComponent(item.action)}`}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    View in audit logs
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HealthRow({ label, ok }) {
+  return (
+    <div className="flex justify-between border-b pb-2">
+      <span className="text-gray-600">{label}</span>
+      <span className={`font-medium ${ok ? "text-green-700" : "text-red-700"}`}>{ok ? "OK" : "Check"}</span>
     </div>
   );
 }

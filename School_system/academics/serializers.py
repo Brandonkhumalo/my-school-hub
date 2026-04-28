@@ -12,7 +12,7 @@ from .models import (
     SportsHouse, MatchSquadEntry, TrainingAttendance, HousePointEntry,
 )
 from users.serializers import UserSerializer
-from .utils import generate_unique_student_number
+from .utils import generate_unique_student_number, MAX_PARENTS_PER_CHILD
 from users.models import CustomUser
 from django.db import transaction
 from django.utils import timezone
@@ -753,14 +753,14 @@ class CreateParentSerializer(serializers.Serializer):
             over_limit = []
             for student in students:
                 current_parent_count = Parent.objects.filter(children=student).count()
-                if current_parent_count >= 3:
+                if current_parent_count >= MAX_PARENTS_PER_CHILD:
                     over_limit.append(
                         f"{student.user.full_name} ({student.user.student_number or student.id})"
                     )
             if over_limit:
                 raise serializers.ValidationError({
                     "student_ids": (
-                        "These students already have the maximum of 3 parents linked: "
+                        f"These students already have the maximum of {MAX_PARENTS_PER_CHILD} parents linked: "
                         + ", ".join(over_limit)
                     )
                 })
@@ -1055,14 +1055,14 @@ class UpdateParentSerializer(serializers.Serializer):
             over_limit = []
             for student in students:
                 current_parent_count = Parent.objects.filter(children=student).exclude(id=instance.id).count()
-                if current_parent_count >= 3:
+                if current_parent_count >= MAX_PARENTS_PER_CHILD:
                     over_limit.append(
                         f"{student.user.full_name} ({student.user.student_number or student.id})"
                     )
             if over_limit:
                 raise serializers.ValidationError({
                     "student_ids": (
-                        "These students already have the maximum of 3 parents linked: "
+                        f"These students already have the maximum of {MAX_PARENTS_PER_CHILD} parents linked: "
                         + ", ".join(over_limit)
                     )
                 })

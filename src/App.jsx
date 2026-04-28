@@ -84,6 +84,8 @@ const TishanyqDashboard = lazy(() => import("./pages/tishanyq/TishanyqDashboard"
 const TishanyqHome = lazy(() => import("./pages/tishanyq/TishanyqHome"));
 const CreateSchool = lazy(() => import("./pages/tishanyq/CreateSchool"));
 const SchoolsList = lazy(() => import("./pages/tishanyq/SchoolsList"));
+const SuperadminAuditLog = lazy(() => import("./pages/tishanyq/SuperadminAuditLog"));
+const LockedAccountsManager = lazy(() => import("./pages/tishanyq/LockedAccountsManager"));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -134,6 +136,10 @@ const TeacherAttendance = lazy(() => import("./pages/teacher/TeacherAttendance")
 const TeacherPerformance = lazy(() => import("./pages/teacher/TeacherPerformance"));
 const TeacherMessages = lazy(() => import("./pages/teacher/TeacherMessages"));
 const TeacherHomework = lazy(() => import("./pages/teacher/TeacherHomework"));
+const TeacherAssignments = lazy(() => import("./pages/teacher/TeacherAssignments"));
+const TeacherPastPapers = lazy(() => import("./pages/teacher/TeacherPastPapers"));
+const GenerateTest = lazy(() => import("./pages/teacher/GenerateTest"));
+const TestResults = lazy(() => import("./pages/teacher/TestResults"));
 const TeacherResults = lazy(() => import("./pages/teacher/TeacherResults"));
 const TeacherStudents = lazy(() => import("./pages/teacher/TeacherStudents"));
 const TeacherClasses = lazy(() => import("./pages/teacher/TeacherClasses"));
@@ -146,6 +152,10 @@ const StudentProfile = lazy(() => import("./pages/student/StudentProfile"));
 const StudentSubmissions = lazy(() => import("./pages/student/StudentSubmissions"));
 const StudentMarks = lazy(() => import("./pages/student/StudentMarks"));
 const StudentHomework = lazy(() => import("./pages/student/StudentHomework"));
+const StudentAssignments = lazy(() => import("./pages/student/StudentAssignments"));
+const StudentPastPapers = lazy(() => import("./pages/student/StudentPastPapers"));
+const StudentTests = lazy(() => import("./pages/student/StudentTests"));
+const TakeTest = lazy(() => import("./pages/student/TakeTest"));
 const StudentCalendar = lazy(() => import("./pages/student/StudentCalendar"));
 const StudentTimetable = lazy(() => import("./pages/student/StudentTimetable"));
 const StudentTeachers = lazy(() => import("./pages/student/StudentTeachers"));
@@ -248,6 +258,8 @@ function App() {
         <Route path="dashboard" element={<TishanyqHome />} />
         <Route path="create-school" element={<CreateSchool />} />
         <Route path="schools" element={<SchoolsList />} />
+        <Route path="audit-logs" element={<SuperadminAuditLog />} />
+        <Route path="locked-accounts" element={<LockedAccountsManager />} />
       </Route>
 
       {/* Protected pages */}
@@ -303,6 +315,10 @@ function App() {
         <Route path="/teacher/performance" element={<RequireAuth allowedRoles={['teacher']}><TeacherPerformance /></RequireAuth>} />
         <Route path="/my/leaves" element={<RequireAuth allowedRoles={['teacher','accountant','librarian','security','cleaner']}><MyLeaves /></RequireAuth>} />
         <Route path="/teacher/homework" element={<RequireAuth allowedRoles={['teacher']}><TeacherHomework /></RequireAuth>} />
+        <Route path="/teacher/assignments" element={<RequireAuth allowedRoles={['teacher']}><TeacherAssignments /></RequireAuth>} />
+        <Route path="/teacher/past-papers" element={<RequireAuth allowedRoles={['teacher']}><TeacherPastPapers /></RequireAuth>} />
+        <Route path="/teacher/generate-tests" element={<RequireAuth allowedRoles={['teacher']}><GenerateTest /></RequireAuth>} />
+        <Route path="/teacher/test-results" element={<RequireAuth allowedRoles={['teacher']}><TestResults /></RequireAuth>} />
         <Route path="/teacher/messages" element={<RequireAuth allowedRoles={['teacher']}><TeacherMessages /></RequireAuth>} />
         <Route path="/teacher/results" element={<RequireAuth allowedRoles={['teacher']}><TeacherResults /></RequireAuth>} />
         <Route path="/teacher/students" element={<RequireAuth allowedRoles={['teacher']}><TeacherStudents /></RequireAuth>} />
@@ -317,6 +333,10 @@ function App() {
         <Route path="/student/submissions" element={<RequireAuth allowedRoles={['student']}><StudentSubmissions /></RequireAuth>} />
         <Route path="/student/marks" element={<RequireAuth allowedRoles={['student']}><StudentMarks /></RequireAuth>} />
         <Route path="/student/homework" element={<RequireAuth allowedRoles={['student']}><StudentHomework /></RequireAuth>} />
+        <Route path="/student/assignments" element={<RequireAuth allowedRoles={['student']}><StudentAssignments /></RequireAuth>} />
+        <Route path="/student/past-papers" element={<RequireAuth allowedRoles={['student']}><StudentPastPapers /></RequireAuth>} />
+        <Route path="/student/tests" element={<RequireAuth allowedRoles={['student']}><StudentTests /></RequireAuth>} />
+        <Route path="/student/tests/:attemptId/take" element={<RequireAuth allowedRoles={['student']}><TakeTest /></RequireAuth>} />
         <Route path="/student/calendar" element={<RequireAuth allowedRoles={['student']}><StudentCalendar /></RequireAuth>} />
         <Route path="/student/timetable" element={<RequireAuth allowedRoles={['student']}><StudentTimetable /></RequireAuth>} />
         <Route path="/student/teachers" element={<RequireAuth allowedRoles={['student']}><StudentTeachers /></RequireAuth>} />

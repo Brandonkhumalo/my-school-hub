@@ -5,6 +5,7 @@ from . import activity_views
 from . import health_views
 from . import discipline_views
 from . import assessment_plan_views
+from . import papers_views
 
 urlpatterns = [
     # Subject endpoints
@@ -68,6 +69,7 @@ urlpatterns = [
     path('reports/publish-all/', views.publish_all_reports, name='publish-all-reports'),
     path('reports/published/', views.list_published_reports, name='list-published-reports'),
     path('reports/approval-requests/', views.list_report_approval_requests, name='list-report-approval-requests'),
+    path('reports/delivery-exclusions/', views.set_report_delivery_exclusion, name='set-report-delivery-exclusion'),
     path('reports/approval-requests/<int:request_id>/review/', views.review_report_approval_request, name='review-report-approval-request'),
 
     # Grade predictions
@@ -120,6 +122,10 @@ urlpatterns = [
     path('discipline/<int:record_id>/', discipline_views.discipline_update, name='discipline-update'),
     path('discipline/student/<int:student_id>/', discipline_views.discipline_by_student, name='discipline-by-student'),
     path('discipline/<int:record_id>/resolve/', discipline_views.discipline_resolve, name='discipline-resolve'),
+    path('attendance/permissions/', views.attendance_permissions, name='attendance-permissions'),
+    path('attendance/period-tracking-start-date/', views.attendance_period_tracking_start_date, name='attendance-period-tracking-start-date'),
+    path('attendance/class/<int:attendance_id>/edit/', views.edit_class_attendance, name='edit-class-attendance'),
+    path('attendance/subject/<int:attendance_id>/edit/', views.edit_subject_attendance, name='edit-subject-attendance'),
 
     # At-Risk Students (Admin)
     path('admin/at-risk-students/', views.admin_at_risk_students, name='admin-at-risk-students'),
@@ -130,4 +136,9 @@ urlpatterns = [
     path('assessment-plans/for-teacher/', assessment_plan_views.plan_for_teacher, name='assessment-plan-for-teacher'),
     path('assessment-plans/for-student/', assessment_plan_views.plans_for_student, name='assessment-plans-for-student'),
     path('assessment-plans/for-parent/', assessment_plan_views.plans_for_parent, name='assessment-plans-for-parent'),
+
+    # Past exam papers (file storage handled by go-services)
+    path('past-papers/', papers_views.past_papers_list_create, name='past-papers-list-create'),
+    path('past-papers/<int:pk>/', papers_views.past_paper_detail, name='past-paper-detail'),
+    path('past-papers/<int:pk>/extract/', papers_views.past_paper_extract, name='past-paper-extract'),
 ]

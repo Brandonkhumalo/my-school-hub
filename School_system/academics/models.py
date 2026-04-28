@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 from users.models import TenantAwareManager, TenantSoftDeleteManager, TransferAwareManager
 
 
@@ -750,6 +751,33 @@ class ReportCardApprovalRequest(models.Model):
         return f"{self.class_obj.name} - {self.academic_term} {self.academic_year} ({self.status})"
 
 
+class ReportCardDeliveryExclusion(models.Model):
+    """Students withheld from parent/student report delivery due to data issues."""
+    REASON_DATA_ISSUE = 'data_issue'
+    REASON_CHOICES = [
+        (REASON_DATA_ISSUE, 'Data Issue'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='report_delivery_exclusions')
+    class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='report_delivery_exclusions')
+    student = models.ForeignKey('Student', on_delete=models.CASCADE, related_name='report_delivery_exclusions')
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=50)
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES, default=REASON_DATA_ISSUE)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='report_delivery_exclusions_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'class_obj', 'student', 'academic_year', 'academic_term')
+        indexes = [
+            models.Index(fields=['school', 'class_obj', 'academic_year', 'academic_term']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.student} excluded for {self.class_obj} {self.academic_term} {self.academic_year}"
+
+
 class Complaint(models.Model):
     COMPLAINT_TYPE_CHOICES = [
         ('parent', 'Parent'),
@@ -806,12 +834,15 @@ class SchoolEvent(models.Model):
 
 
 class Assignment(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='assignments', null=True, blank=True)
     title = models.CharField(max_length=200)
     description = models.TextField()
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='assignments')
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='assignments')
     assigned_class = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='assignments')
     deadline = models.DateTimeField()
+    max_score = models.FloatField(default=100)
+    allow_late = models.BooleanField(default=False)
     date_created = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -866,8 +897,13 @@ class SubjectAttendance(models.Model):
     class_assigned = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='subject_attendance_records')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='subject_attendance_records')
     date = models.DateField(db_index=True)
+    period_number = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    period_label = models.CharField(max_length=50, blank=True)
     status = models.CharField(max_length=20, choices=ATTENDANCE_STATUS_CHOICES, db_index=True)
     remarks = models.TextField(blank=True)
+    marked_with_permission = models.BooleanField(default=False)
+    bunk_flag = models.BooleanField(default=False, db_index=True)
+    bunk_reason = models.CharField(max_length=200, blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     date_recorded = models.DateTimeField(auto_now_add=True)
 
@@ -876,6 +912,42 @@ class SubjectAttendance(models.Model):
 
     def __str__(self):
         return f"{self.student.user.first_name} {self.student.user.last_name} - {self.subject.name} - {self.date} ({self.status})"
+
+
+class AttendancePermission(models.Model):
+    """Approved permission for student to miss a lesson period or part of a day."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_permissions', db_index=True)
+    class_assigned = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='attendance_permissions')
+    date = models.DateField(db_index=True)
+    period_number = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    period_label = models.CharField(max_length=50, blank=True)
+    reason = models.TextField(blank=True)
+    approved = models.BooleanField(default=False, db_index=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_attendance_permissions',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_attendance_permissions',
+    )
+    date_recorded = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['student', 'date', 'approved']),
+            models.Index(fields=['class_assigned', 'date']),
+        ]
+
+    def __str__(self):
+        scope = f"Period {self.period_number}" if self.period_number else "Day"
+        return f"{self.student.user.full_name} - {self.date} - {scope} ({'approved' if self.approved else 'pending'})"
 
 
 # Keep backward-compatible alias so existing imports (report card, etc.) don't break immediately
@@ -938,6 +1010,8 @@ class AssignmentSubmission(models.Model):
     submitted_file = models.FileField(upload_to=submission_file_path, blank=True, null=True)
     text_submission = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    is_late = models.BooleanField(default=False)
     grade = models.FloatField(null=True, blank=True)
     feedback = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
@@ -948,6 +1022,36 @@ class AssignmentSubmission(models.Model):
 
     def __str__(self):
         return f"{self.student.user.full_name} → {self.assignment.title}"
+
+
+class AssignmentAttachment(models.Model):
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='attachments')
+    file_key = models.CharField(max_length=255)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=100, blank=True)
+    size_bytes = models.BigIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['uploaded_at']
+
+    def __str__(self):
+        return f"{self.assignment_id}::{self.original_filename}"
+
+
+class AssignmentSubmissionAttachment(models.Model):
+    submission = models.ForeignKey(AssignmentSubmission, on_delete=models.CASCADE, related_name='attachments')
+    file_key = models.CharField(max_length=255)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=100, blank=True)
+    size_bytes = models.BigIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['uploaded_at']
+
+    def __str__(self):
+        return f"{self.submission_id}::{self.original_filename}"
 
 
 class PromotionRecord(models.Model):
@@ -1360,3 +1464,184 @@ class BulkImportJob(models.Model):
 
     def __str__(self):
         return f"{self.school.name} {self.import_type} ({self.status})"
+
+
+class PastExamPaper(models.Model):
+    """A past exam paper (PDF or DOCX) uploaded by a teacher for revision/practice.
+
+    The actual file lives on disk under the go-services papers store; only the
+    file_key is persisted here. file_key format: "<school_id>/<uuid>.<ext>".
+    """
+    LEVEL_KIND_CHOICES = [
+        ('grade', 'Grade'),   # primary
+        ('form', 'Form'),     # secondary/high
+    ]
+    PARSE_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('parsed', 'Parsed'),
+        ('failed', 'Failed'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='past_papers', db_index=True)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='past_papers')
+    level_kind = models.CharField(max_length=10, choices=LEVEL_KIND_CHOICES, db_index=True)
+    level_number = models.PositiveSmallIntegerField(db_index=True, help_text='Grade 1-7 or Form 1-6')
+    year = models.PositiveSmallIntegerField(db_index=True)
+    exam_session = models.CharField(max_length=50, blank=True, help_text="e.g. 'June', 'November', 'Mock'")
+    paper_number = models.PositiveSmallIntegerField(default=1)
+    title = models.CharField(max_length=200, blank=True)
+
+    uploaded_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, related_name='uploaded_past_papers')
+
+    # Storage metadata (file lives on go-services disk)
+    file_key = models.CharField(max_length=255, unique=True)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=100)
+    size_bytes = models.BigIntegerField(default=0)
+    page_count = models.PositiveIntegerField(default=0)
+
+    # Parse status — set when go-services successfully extracts text
+    parse_status = models.CharField(max_length=10, choices=PARSE_STATUS_CHOICES, default='pending')
+    parse_error = models.TextField(blank=True)
+
+    date_uploaded = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantAwareManager()
+
+    class Meta:
+        ordering = ['-year', '-date_uploaded']
+        indexes = [
+            models.Index(fields=['school', 'subject', 'level_kind', 'level_number']),
+            models.Index(fields=['school', 'year']),
+        ]
+
+    def __str__(self):
+        label = f"{self.get_level_kind_display()} {self.level_number}"
+        return f"{self.subject.code} {self.year} {self.exam_session} P{self.paper_number} ({label})"
+
+
+class GeneratedTest(models.Model):
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('closed', 'Closed'),
+    ]
+    SCHEDULE_MODE_CHOICES = [
+        ('anytime', 'Anytime'),
+        ('scheduled', 'Scheduled'),
+    ]
+    LEVEL_KIND_CHOICES = [
+        ('grade', 'Grade'),
+        ('form', 'Form'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='generated_tests', db_index=True)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='generated_tests')
+    level_kind = models.CharField(max_length=10, choices=LEVEL_KIND_CHOICES, db_index=True)
+    level_number = models.PositiveSmallIntegerField(db_index=True)
+    source_paper = models.ForeignKey(PastExamPaper, on_delete=models.SET_NULL, null=True, blank=True, related_name='generated_tests')
+    title = models.CharField(max_length=200)
+    duration_minutes = models.PositiveIntegerField(default=60)
+    total_marks = models.FloatField(default=100)
+    created_by = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, related_name='generated_tests')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', db_index=True)
+    counts_for_report = models.BooleanField(default=False)
+    assessment_plan = models.ForeignKey('AssessmentPlan', on_delete=models.SET_NULL, null=True, blank=True, related_name='generated_tests')
+    component_index = models.PositiveIntegerField(null=True, blank=True)
+    schedule_mode = models.CharField(max_length=20, choices=SCHEDULE_MODE_CHOICES, default='anytime')
+    available_from = models.DateTimeField(null=True, blank=True)
+    available_until = models.DateTimeField(null=True, blank=True)
+    academic_year = models.CharField(max_length=20)
+    academic_term = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['school', 'status']),
+            models.Index(fields=['school', 'academic_year', 'academic_term']),
+            models.Index(fields=['subject', 'level_kind', 'level_number']),
+        ]
+
+    def clean(self):
+        if self.counts_for_report:
+            if not self.assessment_plan_id:
+                raise ValidationError('assessment_plan is required when counts_for_report is true.')
+            if not self.component_index:
+                raise ValidationError('component_index is required when counts_for_report is true.')
+            max_tests = self.assessment_plan.num_tests or 0
+            if self.component_index < 1 or self.component_index > max_tests:
+                raise ValidationError(f'component_index must be between 1 and {max_tests}.')
+        if self.schedule_mode == 'scheduled':
+            if not self.available_from or not self.available_until:
+                raise ValidationError('available_from and available_until are required for scheduled tests.')
+            if self.available_until <= self.available_from:
+                raise ValidationError('available_until must be after available_from.')
+
+    def __str__(self):
+        return f"{self.title} ({self.subject.code})"
+
+
+class TestQuestion(models.Model):
+    QUESTION_TYPE_CHOICES = [
+        ('short', 'Short'),
+        ('long', 'Long'),
+        ('mcq', 'MCQ'),
+    ]
+
+    test = models.ForeignKey(GeneratedTest, on_delete=models.CASCADE, related_name='questions')
+    order = models.PositiveIntegerField(default=1)
+    prompt_text = models.TextField()
+    marks = models.FloatField(default=1)
+    question_type = models.CharField(max_length=20, choices=QUESTION_TYPE_CHOICES, default='short')
+    options = models.JSONField(default=list, blank=True)
+    correct_answer = models.CharField(max_length=255, blank=True)
+    source_page = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+        unique_together = ('test', 'order')
+
+    def __str__(self):
+        return f"{self.test_id} Q{self.order}"
+
+
+class TestAttempt(models.Model):
+    STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('submitted', 'Submitted'),
+        ('graded', 'Graded'),
+        ('finalized', 'Finalized'),
+    ]
+
+    test = models.ForeignKey(GeneratedTest, on_delete=models.CASCADE, related_name='attempts')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='test_attempts')
+    started_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    auto_score = models.FloatField(default=0)
+    manual_score = models.FloatField(default=0)
+    final_score = models.FloatField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress', db_index=True)
+    pushed_to_results = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        unique_together = ('test', 'student')
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.student.user.full_name} - {self.test.title}"
+
+
+class TestAnswer(models.Model):
+    attempt = models.ForeignKey(TestAttempt, on_delete=models.CASCADE, related_name='answers')
+    question = models.ForeignKey(TestQuestion, on_delete=models.CASCADE, related_name='answers')
+    answer_text = models.TextField(blank=True)
+    awarded_marks = models.FloatField(default=0)
+    teacher_comment = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ('attempt', 'question')
+
+    def __str__(self):
+        return f"A{self.attempt_id} Q{self.question_id}"

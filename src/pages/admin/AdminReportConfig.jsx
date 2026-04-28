@@ -168,6 +168,7 @@ export default function AdminReportConfig() {
   const [loadingApprovalRequests, setLoadingApprovalRequests] = useState(false);
   const [reviewingRequestId, setReviewingRequestId] = useState(null);
   const [rejectionNotes, setRejectionNotes] = useState({});
+  const [savingExclusionStudentId, setSavingExclusionStudentId] = useState(null);
 
   useEffect(() => {
     loadConfig();
@@ -437,7 +438,12 @@ export default function AdminReportConfig() {
     setPublishMessage(null);
     try {
       const data = await apiService.publishAllReports({ year: genYear, term: genTerm, access_scope: releaseScope });
-      setPublishMessage({ type: "success", text: data.message });
+      const details = Array.isArray(data?.published_details) ? data.published_details : [];
+      const excludedTotal = details.reduce((sum, item) => sum + (item?.excluded_students_count || 0), 0);
+      const summary = excludedTotal > 0
+        ? `${data.message} (${excludedTotal} student(s) marked as data issue across published classes.)`
+        : data.message;
+      setPublishMessage({ type: "success", text: summary });
       await loadPublished();
       await loadApprovalRequests();
     } catch (err) {
@@ -458,6 +464,27 @@ export default function AdminReportConfig() {
       setPublishMessage({ type: "error", text: err.message || "Failed to review request" });
     } finally {
       setReviewingRequestId(null);
+    }
+  };
+
+  const handleToggleDeliveryExclusion = async (studentId, excluded) => {
+    if (!selectedClassId) return;
+    setSavingExclusionStudentId(studentId);
+    setPublishMessage(null);
+    try {
+      const data = await apiService.setReportDeliveryExclusion({
+        class_id: selectedClassId,
+        student_id: studentId,
+        year: genYear,
+        term: genTerm,
+        excluded,
+      });
+      setPublishMessage({ type: "success", text: data.message || "Data issue delivery flag updated." });
+      await loadApprovalRequests();
+    } catch (err) {
+      setPublishMessage({ type: "error", text: err.message || "Failed to update delivery exclusion." });
+    } finally {
+      setSavingExclusionStudentId(null);
     }
   };
 
@@ -863,8 +890,32 @@ export default function AdminReportConfig() {
                       {" · "}
                       Submitted by: <span className="font-semibold">{selectedRequest.requested_by || "Unknown"}</span>
                     </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Data issue exclusions: <span className="font-semibold">{selectedRequest.excluded_students_count || 0}</span>
+                    </p>
                     {selectedRequest.admin_note && (
                       <p className="text-xs text-red-700 mt-1">Admin note: {selectedRequest.admin_note}</p>
+                    )}
+                    {Array.isArray(selectedRequest.students) && selectedRequest.students.length > 0 && (
+                      <div className="mt-3 border rounded bg-white max-h-44 overflow-y-auto divide-y">
+                        {selectedRequest.students.map((s) => (
+                          <label key={s.id} className="flex items-center justify-between px-2 py-1.5 text-xs">
+                            <span className="text-gray-700">
+                              <span className="font-medium">{s.full_name}</span>
+                              {s.student_number ? <span className="ml-1 text-gray-400">({s.student_number})</span> : null}
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span className="text-amber-700">Data issue</span>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(s.excluded_data_issue)}
+                                disabled={savingExclusionStudentId === s.id}
+                                onChange={(e) => handleToggleDeliveryExclusion(s.id, e.target.checked)}
+                              />
+                            </span>
+                          </label>
+                        ))}
+                      </div>
                     )}
                     {selectedRequest.status === "pending" && (
                       <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
