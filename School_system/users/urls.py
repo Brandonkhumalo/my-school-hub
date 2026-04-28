@@ -88,4 +88,5 @@ urlpatterns = [
     path('superadmin/schools/<int:school_id>/update/', superadmin_views.update_school_profile, name='superadmin-update-school-profile'),
     path('superadmin/schools/<int:school_id>/reset-password/', superadmin_views.reset_admin_password, name='superadmin-reset-password'),
     path('superadmin/schools/<int:school_id>/suspend/', superadmin_views.suspend_school, name='superadmin-suspend-school'),
+    path('superadmin/schools/<int:school_id>/delete/', superadmin_views.delete_school, name='superadmin-delete-school'),
 ]

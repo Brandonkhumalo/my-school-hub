@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { Helmet } from "react-helmet-async";
 import logo from "../assets/logo.png";
 
 const Navbar = ({ active }: { active: string }) => {
@@ -54,9 +55,6 @@ const Navbar = ({ active }: { active: string }) => {
 const ContactUs = () => {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    document.title = "Contact Us — MySchoolHub Zimbabwe | Get a Free Demo";
-  }, []);
 
   const [form, setForm] = useState({ name: "", email: "", phone: "", school: "", message: "", role: "" });
   const [submitted, setSubmitted] = useState(false);
@@ -89,6 +87,14 @@ const ContactUs = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans">
+      <Helmet>
+        <title>Contact Us — MySchoolHub Zimbabwe | Get a Free Demo</title>
+        <meta name="description" content="Contact Tishanyq Digital to request a free demo of MySchoolHub, Zimbabwe's school management system. We serve primary and secondary schools across Harare, Bulawayo and all provinces." />
+        <link rel="canonical" href="https://myschoolhub.co.zw/contact" />
+        <meta property="og:url" content="https://myschoolhub.co.zw/contact" />
+        <meta property="og:title" content="Contact Us — MySchoolHub Zimbabwe | Get a Free Demo" />
+        <meta property="og:description" content="Request a free demo of MySchoolHub, Zimbabwe's school management system for ZIMSEC and Cambridge schools." />
+      </Helmet>
       <Navbar active="/contact" />
 
       {/* ── HERO ─────────────────────────────────────────────── */}

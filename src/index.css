@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================================
    MySchoolHub — Design System
    CSS custom properties for both Light & Dark themes.

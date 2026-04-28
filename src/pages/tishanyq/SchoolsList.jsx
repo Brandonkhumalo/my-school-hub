@@ -7,6 +7,9 @@ export default function SchoolsList() {
   const [resetting, setResetting] = useState(null);
   const [suspending, setSuspending] = useState(null);
   const [updatingSchool, setUpdatingSchool] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   useEffect(() => {
     fetchSchools();
@@ -99,6 +102,33 @@ export default function SchoolsList() {
       alert("Error: " + err.message);
     } finally {
       setSuspending(null);
+    }
+  };
+
+  const handleDeleteSchool = async () => {
+    if (!deleteModal) return;
+    setDeleting(deleteModal.id);
+    try {
+      const token = localStorage.getItem("tishanyq_token");
+      const response = await fetch(`${API_BASE_URL}/auth/superadmin/schools/${deleteModal.id}/delete/`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ confirmation: deleteConfirmText }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to delete school");
+
+      setSchools((prev) => prev.filter((s) => s.id !== deleteModal.id));
+      setDeleteModal(null);
+      setDeleteConfirmText("");
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -254,7 +284,7 @@ export default function SchoolsList() {
                           onClick={() => handleToggleSuspend(school.id, school.is_suspended)}
                           disabled={suspending === school.id}
                           className={`px-3 py-2 rounded-lg text-sm transition disabled:opacity-50 ${
-                            school.is_suspended 
+                            school.is_suspended
                               ? 'bg-green-100 hover:bg-green-200 text-green-700'
                               : 'bg-red-100 hover:bg-red-200 text-red-700'
                           }`}
@@ -267,12 +297,64 @@ export default function SchoolsList() {
                             <span><i className="fas fa-ban mr-1"></i>Suspend</span>
                           )}
                         </button>
+                        <button
+                          onClick={() => { setDeleteModal(school); setDeleteConfirmText(""); }}
+                          className="px-3 py-2 bg-gray-800 hover:bg-black text-white rounded-lg text-sm transition"
+                          title="Permanently delete this school"
+                        >
+                          <i className="fas fa-trash mr-1"></i>Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <i className="fas fa-exclamation-triangle text-red-600"></i>
+              </div>
+              <h2 className="text-xl font-bold text-gray-800">Delete School</h2>
+            </div>
+            <p className="text-gray-600 mb-2">
+              This will <span className="font-semibold text-red-600">permanently delete</span> <span className="font-semibold">{deleteModal.name}</span> and all its data — students, staff, finances, academics, and settings. This cannot be undone.
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Type <span className="font-mono font-semibold text-gray-800">{deleteModal.name}</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deleteModal.name}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setDeleteModal(null); setDeleteConfirmText(""); }}
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSchool}
+                disabled={deleteConfirmText !== deleteModal.name || deleting === deleteModal.id}
+                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting === deleteModal.id ? (
+                  <span><i className="fas fa-spinner fa-spin mr-2"></i>Deleting...</span>
+                ) : (
+                  <span><i className="fas fa-trash mr-2"></i>Delete Permanently</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { Helmet } from "react-helmet-async";
 import logo from "../assets/logo.png";
 
 const Navbar = ({ active }: { active: string }) => {
@@ -60,12 +61,16 @@ const Check = () => (
 const AboutUs = () => {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    document.title = "Features — MySchoolHub Zimbabwe | Student, Finance & Parent Management";
-  }, []);
-
   return (
     <div className="min-h-screen bg-white font-sans">
+      <Helmet>
+        <title>Features — MySchoolHub Zimbabwe | School Management System</title>
+        <meta name="description" content="Explore all features of MySchoolHub — Zimbabwe's school management system. Student results, attendance, fee management, timetables, WhatsApp alerts, and HR tools for ZIMSEC and Cambridge schools." />
+        <link rel="canonical" href="https://myschoolhub.co.zw/about" />
+        <meta property="og:url" content="https://myschoolhub.co.zw/about" />
+        <meta property="og:title" content="Features — MySchoolHub Zimbabwe | School Management System" />
+        <meta property="og:description" content="Explore all features of MySchoolHub — Zimbabwe's school management system for ZIMSEC and Cambridge schools." />
+      </Helmet>
       <Navbar active="/about" />
 
       {/* ── HERO ──────────────────────────────────────────────── */}

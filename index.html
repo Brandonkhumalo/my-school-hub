@@ -58,9 +58,8 @@
       "operatingSystem": "Web, Android, iOS",
       "offers": {
         "@type": "Offer",
-        "priceCurrency": "USD",
-        "price": "0",
-        "description": "Contact for pricing"
+        "availability": "https://schema.org/OnlineOnly",
+        "description": "Contact Tishanyq Digital for school-based pricing"
       },
       "author": {
         "@type": "Organization",
@@ -101,19 +100,64 @@
         "areaServed": "ZW",
         "availableLanguage": "English"
       },
-      "sameAs": []
+      "sameAs": [
+        "https://www.facebook.com/myschoolhub",
+        "https://www.linkedin.com/company/tishanyq-digital",
+        "https://twitter.com/myschoolhub"
+      ]
     }
     </script>
 
-    <!-- TailwindCSS (via CDN for dev, or use PostCSS config if preferred) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      // Drive Tailwind's `dark:` variant from the same [data-theme="dark"] attribute
-      // that ThemeContext sets on <html>, so dark-mode utilities light up automatically.
-      tailwind.config = {
-        darkMode: ['class', '[data-theme="dark"]'],
-      };
+    <!-- Structured Data: FAQ (rich snippets in search results) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is MySchoolHub?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "MySchoolHub is a cloud-based school management system built for Zimbabwean primary and secondary schools. It covers student records, fee collection, attendance, results, timetables, HR, and WhatsApp parent communication — all in one platform."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does MySchoolHub support ZIMSEC and Cambridge schools in Zimbabwe?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. MySchoolHub supports both ZIMSEC and Cambridge curricula. Schools can track results, generate report cards, and configure assessment plans for either examination board."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do schools in Zimbabwe get started with MySchoolHub?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Contact Tishanyq Digital via the Contact page or call +263 78 160 3382. The team handles onboarding, data imports, and staff training. No IT expertise is required."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does MySchoolHub integrate with PayNow Zimbabwe?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. MySchoolHub includes built-in PayNow Zimbabwe integration, allowing schools to collect school fees online via EcoCash, InnBucks, and bank transfer directly through the platform."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is MySchoolHub suitable for both day schools and boarding schools in Zimbabwe?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. MySchoolHub supports day schools, boarding schools, and combined schools. The boarding module covers dormitory management, meal attendance, exeat requests, tuck wallets, and wellness check-ins."
+          }
+        }
+      ]
+    }
     </script>
+
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
@@ -121,6 +165,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="font-family:sans-serif;text-align:center;padding:4rem 2rem;max-width:600px;margin:0 auto">
+        <h1 style="font-size:1.5rem;margin-bottom:1rem">MySchoolHub — School Management System Zimbabwe</h1>
+        <p style="color:#555;margin-bottom:1.5rem">Zimbabwe's all-in-one school management platform for ZIMSEC and Cambridge schools. Please enable JavaScript to use the application.</p>
+        <p style="color:#888;font-size:0.9rem">Contact: <a href="tel:+263781603382">+263 78 160 3382</a> · Tishanyq Digital, Harare, Zimbabwe</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

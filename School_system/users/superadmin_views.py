@@ -300,6 +300,32 @@ def suspend_school(request, school_id):
     })
 
 
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_school(request, school_id):
+    """Permanently delete a school and all its data."""
+    if request.user.role != 'superadmin':
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    confirmation = request.data.get('confirmation', '')
+
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({'error': 'School not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if confirmation != school.name:
+        return Response(
+            {'error': 'Confirmation text does not match school name'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    school_name = school.name
+    school.delete()
+
+    return Response({'message': f'School "{school_name}" and all its data have been permanently deleted'})
+
+
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def update_school_profile(request, school_id):

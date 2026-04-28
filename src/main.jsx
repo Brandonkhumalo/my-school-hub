@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { SchoolSettingsProvider } from "./context/SchoolSettingsContext.jsx";
@@ -13,15 +14,17 @@ registerSW();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <SchoolSettingsProvider>
-            <App />
-            <WhatsAppButton />
-          </SchoolSettingsProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <HelmetProvider>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <SchoolSettingsProvider>
+              <App />
+              <WhatsAppButton />
+            </SchoolSettingsProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
+    </HelmetProvider>
   </React.StrictMode>
 );

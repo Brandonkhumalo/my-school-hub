@@ -22,24 +22,24 @@
   "screenshots": [],
   "shortcuts": [
     {
-      "name": "Student Dashboard",
-      "short_name": "Students",
-      "description": "Access student portal",
-      "url": "/student",
+      "name": "Login",
+      "short_name": "Login",
+      "description": "Sign in to your school portal",
+      "url": "/login",
       "icons": [{ "src": "/logo.png", "sizes": "any" }]
     },
     {
-      "name": "Parent Portal",
-      "short_name": "Parents",
-      "description": "Track your child's progress",
-      "url": "/parent",
+      "name": "Features",
+      "short_name": "Features",
+      "description": "Explore MySchoolHub features",
+      "url": "/about",
       "icons": [{ "src": "/logo.png", "sizes": "any" }]
     },
     {
-      "name": "Admin Dashboard",
-      "short_name": "Admin",
-      "description": "School administration",
-      "url": "/admin-portal",
+      "name": "Contact",
+      "short_name": "Contact",
+      "description": "Get a free demo",
+      "url": "/contact",
       "icons": [{ "src": "/logo.png", "sizes": "any" }]
     }
   ]
