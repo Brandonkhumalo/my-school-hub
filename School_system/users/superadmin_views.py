@@ -310,14 +310,17 @@ def create_school_with_admin(request):
     admin_password = request.data.get("admin_password")
     student_limit = request.data.get("student_limit")
 
-    if not all([school_name, school_location, admin_email, admin_phone, admin_password, student_limit]):
+    if not all([school_name, school_location, admin_email, admin_phone, admin_password]):
         return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        student_limit = int(student_limit)
-        if student_limit < 1:
-            raise ValueError
-    except Exception:
-        return Response({"error": "student_limit must be a positive number"}, status=status.HTTP_400_BAD_REQUEST)
+    if student_limit in (None, ""):
+        student_limit = School._meta.get_field("student_limit").default
+    else:
+        try:
+            student_limit = int(student_limit)
+            if student_limit < 1:
+                raise ValueError
+        except Exception:
+            return Response({"error": "student_limit must be a positive number"}, status=status.HTTP_400_BAD_REQUEST)
     if School.objects.filter(name__iexact=school_name).exists():
         return Response({"error": "School with this name already exists"}, status=status.HTTP_400_BAD_REQUEST)
     if CustomUser.objects.filter(email=admin_email).exists():
