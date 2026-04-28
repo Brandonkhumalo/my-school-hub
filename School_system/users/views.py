@@ -1,5 +1,7 @@
 import logging
 
+from django.conf import settings
+from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.db import models, transaction
 from django.db.models import Q
@@ -24,7 +26,7 @@ from .utils.otp import (
     create_backup_codes_list, parse_user_agent,
 )
 from .serializers import (
-    UserSerializer, UserRegistrationSerializer, LoginSerializer, WhatsAppPinVerificationSerializer,
+    UserSerializer, UserRegistrationSerializer, WhatsAppPinVerificationSerializer,
     ChangePasswordSerializer, SetWhatsAppPinSerializer, SchoolSerializer, SchoolRegistrationSerializer,
     ManagedUserSerializer
 )
@@ -38,6 +40,43 @@ def _check_rate_limit(request, group='api', rate='10/m'):
         return is_ratelimited(request, group=group, key='ip', rate=rate, increment=True)
     except Exception:
         return False
+
+
+def _lockout_threshold():
+    return max(1, int(getattr(settings, 'LOGIN_LOCKOUT_THRESHOLD', 5)))
+
+
+def _lockout_minutes():
+    return max(1, int(getattr(settings, 'LOGIN_LOCKOUT_MINUTES', 15)))
+
+
+def _find_user_for_identifier(identifier):
+    if not identifier:
+        return None
+    ident = str(identifier).strip()
+    if not ident:
+        return None
+
+    user = CustomUser.objects.filter(Q(email__iexact=ident) | Q(username__iexact=ident)).first()
+    if user:
+        return user
+    return CustomUser.objects.filter(student_number__iexact=ident).first()
+
+
+def _account_locked_response(user):
+    locked_until = user.account_locked_until
+    remaining_seconds = None
+    if locked_until:
+        remaining_seconds = max(0, int((locked_until - timezone.now()).total_seconds()))
+    return Response(
+        {
+            'error': 'account_locked',
+            'message': 'This account is temporarily locked due to failed login attempts.',
+            'locked_until': locked_until.isoformat() if locked_until else None,
+            'remaining_seconds': remaining_seconds,
+        },
+        status=status.HTTP_423_LOCKED,
+    )
 
 
 HR_PAGE_CATALOG = [
@@ -107,133 +146,166 @@ def login_view(request):
             status=status.HTTP_429_TOO_MANY_REQUESTS
         )
 
-    serializer = LoginSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
+    identifier = (request.data.get('identifier') or '').strip()
+    password = request.data.get('password') or ''
+    if not identifier or not password:
+        return Response({'error': 'Identifier and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if user.school and user.school.is_suspended:
-            if user.role == 'admin':
-                return Response({
-                    'error': 'school_suspended_admin',
-                    'message': 'Your school has been suspended. Please contact Tishanyq Digital for assistance.',
-                    'contact': {
-                        'phone': ['+263 78 160 3382', '+263 78 221 6826'],
-                        'email': 'sales@tishanyq.co.zw'
-                    }
-                }, status=403)
-            else:
-                return Response({
-                    'error': 'school_suspended',
-                    'message': 'Your school has been suspended. Please contact your school administrator.'
-                }, status=403)
+    user_candidate = _find_user_for_identifier(identifier)
+    if user_candidate and user_candidate.is_account_locked():
+        return _account_locked_response(user_candidate)
 
-        # Check if user has 2FA enabled
-        try:
-            two_fa_config = user.two_factor_config
-            if two_fa_config.is_enabled:
-                # Check if this device/IP is trusted
-                ip = request.META.get('REMOTE_ADDR')
-                is_trusted = TrustedDevice.objects.filter(
-                    user=user, ip_address=ip, verified=True
-                ).exists()
+    user = None
+    if user_candidate:
+        user = authenticate(username=user_candidate.username, password=password)
 
-                if not is_trusted:
-                    # Generate a short-lived session token for OTP verification
-                    import jwt as _jwt
-                    from django.conf import settings as _settings
-                    otp_payload = {"user_id": str(user.id), "type": "otp_session", "exp": int(time.time()) + 300}
-                    otp_token = _jwt.encode(otp_payload, key=_settings.SECRET_KEY, algorithm='HS256')
-                    return Response({
-                        "requires_2fa": True,
-                        "otp_session_token": otp_token,
-                        "message": "2FA verification required"
-                    }, status=202)
-        except AttributeError:
-            pass  # No 2FA config means 2FA not set up
-
-        # Also check school-level enforcement
-        try:
-            school_settings = user.school.settings
-            if school_settings.enforce_2fa and user.role in (school_settings.enforce_2fa_for_roles or []):
-                deadline = None
-                if school_settings.enforce_2fa_started_at:
-                    deadline = school_settings.enforce_2fa_started_at + dt.timedelta(days=school_settings.enforce_2fa_grace_period_days)
-
-                has_2fa = hasattr(user, 'two_factor_config') and user.two_factor_config.is_enabled
-                if not has_2fa:
-                    if deadline and timezone.now() > deadline:
-                        # Deadline passed but no 2FA — log them in but force setup
-                        user_data = UserSerializer(user).data
-                        if user.student_number:
-                            user_data['student_number'] = user.student_number
-                        access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
-                        try:
-                            AuditLog.objects.create(
-                                user=user, school=user.school, action='LOGIN',
-                                model_name='CustomUser', object_id=str(user.id),
-                                object_repr=f'Login (2FA setup required): {user.email}',
-                                ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
-                            )
-                        except Exception:
-                            pass
-                        return Response({
-                            'user': user_data,
-                            'token': access_token,
-                            'message': f'{user.role.capitalize()} login successful',
-                            'requires_2fa_setup': True,
-                        })
-                    else:
-                        # Allow login but return warning
-                        warning_date = deadline.strftime('%d %B %Y') if deadline else None
-                        user_data = UserSerializer(user).data
-                        if user.student_number:
-                            user_data['student_number'] = user.student_number
-                        access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
-                        try:
-                            AuditLog.objects.create(
-                                user=user, school=user.school, action='LOGIN',
-                                model_name='CustomUser', object_id=str(user.id),
-                                object_repr=f'Login: {user.email}',
-                                ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
-                            )
-                        except Exception:
-                            pass
-                        return Response({
-                            'user': user_data, 'token': access_token,
-                            'message': f'{user.role.capitalize()} login successful',
-                            '2fa_warning': True,
-                            '2fa_deadline': warning_date
-                        })
-        except Exception:
-            pass
-
-        user_data = UserSerializer(user).data
-        if user.student_number:
-            user_data['student_number'] = user.student_number
-
-        access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
-
-        # Log the login event
-        try:
-            AuditLog.objects.create(
-                user=user,
-                school=user.school,
-                action='LOGIN',
-                model_name='CustomUser',
-                object_id=str(user.id),
-                object_repr=f'Login: {user.email}',
-                ip_address=request.META.get('REMOTE_ADDR'),
-                response_status=200,
+    if user is None:
+        if user_candidate:
+            user_candidate.register_failed_login_attempt(
+                threshold=_lockout_threshold(),
+                lockout_minutes=_lockout_minutes(),
             )
-        except Exception:
-            logger.warning("Audit log creation failed", exc_info=True)
+            user_candidate.refresh_from_db(fields=['account_locked_until'])
+            if user_candidate.is_account_locked():
+                return _account_locked_response(user_candidate)
+        return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({
-            'user': user_data,
-            'token': access_token,
-            'message': f'{user.role.capitalize()} login successful'
-        })
-    return Response(serializer.errors, status=400)
+    user.clear_login_failures()
+
+    if user.role == 'parent' and user.school:
+        try:
+            settings_obj = user.school.settings
+        except SchoolSettings.DoesNotExist:
+            settings_obj = None
+        if settings_obj and settings_obj.parent_login_blocked:
+            return Response({
+                'error': 'parent_login_blocked',
+                'message': settings_obj.parent_login_block_message or 'Parent login is currently disabled.',
+                'unblock_at': settings_obj.parent_login_blocked_until,
+            }, status=403)
+
+    if user.school and user.school.is_suspended:
+        if user.role == 'admin':
+            return Response({
+                'error': 'school_suspended_admin',
+                'message': 'Your school has been suspended. Please contact Tishanyq Digital for assistance.',
+                'contact': {
+                    'phone': ['+263 78 160 3382', '+263 78 221 6826'],
+                    'email': 'sales@tishanyq.co.zw'
+                }
+            }, status=403)
+        else:
+            return Response({
+                'error': 'school_suspended',
+                'message': 'Your school has been suspended. Please contact your school administrator.'
+            }, status=403)
+
+    # Check if user has 2FA enabled
+    try:
+        two_fa_config = user.two_factor_config
+        if two_fa_config.is_enabled:
+            # Check if this device/IP is trusted
+            ip = request.META.get('REMOTE_ADDR')
+            is_trusted = TrustedDevice.objects.filter(
+                user=user, ip_address=ip, verified=True
+            ).exists()
+
+            if not is_trusted:
+                # Generate a short-lived session token for OTP verification
+                import jwt as _jwt
+                from django.conf import settings as _settings
+                otp_payload = {"user_id": str(user.id), "type": "otp_session", "exp": int(time.time()) + 300}
+                otp_token = _jwt.encode(otp_payload, key=_settings.SECRET_KEY, algorithm='HS256')
+                return Response({
+                    "requires_2fa": True,
+                    "otp_session_token": otp_token,
+                    "message": "2FA verification required"
+                }, status=202)
+    except AttributeError:
+        pass  # No 2FA config means 2FA not set up
+
+    # Also check school-level enforcement
+    try:
+        school_settings = user.school.settings
+        if school_settings.enforce_2fa and user.role in (school_settings.enforce_2fa_for_roles or []):
+            deadline = None
+            if school_settings.enforce_2fa_started_at:
+                deadline = school_settings.enforce_2fa_started_at + dt.timedelta(days=school_settings.enforce_2fa_grace_period_days)
+
+            has_2fa = hasattr(user, 'two_factor_config') and user.two_factor_config.is_enabled
+            if not has_2fa:
+                if deadline and timezone.now() > deadline:
+                    # Deadline passed but no 2FA — log them in but force setup
+                    user_data = UserSerializer(user).data
+                    if user.student_number:
+                        user_data['student_number'] = user.student_number
+                    access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+                    try:
+                        AuditLog.objects.create(
+                            user=user, school=user.school, action='LOGIN',
+                            model_name='CustomUser', object_id=str(user.id),
+                            object_repr=f'Login (2FA setup required): {user.email}',
+                            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+                        )
+                    except Exception:
+                        pass
+                    return Response({
+                        'user': user_data,
+                        'token': access_token,
+                        'message': f'{user.role.capitalize()} login successful',
+                        'requires_2fa_setup': True,
+                    })
+                else:
+                    # Allow login but return warning
+                    warning_date = deadline.strftime('%d %B %Y') if deadline else None
+                    user_data = UserSerializer(user).data
+                    if user.student_number:
+                        user_data['student_number'] = user.student_number
+                    access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+                    try:
+                        AuditLog.objects.create(
+                            user=user, school=user.school, action='LOGIN',
+                            model_name='CustomUser', object_id=str(user.id),
+                            object_repr=f'Login: {user.email}',
+                            ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+                        )
+                    except Exception:
+                        pass
+                    return Response({
+                        'user': user_data, 'token': access_token,
+                        'message': f'{user.role.capitalize()} login successful',
+                        '2fa_warning': True,
+                        '2fa_deadline': warning_date
+                    })
+    except Exception:
+        pass
+
+    user_data = UserSerializer(user).data
+    if user.student_number:
+        user_data['student_number'] = user.student_number
+
+    access_token = JWTAuthentication.generate_token(payload={"user_id": str(user.id)})
+
+    # Log the login event
+    try:
+        AuditLog.objects.create(
+            user=user,
+            school=user.school,
+            action='LOGIN',
+            model_name='CustomUser',
+            object_id=str(user.id),
+            object_repr=f'Login: {user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            response_status=200,
+        )
+    except Exception:
+        logger.warning("Audit log creation failed", exc_info=True)
+
+    return Response({
+        'user': user_data,
+        'token': access_token,
+        'message': f'{user.role.capitalize()} login successful'
+    })
 
 
 @api_view(['POST'])
@@ -524,6 +596,40 @@ def delete_user_view(request, user_id):
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def unlock_user_login_view(request, user_id):
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school associated with user'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target_user = CustomUser.objects.get(id=user_id, school=school)
+    except CustomUser.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_user.clear_login_failures()
+
+    try:
+        AuditLog.objects.create(
+            user=request.user,
+            school=request.user.school,
+            action='UPDATE',
+            model_name='CustomUser',
+            object_id=str(target_user.id),
+            object_repr=f'Login lockout cleared for: {target_user.email}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            response_status=200,
+        )
+    except Exception:
+        logger.warning("Audit log creation failed", exc_info=True)
+
+    return Response({'message': 'User login lockout cleared successfully.'})
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def hr_permissions_view(request):
@@ -810,6 +916,7 @@ def current_academic_period_view(request):
         'font_family': settings_obj.font_family,
         'welcome_message': settings_obj.welcome_message,
         'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
+        'hidden_pages': settings_obj.hidden_pages or [],
     }
     return Response(data)
 
@@ -830,8 +937,8 @@ def school_customization_view(request):
         
     settings_obj, _ = SchoolSettings.objects.get_or_create(school=school)
     
-    if request.method == 'GET':
-        data = {
+    def _serialize():
+        return {
             'school_name': school.name,
             'primary_color': settings_obj.primary_color,
             'secondary_color': settings_obj.secondary_color,
@@ -839,30 +946,84 @@ def school_customization_view(request):
             'school_motto': settings_obj.school_motto,
             'welcome_message': settings_obj.welcome_message,
             'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
+            'hidden_pages': settings_obj.hidden_pages or [],
+            'parent_login_blocked': settings_obj.parent_login_blocked,
+            'parent_login_blocked_until': settings_obj.parent_login_blocked_until,
+            'parent_login_block_message': settings_obj.parent_login_block_message,
         }
-        return Response(data)
+
+    if request.method == 'GET':
+        return Response(_serialize())
 
     # PUT
+    from .page_registry import validate_hidden_pages
+
     updatable = ['primary_color', 'secondary_color', 'font_family', 'school_motto', 'welcome_message']
+    # Only admin / superadmin can toggle page visibility and parent login (not HR).
+    privileged = request.user.role in ('admin', 'superadmin')
     changed = []
+
     for field in updatable:
         val = request.data.get(field)
         if val is not None:
             setattr(settings_obj, field, val)
             changed.append(field)
-    if changed:
-        settings_obj.save(update_fields=changed)
 
-    data = {
-        'school_name': school.name,
-        'primary_color': settings_obj.primary_color,
-        'secondary_color': settings_obj.secondary_color,
-        'font_family': settings_obj.font_family,
-        'school_motto': settings_obj.school_motto,
-        'welcome_message': settings_obj.welcome_message,
-        'logo_url': request.build_absolute_uri(settings_obj.logo.url) if settings_obj.logo else None,
-    }
-    return Response(data)
+    if privileged:
+        if 'hidden_pages' in request.data:
+            settings_obj.hidden_pages = validate_hidden_pages(request.data.get('hidden_pages'))
+            changed.append('hidden_pages')
+
+        if 'parent_login_blocked' in request.data:
+            blocked = bool(request.data.get('parent_login_blocked'))
+            if blocked:
+                message = (request.data.get('parent_login_block_message') or '').strip()
+                if not message:
+                    return Response(
+                        {'error': 'parent_login_block_message is required when blocking parent logins'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                settings_obj.parent_login_blocked = True
+                settings_obj.parent_login_block_message = message
+                changed += ['parent_login_blocked', 'parent_login_block_message']
+                if 'parent_login_blocked_until' in request.data:
+                    raw = request.data.get('parent_login_blocked_until')
+                    if raw in (None, ''):
+                        settings_obj.parent_login_blocked_until = None
+                    else:
+                        from django.utils.dateparse import parse_datetime
+                        parsed = parse_datetime(raw)
+                        settings_obj.parent_login_blocked_until = parsed
+                    changed.append('parent_login_blocked_until')
+            else:
+                settings_obj.parent_login_blocked = False
+                settings_obj.parent_login_blocked_until = None
+                changed += ['parent_login_blocked', 'parent_login_blocked_until']
+
+    if changed:
+        settings_obj.save(update_fields=list(set(changed)))
+
+        try:
+            AuditLog.objects.create(
+                user=request.user, school=school, action='UPDATE',
+                model_name='SchoolSettings', object_id=str(settings_obj.id),
+                object_repr=f'Customization updated: {", ".join(sorted(set(changed)))}',
+                ip_address=request.META.get('REMOTE_ADDR'), response_status=200,
+            )
+        except Exception:
+            pass
+
+    return Response(_serialize())
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def available_pages_view(request):
+    """Return the full page registry so admins can pick which pages to hide."""
+    if request.user.role not in ('admin', 'superadmin'):
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    from .page_registry import PAGE_REGISTRY
+    return Response({'pages': PAGE_REGISTRY})
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

@@ -9,6 +9,7 @@ whitenoise==6.9.0
 # Auth
 PyJWT==2.9.0
 pyotp==2.9.0
+argon2-cffi==23.1.0
 
 # Async task queue
 celery==5.5.3

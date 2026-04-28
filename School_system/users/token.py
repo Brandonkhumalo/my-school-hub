@@ -92,6 +92,15 @@ class JWTAuthentication(BaseAuthentication):
             # Look up user by ID
             user = User.objects.get(id=user_id)
 
+            if user.role == 'parent' and user.school_id:
+                try:
+                    if user.school.settings.parent_login_blocked:
+                        raise AuthenticationFailed('parent_login_blocked')
+                except AuthenticationFailed:
+                    raise
+                except Exception:
+                    pass
+
             return (user, token)
 
         except (InvalidTokenError, ExpiredSignatureError, User.DoesNotExist, jwt.DecodeError) as e:

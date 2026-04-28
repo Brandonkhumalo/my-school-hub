@@ -1,4 +1,5 @@
 import logging
+import hmac
 
 from django.contrib.auth import authenticate
 from rest_framework import status
@@ -15,8 +16,9 @@ import os
 from .models import CustomUser, School
 from .token import JWTAuthentication
 
-
-SUPERADMIN_SECRET_KEY = os.environ.get('SUPERADMIN_SECRET_KEY', 'TISHANYQ_DEV_2025')
+def _get_superadmin_secret_key():
+    """Read required superadmin secret from environment."""
+    return (os.environ.get('SUPERADMIN_SECRET_KEY') or '').strip()
 
 
 def check_superadmin(user):
@@ -36,7 +38,15 @@ def superadmin_register(request):
     if not all([email, password, full_name, secret_key]):
         return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
     
-    if secret_key != SUPERADMIN_SECRET_KEY:
+    configured_secret = _get_superadmin_secret_key()
+    if not configured_secret:
+        logger.error("SUPERADMIN_SECRET_KEY is not configured; refusing superadmin registration.")
+        return Response(
+            {'error': 'Superadmin registration is unavailable. Server secret is not configured.'},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+    if not hmac.compare_digest(str(secret_key), configured_secret):
         return Response({'error': 'Invalid secret key'}, status=status.HTTP_403_FORBIDDEN)
     
     if CustomUser.objects.filter(email=email).exists():

@@ -250,6 +250,7 @@ const apiService = {
   createManagedUser: (userData) => request("/auth/users/", "POST", userData),
   updateManagedUser: (userId, userData) => request(`/auth/users/${userId}/`, "PATCH", userData),
   deleteUser: (userId) => request(`/auth/users/${userId}/delete/`, "DELETE"),
+  unlockUserLogin: (userId) => request(`/auth/users/${userId}/unlock-login/`, "POST"),
   getHRPermissions: () => request("/auth/permissions/hr/", "GET"),
   updateHRPermissions: (userId, data) => request(`/auth/permissions/hr/${userId}/`, "PUT", data),
   getAccountantPermissions: () => request("/auth/permissions/accountant/", "GET"),
@@ -429,6 +430,11 @@ const apiService = {
   searchParents: (query = '') => request(`/parents/search/?q=${query}`, "GET"),
   getStudentParents: (studentId) => request(`/students/${studentId}/parents/`, "GET"),
 
+  // Admin conversation review
+  adminListConversations: () => request("/messages/admin/conversations/", "GET"),
+  adminGetConversation: (teacherId, parentId) =>
+    request(`/messages/admin/conversations/${teacherId}/${parentId}/`, "GET"),
+
   // Assessment Plans (admin/HR-boss configures; teacher/parent/student read)
   listAssessmentPlans: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
@@ -589,6 +595,11 @@ const apiService = {
   getStudentGradePredictions: (studentId) => request(`/academics/students/${studentId}/grade-prediction/`, "GET"),
 
   // Bulk CSV imports
+  getBulkImportCatalog: () => request("/academics/bulk-import/catalog/", "GET"),
+  validateBulkImport: (formData) => requestMultipart("/academics/bulk-import/validate/", "POST", formData),
+  commitBulkImport: (formData) => requestMultipart("/academics/bulk-import/commit/", "POST", formData),
+  getBulkImportHistory: () => request("/academics/bulk-import/history/", "GET"),
+  rollbackBulkImport: (jobId) => request(`/academics/bulk-import/history/${jobId}/rollback/`, "POST", {}),
   bulkImportStudents: (formData) => requestMultipart("/academics/students/bulk-import/", "POST", formData),
   bulkImportResults: (formData) => requestMultipart("/academics/results/bulk-import/", "POST", formData),
   bulkImportFees: (formData) => requestMultipart("/finances/fees/bulk-import/", "POST", formData),
@@ -627,6 +638,9 @@ const apiService = {
     formData.append('file', file);
     return requestMultipart("/auth/school/customization/logo/", "POST", formData);
   },
+
+  // Page visibility registry (admin customization)
+  getAvailablePages: () => request("/auth/school/available-pages/", "GET"),
 
   // Report card config (admin)
   getReportCardConfig: () => request("/auth/school/report-config/", "GET"),

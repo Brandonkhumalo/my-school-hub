@@ -1,4 +1,10 @@
 import logging
+import csv
+import io
+import json
+import re
+import secrets
+import string
 from decimal import Decimal
 
 from django.db.models import Avg, Count, Q, Prefetch
@@ -18,7 +24,8 @@ from email_service import (
 )
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
-    Timetable, Announcement, AnnouncementDismissal, Complaint, Suspension
+    Timetable, Announcement, AnnouncementDismissal, Complaint, Suspension,
+    ClassAttendance, BulkImportJob
 )
 from .serializers import (
     SubjectSerializer, ClassSerializer, StudentSerializer, TeacherSerializer,
@@ -28,6 +35,178 @@ from .serializers import (
     UpdateStudentSerializer, UpdateTeacherSerializer, UpdateParentSerializer,
     TransferredStudentSerializer,
 )
+
+
+BULK_IMPORT_PARAMETER_LIBRARY = {
+    "students": [
+        {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
+        {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
+        {"key": "admission_no", "label": "Admission Number", "required": False, "type": "text"},
+        {"key": "grade", "label": "Grade", "required": True, "type": "text"},
+        {"key": "class", "label": "Class", "required": True, "type": "text"},
+        {"key": "gender", "label": "Gender", "required": False, "type": "enum"},
+        {"key": "date_of_birth", "label": "Date of Birth", "required": False, "type": "date"},
+        {"key": "email", "label": "Email", "required": False, "type": "email"},
+        {"key": "phone", "label": "Phone", "required": False, "type": "text"},
+        {"key": "address", "label": "Address", "required": False, "type": "text"},
+        {"key": "status", "label": "Status", "required": False, "type": "enum"},
+    ],
+    "teachers": [
+        {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
+        {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
+        {"key": "employee_no", "label": "Employee Number", "required": False, "type": "text"},
+        {"key": "department", "label": "Department", "required": False, "type": "text"},
+        {"key": "subjects", "label": "Subjects", "required": False, "type": "text"},
+        {"key": "email", "label": "Email", "required": False, "type": "email"},
+        {"key": "phone", "label": "Phone", "required": False, "type": "text"},
+        {"key": "hire_date", "label": "Hire Date", "required": False, "type": "date"},
+    ],
+    "classes": [
+        {"key": "name", "label": "Class Name", "required": True, "type": "text"},
+        {"key": "grade", "label": "Grade", "required": True, "type": "text"},
+        {"key": "stream", "label": "Stream", "required": False, "type": "text"},
+        {"key": "class_teacher", "label": "Class Teacher", "required": False, "type": "text"},
+    ],
+    "subjects": [
+        {"key": "name", "label": "Subject Name", "required": True, "type": "text"},
+        {"key": "code", "label": "Subject Code", "required": False, "type": "text"},
+        {"key": "grade", "label": "Grade", "required": False, "type": "text"},
+        {"key": "is_priority", "label": "Priority Subject", "required": False, "type": "boolean"},
+    ],
+    "parents": [
+        {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
+        {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
+        {"key": "phone", "label": "Phone", "required": True, "type": "text"},
+        {"key": "email", "label": "Email", "required": False, "type": "email"},
+        {"key": "child_admission_no", "label": "Child Admission Number", "required": False, "type": "text"},
+        {"key": "relationship", "label": "Relationship", "required": False, "type": "enum"},
+    ],
+    "fees": [
+        {"key": "student_admission_no", "label": "Student Admission Number", "required": True, "type": "text"},
+        {"key": "term", "label": "Term", "required": True, "type": "enum"},
+        {"key": "fee_type", "label": "Fee Type", "required": True, "type": "text"},
+        {"key": "amount", "label": "Amount", "required": True, "type": "number"},
+        {"key": "due_date", "label": "Due Date", "required": False, "type": "date"},
+        {"key": "payment_status", "label": "Payment Status", "required": False, "type": "enum"},
+    ],
+    "attendance": [
+        {"key": "student_admission_no", "label": "Student Admission Number", "required": True, "type": "text"},
+        {"key": "date", "label": "Date", "required": True, "type": "date"},
+        {"key": "session", "label": "Session", "required": False, "type": "enum"},
+        {"key": "status", "label": "Status", "required": True, "type": "enum"},
+        {"key": "reason", "label": "Reason", "required": False, "type": "text"},
+    ],
+}
+
+
+def _parse_bulk_rows_from_upload(upload):
+    name = (upload.name or "").lower()
+    if name.endswith(".csv"):
+        decoded = upload.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(decoded))
+        return [dict(r) for r in reader]
+
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        try:
+            from openpyxl import load_workbook
+        except Exception as exc:
+            raise ValidationError(f"Excel parsing is unavailable on server: {exc}")
+        wb = load_workbook(upload, read_only=True, data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return []
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        out = []
+        for row in rows[1:]:
+            item = {}
+            for i, header in enumerate(headers):
+                if not header:
+                    continue
+                val = row[i] if i < len(row) else ""
+                item[header] = "" if val is None else str(val).strip()
+            out.append(item)
+        return out
+
+    raise ValidationError("Unsupported file type. Upload .csv or .xlsx")
+
+
+def _normalize_term(value):
+    raw = (value or "").strip().lower().replace(" ", "_")
+    if raw in ("term1", "t1"):
+        return "term_1"
+    if raw in ("term2", "t2"):
+        return "term_2"
+    if raw in ("term3", "t3"):
+        return "term_3"
+    if raw in ("term_1", "term_2", "term_3"):
+        return raw
+    return "term_1"
+
+
+def _as_int(value, default=0):
+    try:
+        return int(float(str(value).strip()))
+    except Exception:
+        return default
+
+
+def _normalize_phone(value):
+    """Normalize a Zimbabwe phone to +263XXXXXXXXX. Strips spaces, dashes, parens.
+    Accepts: +263788539918, 263 788 539 918, 0788539918, 0788 539 918, etc.
+    Returns the input unchanged if it doesn't match a known pattern (validation
+    will catch it downstream)."""
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    digits_only = re.sub(r"[\s\-()]+", "", raw)
+    if digits_only.startswith("+263") and len(digits_only) == 13:
+        return digits_only
+    if digits_only.startswith("263") and len(digits_only) == 12:
+        return "+" + digits_only
+    if digits_only.startswith("0") and len(digits_only) == 10:
+        return "+263" + digits_only[1:]
+    return raw
+
+
+def _generate_import_email(school, first_name, last_name, tag, row_idx):
+    code = (getattr(school, "code", "") or "school").lower()
+    local = f"{(first_name or 'user').strip().lower()}.{(last_name or 'import').strip().lower()}.{tag}.{row_idx}.{code}"
+    local = local.replace(" ", "").replace("..", ".")
+    return f"{local}@import.local"
+
+
+def _normalize_mapping(mapping):
+    if not isinstance(mapping, dict):
+        return {}
+    out = {}
+    for k, v in mapping.items():
+        key = str(k or "").strip()
+        val = str(v or "").strip()
+        if not key or not val:
+            continue
+        out[key] = val
+    return out
+
+
+def _map_row_to_parameters(row, mapping):
+    if not mapping:
+        return dict(row)
+    mapped = {}
+    # Accept both parameter->header and header->parameter shapes.
+    for mk, mv in mapping.items():
+        if mk in row and mv not in row:
+            mapped[mv] = row.get(mk, "")
+        else:
+            mapped[mk] = row.get(mv, "")
+    return mapped
+
+
+def _get_request_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
 
 
 # Subject Views
@@ -2067,16 +2246,569 @@ def _build_report_card_pdf(student, results, school, year, term):
 # Bulk CSV Import — Students & Results
 # ---------------------------------------------------------------
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_parameter_catalog(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response({
+        "import_types": [{"key": key, "label": key.replace("_", " ").title()} for key in BULK_IMPORT_PARAMETER_LIBRARY.keys()],
+        "parameter_library": BULK_IMPORT_PARAMETER_LIBRARY,
+        "date_formats": ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"],
+        "duplicate_strategies": ["skip", "update", "error"],
+    })
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
-def bulk_import_students(request):
-    """
-    Import students from a CSV file.
-    Columns: full_name, email, phone, class_name, date_of_birth, gender
-    """
+def bulk_import_validate(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    import_type = (request.data.get('import_type') or '').strip().lower()
+    if import_type not in BULK_IMPORT_PARAMETER_LIBRARY:
+        return Response({'error': 'Invalid import_type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    upload = request.FILES.get('file')
+    if not upload:
+        return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    raw_selected = request.data.get('selected_parameters', [])
+    raw_mapping = request.data.get('mapping', {})
+    if isinstance(raw_selected, str):
+        try:
+            selected_parameters = json.loads(raw_selected)
+        except Exception:
+            selected_parameters = [s.strip() for s in raw_selected.split(',') if s.strip()]
+    elif isinstance(raw_selected, list):
+        selected_parameters = raw_selected
+    else:
+        selected_parameters = []
+
+    selected_parameters = [str(p).strip() for p in selected_parameters if str(p).strip()]
+    if isinstance(raw_mapping, str):
+        try:
+            mapping = _normalize_mapping(json.loads(raw_mapping))
+        except Exception:
+            mapping = {}
+    else:
+        mapping = _normalize_mapping(raw_mapping)
+    library = BULK_IMPORT_PARAMETER_LIBRARY[import_type]
+    known_keys = {f['key'] for f in library}
+    required = [f['key'] for f in library if f.get('required')]
+    effective_keys = sorted(set(required + [p for p in selected_parameters if p in known_keys]))
+
+    try:
+        rows = _parse_bulk_rows_from_upload(upload)
+    except Exception as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    errors = []
+    mapped_rows = [_map_row_to_parameters(row, mapping) for row in rows]
+
+    for idx, row in enumerate(mapped_rows, start=2):
+        row_errors = []
+        for field_key in required:
+            val = row.get(field_key, '')
+            if val is None or str(val).strip() == '':
+                row_errors.append(f"Missing required field: {field_key}")
+        if row_errors:
+            errors.append({"row": idx, "errors": row_errors})
+
+    sample_rows = mapped_rows[:5]
+    headers = list(rows[0].keys()) if rows else []
+
+    return Response({
+        "import_type": import_type,
+        "selected_parameters": effective_keys,
+        "mapping": mapping,
+        "total_rows": len(rows),
+        "headers": headers,
+        "sample_rows": sample_rows,
+        "errors": errors[:100],
+        "valid": len(errors) == 0,
+        "message": f"Validated {len(rows)} rows with {len(errors)} row(s) containing errors.",
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_commit(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+    from users.models import AuditLog
+    from finances.models import FeeType, StudentFee
+
+    import_type = (request.data.get('import_type') or '').strip().lower()
+    upload = request.FILES.get('file')
+    if not upload:
+        return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school context found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        rows = _parse_bulk_rows_from_upload(upload)
+    except Exception as exc:
+        return Response({'error': f'Could not parse file: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    raw_mapping = request.data.get('mapping', {})
+    if isinstance(raw_mapping, str):
+        try:
+            mapping = _normalize_mapping(json.loads(raw_mapping))
+        except Exception:
+            mapping = {}
+    else:
+        mapping = _normalize_mapping(raw_mapping)
+
+    raw_selected = request.data.get('selected_parameters', [])
+    if isinstance(raw_selected, str):
+        try:
+            selected_parameters = json.loads(raw_selected)
+        except Exception:
+            selected_parameters = [s.strip() for s in raw_selected.split(',') if s.strip()]
+    elif isinstance(raw_selected, list):
+        selected_parameters = raw_selected
+    else:
+        selected_parameters = []
+
+    mapped_rows = [_map_row_to_parameters(row, mapping) for row in rows]
+    created, updated = 0, 0
+    errors = []
+    changes = []
+    ip_address = _get_request_ip(request)
+
+    job = BulkImportJob.objects.create(
+        school=school,
+        initiated_by=request.user,
+        import_type=import_type,
+        file_name=getattr(upload, "name", "") or "",
+        status='pending',
+        selected_parameters=selected_parameters,
+        mapping=mapping,
+        options={
+            "date_format": request.data.get("date_format", ""),
+            "duplicate_strategy": request.data.get("duplicate_strategy", ""),
+            "account_strategy": (request.data.get("account_strategy") or "random").strip().lower(),
+        },
+        total_rows=len(mapped_rows),
+    )
+
+    # Account-creation strategy for student/teacher/parent imports.
+    # 'random' (default) — generate a random temp password the admin must distribute manually.
+    # 'shared'           — every imported user gets the same admin-supplied password.
+    # 'inactive'         — user is created with an unusable password (must use forgot-password).
+    account_strategy = (request.data.get("account_strategy") or "random").strip().lower()
+    shared_password = (request.data.get("shared_password") or "").strip()
+    if account_strategy not in ("random", "shared", "inactive"):
+        account_strategy = "random"
+    if account_strategy == "shared" and len(shared_password) < 8:
+        return Response(
+            {"error": "shared_password must be at least 8 characters when using the shared strategy."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def _password_for_row():
+        if account_strategy == "shared":
+            return shared_password
+        if account_strategy == "inactive":
+            # Long random string the user can never know — they must reset to log in.
+            return "!" + secrets.token_urlsafe(24)
+        # random: a short readable temp password
+        alphabet = string.ascii_letters + string.digits
+        return "Tmp!" + "".join(secrets.choice(alphabet) for _ in range(8))
+
+    if import_type == "students":
+        from .serializers import CreateStudentSerializer
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
+                if not first_name and not last_name:
+                    full_name = (row.get("full_name") or "").strip()
+                    if full_name:
+                        parts = full_name.split(" ", 1)
+                        first_name = parts[0]
+                        last_name = parts[1] if len(parts) > 1 else ""
+                class_name = (row.get("class") or row.get("class_name") or "").strip()
+                if not first_name or not last_name or not class_name:
+                    raise ValueError("Missing first_name, last_name, or class")
+                student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
+                if not student_class:
+                    raise ValueError(f"Class '{class_name}' not found")
+                email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "student", i)
+                phone_norm = _normalize_phone(row.get("phone"))
+                serializer = CreateStudentSerializer(
+                    data={
+                        "user": {
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "password": _password_for_row(),
+                        },
+                        "student_class": student_class.id,
+                        "admission_date": str(timezone.now().date()),
+                        "student_email": email,
+                        "student_contact": phone_norm,
+                        "student_address": (row.get("address") or "").strip(),
+                        "date_of_birth": (row.get("date_of_birth") or "").strip() or None,
+                        "gender": (row.get("gender") or "").strip(),
+                    },
+                    context={"request": request},
+                )
+                if serializer.is_valid():
+                    student = serializer.save()
+                    created += 1
+                    if hasattr(student, "id"):
+                        changes.append({"action": "create", "model": "academics.Student", "pk": student.id})
+                else:
+                    raise ValueError(serializer.errors)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "classes":
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                name = (row.get("name") or "").strip()
+                if not name:
+                    raise ValueError("Missing class name")
+                grade_level = _as_int(row.get("grade"), 0)
+                if grade_level <= 0:
+                    raise ValueError("Invalid grade")
+                academic_year = (row.get("academic_year") or str(timezone.now().year)).strip()
+                obj, was_created = Class.objects.update_or_create(
+                    school=school,
+                    name=name,
+                    academic_year=academic_year,
+                    defaults={"grade_level": grade_level},
+                )
+                if was_created:
+                    created += 1
+                    changes.append({"action": "create", "model": "academics.Class", "pk": obj.pk})
+                else:
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "academics.Class",
+                        "pk": obj.pk,
+                        "before": {"grade_level": obj.grade_level},
+                        "after": {"grade_level": grade_level},
+                    })
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "subjects":
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                name = (row.get("name") or "").strip()
+                if not name:
+                    raise ValueError("Missing subject name")
+                code = (row.get("code") or name[:10].upper().replace(" ", "")).strip()
+                is_priority_raw = str(row.get("is_priority") or "").strip().lower()
+                is_priority = is_priority_raw in ("1", "true", "yes", "y")
+                obj, was_created = Subject.objects.update_or_create(
+                    school=school,
+                    code=code,
+                    defaults={"name": name, "is_priority": is_priority},
+                )
+                if was_created:
+                    created += 1
+                    changes.append({"action": "create", "model": "academics.Subject", "pk": obj.pk})
+                else:
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "academics.Subject",
+                        "pk": obj.pk,
+                        "before": {"name": obj.name, "is_priority": obj.is_priority},
+                        "after": {"name": name, "is_priority": is_priority},
+                    })
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "teachers":
+        from .serializers import CreateTeacherSerializer
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
+                if not first_name or not last_name:
+                    raise ValueError("Missing first_name or last_name")
+                email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "teacher", i)
+                payload = {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "email": email,
+                    "phone_number": _normalize_phone(row.get("phone")),
+                    "hire_date": (row.get("hire_date") or str(timezone.now().date())).strip(),
+                    "qualification": (row.get("department") or "").strip(),
+                    "password": _password_for_row(),
+                    "is_secondary_teacher": False,
+                }
+                serializer = CreateTeacherSerializer(data=payload, context={"request": request})
+                if serializer.is_valid():
+                    out = serializer.save()
+                    created += 1
+                    if isinstance(out, dict) and out.get("id"):
+                        changes.append({"action": "create", "model": "academics.Teacher", "pk": out["id"]})
+                else:
+                    raise ValueError(serializer.errors)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "parents":
+        from .serializers import CreateParentSerializer
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
+                phone = _normalize_phone(row.get("phone"))
+                if not first_name or not last_name or not phone:
+                    raise ValueError("Missing first_name, last_name, or phone")
+                email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "parent", i)
+                student_ids = []
+                child_adm = (row.get("child_admission_no") or "").strip()
+                if child_adm:
+                    student = Student.objects.filter(user__school=school, user__student_number=child_adm).first()
+                    if student:
+                        student_ids = [student.id]
+                payload = {
+                    "full_name": f"{first_name} {last_name}".strip(),
+                    "contact_number": phone,
+                    "email": email,
+                    "occupation": (row.get("relationship") or "").strip(),
+                    "password": _password_for_row(),
+                    "student_ids": student_ids,
+                }
+                serializer = CreateParentSerializer(data=payload, context={"request": request})
+                if serializer.is_valid():
+                    out = serializer.save()
+                    created += 1
+                    if hasattr(out, "id"):
+                        changes.append({"action": "create", "model": "academics.Parent", "pk": out.id})
+                else:
+                    raise ValueError(serializer.errors)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "fees":
+        import datetime
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                admission_no = (row.get("student_admission_no") or "").strip()
+                fee_type_name = (row.get("fee_type") or "").strip()
+                amount = float(row.get("amount") or 0)
+                term = _normalize_term(row.get("term"))
+                academic_year = (row.get("academic_year") or str(timezone.now().year)).strip()
+                if not admission_no or not fee_type_name or amount <= 0:
+                    raise ValueError("Missing required fee fields")
+                student = Student.objects.get(user__school=school, user__student_number=admission_no)
+                fee_type, _ = FeeType.objects.get_or_create(
+                    name=fee_type_name,
+                    school=school,
+                    defaults={"amount": amount, "academic_year": academic_year}
+                )
+                due_date_val = (row.get("due_date") or "").strip()
+                due_date = datetime.date.fromisoformat(due_date_val) if due_date_val else datetime.date.today()
+                _, was_created = StudentFee.objects.update_or_create(
+                    student=student,
+                    fee_type=fee_type,
+                    academic_year=academic_year,
+                    academic_term=term,
+                    defaults={"amount_due": amount, "due_date": due_date},
+                )
+                fee_obj = StudentFee.objects.get(
+                    student=student, fee_type=fee_type, academic_year=academic_year, academic_term=term
+                )
+                if was_created:
+                    created += 1
+                    changes.append({"action": "create", "model": "finances.StudentFee", "pk": fee_obj.pk})
+                else:
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "finances.StudentFee",
+                        "pk": fee_obj.pk,
+                        "before": {"amount_due": str(fee_obj.amount_due), "due_date": str(fee_obj.due_date)},
+                        "after": {"amount_due": str(amount), "due_date": str(due_date)},
+                    })
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "attendance":
+        import datetime
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                admission_no = (row.get("student_admission_no") or "").strip()
+                date_val = (row.get("date") or "").strip()
+                status_val = (row.get("status") or "").strip().lower()
+                if not admission_no or not date_val or not status_val:
+                    raise ValueError("Missing required attendance fields")
+                if status_val not in ("present", "absent", "late", "excused"):
+                    raise ValueError(f"Invalid status '{status_val}'")
+                student = Student.objects.select_related("student_class").get(
+                    user__school=school, user__student_number=admission_no
+                )
+                attendance_date = datetime.date.fromisoformat(date_val)
+                _, was_created = ClassAttendance.objects.update_or_create(
+                    student=student,
+                    date=attendance_date,
+                    defaults={
+                        "class_assigned": student.student_class,
+                        "status": status_val,
+                        "remarks": (row.get("reason") or "").strip(),
+                        "recorded_by": request.user,
+                    },
+                )
+                att_obj = ClassAttendance.objects.get(student=student, date=attendance_date)
+                if was_created:
+                    created += 1
+                    changes.append({"action": "create", "model": "academics.ClassAttendance", "pk": att_obj.pk})
+                else:
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "academics.ClassAttendance",
+                        "pk": att_obj.pk,
+                        "before": {"status": att_obj.status, "remarks": att_obj.remarks},
+                        "after": {"status": status_val, "remarks": (row.get("reason") or "").strip()},
+                    })
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    else:
+        return Response({'error': f"Unknown import type: {import_type}"}, status=status.HTTP_400_BAD_REQUEST)
+
+    status_value = 'completed' if not errors else ('failed' if created == 0 and updated == 0 else 'completed')
+    job.status = status_value
+    job.created_count = created
+    job.updated_count = updated
+    job.error_count = len(errors)
+    job.errors = errors[:500]
+    job.changes = changes
+    job.completed_at = timezone.now()
+    job.save(update_fields=[
+        'status', 'created_count', 'updated_count', 'error_count', 'errors', 'changes', 'completed_at'
+    ])
+
+    AuditLog.objects.create(
+        user=request.user,
+        school=school,
+        action='CREATE',
+        model_name='BulkImportJob',
+        object_id=str(job.id),
+        object_repr=f'{import_type} import',
+        changes={
+            'import_type': import_type,
+            'created': created,
+            'updated': updated,
+            'errors': len(errors),
+        },
+        ip_address=ip_address,
+        response_status=200,
+    )
+
+    return Response({
+        "job_id": job.id,
+        "import_type": import_type,
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+        "message": f"Imported {created} records (updated {updated}) with {len(errors)} errors."
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_history(request):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    if not school:
+        return Response([], status=status.HTTP_200_OK)
+    jobs = BulkImportJob.objects.filter(school=school).order_by('-created_at')[:100]
+    data = [{
+        "id": j.id,
+        "import_type": j.import_type,
+        "file_name": j.file_name,
+        "status": j.status,
+        "total_rows": j.total_rows,
+        "created_count": j.created_count,
+        "updated_count": j.updated_count,
+        "error_count": j.error_count,
+        "created_at": j.created_at,
+        "completed_at": j.completed_at,
+        "rolled_back_at": j.rolled_back_at,
+    } for j in jobs]
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_rollback(request, job_id):
+    from django.apps import apps
+    from users.models import AuditLog
+
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    job = BulkImportJob.objects.filter(id=job_id, school=school).first()
+    if not job:
+        return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if job.status == 'rolled_back':
+        return Response({'error': 'This import has already been rolled back.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    rolled_back = 0
+    rollback_errors = []
+    for change in reversed(job.changes or []):
+        try:
+            model_label = change.get('model')
+            app_label, model_name = model_label.split('.', 1)
+            model_cls = apps.get_model(app_label, model_name)
+            pk = change.get('pk')
+            action = change.get('action')
+            if action == 'create':
+                model_cls.objects.filter(pk=pk).delete()
+                rolled_back += 1
+            elif action == 'update':
+                instance = model_cls.objects.filter(pk=pk).first()
+                if instance:
+                    before = change.get('before') or {}
+                    for key, value in before.items():
+                        setattr(instance, key, value)
+                    instance.save()
+                    rolled_back += 1
+        except Exception as exc:
+            rollback_errors.append(str(exc))
+
+    job.status = 'rolled_back'
+    job.rolled_back_at = timezone.now()
+    job.rollback_notes = f"Rolled back items: {rolled_back}; errors: {len(rollback_errors)}"
+    job.save(update_fields=['status', 'rolled_back_at', 'rollback_notes'])
+
+    AuditLog.objects.create(
+        user=request.user,
+        school=school,
+        action='DELETE',
+        model_name='BulkImportJob',
+        object_id=str(job.id),
+        object_repr=f'{job.import_type} rollback',
+        changes={'rolled_back': rolled_back, 'errors': rollback_errors[:20]},
+        ip_address=_get_request_ip(request),
+        response_status=200,
+    )
+
+    return Response({
+        "job_id": job.id,
+        "rolled_back": rolled_back,
+        "errors": rollback_errors,
+        "message": f"Rollback finished. Rolled back {rolled_back} change(s).",
+    })
+
+
+def _process_bulk_import_students(request):
     import csv, io
-    from django.db import transaction
-    from users.models import CustomUser
     from .serializers import CreateStudentSerializer
 
     if request.user.role != 'admin':
@@ -2130,6 +2862,16 @@ def bulk_import_students(request):
         'created': created, 'errors': errors,
         'message': f'Imported {created} students with {len(errors)} errors.'
     })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_import_students(request):
+    """
+    Import students from a CSV file.
+    Columns: full_name, email, phone, class_name, date_of_birth, gender
+    """
+    return _process_bulk_import_students(request)
 
 
 @api_view(['POST'])

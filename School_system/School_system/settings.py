@@ -105,6 +105,17 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# Prefer Argon2id for new passwords; keep PBKDF2 fallback for legacy hashes.
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+]
+
+# Account lockout policy (account-level, in addition to IP rate limiting).
+LOGIN_LOCKOUT_THRESHOLD = config('LOGIN_LOCKOUT_THRESHOLD', default=5, cast=int)
+LOGIN_LOCKOUT_MINUTES = config('LOGIN_LOCKOUT_MINUTES', default=15, cast=int)
+
 # ---------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------

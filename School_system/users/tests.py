@@ -16,7 +16,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.hashers import check_password
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
@@ -303,6 +303,130 @@ class LoginViewTest(APITestCase):
             AuditLog.objects.filter(action="LOGIN").count(), before_count
         )
 
+    @override_settings(LOGIN_LOCKOUT_THRESHOLD=3, LOGIN_LOCKOUT_MINUTES=15)
+    @patch("users.views._check_rate_limit", return_value=False)
+    def test_login_locks_account_after_threshold_failures(self, _mock):
+        for _ in range(3):
+            response = self.client.post(self.url, {
+                "identifier": "login_admin@testschool.com",
+                "password": "wrongpassword",
+            }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_423_LOCKED)
+        self.admin.refresh_from_db()
+        self.assertIsNotNone(self.admin.account_locked_until)
+        self.assertGreaterEqual(self.admin.failed_login_attempts, 3)
+
+    @override_settings(LOGIN_LOCKOUT_THRESHOLD=2, LOGIN_LOCKOUT_MINUTES=15)
+    @patch("users.views._check_rate_limit", return_value=False)
+    def test_locked_account_rejects_correct_password(self, _mock):
+        self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "wrongpassword",
+        }, format="json")
+        self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "wrongpassword",
+        }, format="json")
+
+        response = self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "correctpass",
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_423_LOCKED)
+        self.assertEqual(response.data.get("error"), "account_locked")
+
+    @override_settings(LOGIN_LOCKOUT_THRESHOLD=3, LOGIN_LOCKOUT_MINUTES=15)
+    @patch("users.views._check_rate_limit", return_value=False)
+    def test_successful_login_clears_failed_attempts(self, _mock):
+        self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "wrongpassword",
+        }, format="json")
+        self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "wrongpassword",
+        }, format="json")
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.failed_login_attempts, 2)
+
+        response = self.client.post(self.url, {
+            "identifier": "login_admin@testschool.com",
+            "password": "correctpass",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.failed_login_attempts, 0)
+        self.assertIsNone(self.admin.account_locked_until)
+
+
+class UnlockUserLoginViewTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.admin = make_user(self.school, "unlock_admin", role="admin")
+        self.teacher = make_user(self.school, "unlock_teacher", role="teacher")
+        self.other_school = make_school(name="Other", code="SCHLOCK2")
+        self.other_admin = make_user(self.other_school, "other_unlock_admin", role="admin")
+        self.url = f"/api/v1/auth/users/{self.teacher.id}/unlock-login/"
+
+    def test_admin_unlocks_user_login_lockout(self):
+        self.teacher.failed_login_attempts = 6
+        from django.utils import timezone
+        import datetime
+        self.teacher.account_locked_until = timezone.now() + datetime.timedelta(minutes=10)
+        self.teacher.save(update_fields=["failed_login_attempts", "account_locked_until"])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(self.url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.teacher.refresh_from_db()
+        self.assertEqual(self.teacher.failed_login_attempts, 0)
+        self.assertIsNone(self.teacher.account_locked_until)
+
+    def test_non_admin_cannot_unlock(self):
+        self.client.force_authenticate(user=self.teacher)
+        response = self.client.post(self.url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_cannot_unlock_user_in_other_school(self):
+        self.client.force_authenticate(user=self.other_admin)
+        response = self.client.post(self.url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+# ---------------------------------------------------------------------------
+# API tests — Superadmin
+# ---------------------------------------------------------------------------
+
+class SuperadminRegisterSecurityTest(APITestCase):
+    """Superadmin registration must require configured secret."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/v1/auth/superadmin/register/"
+        self.payload = {
+            "email": "superadmin@testschool.com",
+            "password": "SuperPass123!",
+            "full_name": "Root Admin",
+            "secret_key": "TOP_SECRET",
+        }
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_register_returns_503_when_secret_not_configured(self):
+        response = self.client.post(self.url, self.payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(CustomUser.objects.filter(role="superadmin").count(), 0)
+
+    @patch.dict("os.environ", {"SUPERADMIN_SECRET_KEY": "TOP_SECRET"}, clear=True)
+    def test_register_succeeds_with_matching_configured_secret(self):
+        response = self.client.post(self.url, self.payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(CustomUser.objects.filter(email="superadmin@testschool.com", role="superadmin").exists())
+
 
 # ---------------------------------------------------------------------------
 # API tests — Logout
@@ -466,6 +590,34 @@ class SchoolSettingsViewTest(APITestCase):
         self.client.force_authenticate(user=self.admin)
         self.client.get(self.url)
         self.assertTrue(SchoolSettings.objects.filter(school=self.school).exists())
+
+
+class RegisterSchoolPasswordStorageTest(APITestCase):
+    """School onboarding must persist admin password as a hash on CustomUser."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/v1/auth/schools/register/"
+
+    def test_register_school_stores_hashed_admin_password(self):
+        payload = {
+            "school_name": "Hash Check Academy",
+            "school_type": "secondary",
+            "accommodation_type": "day",
+            "curriculum": "zimsec",
+            "admin_first_name": "Alice",
+            "admin_last_name": "Admin",
+            "admin_email": "alice.admin@example.com",
+            "admin_phone": "+263771000111",
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        generated_password = response.data["admin_credentials"]["password"]
+        admin_user = CustomUser.objects.get(email="alice.admin@example.com")
+
+        self.assertNotEqual(admin_user.password, generated_password)
+        self.assertTrue(admin_user.check_password(generated_password))
 
 
 class RolePermissionDefaultAccessTest(APITestCase):

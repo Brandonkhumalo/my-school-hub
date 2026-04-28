@@ -119,8 +119,10 @@ const Customization = lazy(() => import("./pages/shared/Customization"));
 const AdminDiscipline = lazy(() => import("./pages/admin/AdminDiscipline"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics"));
 const AdminAuditLog = lazy(() => import("./pages/admin/AdminAuditLog"));
+const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const AdminAtRiskStudents = lazy(() => import("./pages/admin/AdminAtRiskStudents"));
 const AdminPastStudents = lazy(() => import("./pages/admin/AdminPastStudents"));
+const AdminBulkImport = lazy(() => import("./pages/admin/AdminBulkImport"));
 const TwoFactorCompliance = lazy(() => import("./pages/admin/TwoFactorCompliance"));
 const TwoFactorSettings = lazy(() => import("./pages/profile/TwoFactorSettings"));
 
@@ -286,8 +288,10 @@ function App() {
         <Route path="/admin/discipline" element={<RequireAuth allowedRoles={['admin']}><AdminDiscipline /></RequireAuth>} />
         <Route path="/admin/analytics" element={<RequireAuth allowedRoles={['admin']}><AdminAnalytics /></RequireAuth>} />
         <Route path="/admin/audit-logs" element={<RequireAuth allowedRoles={['admin']}><AdminAuditLog /></RequireAuth>} />
+        <Route path="/admin/messages" element={<RequireAuth allowedRoles={['admin']}><AdminMessages /></RequireAuth>} />
         <Route path="/admin/at-risk-students" element={<RequireAuth allowedRoles={['admin', 'hr']}><AdminAtRiskStudents /></RequireAuth>} />
         <Route path="/admin/past-students" element={<RequireAuth allowedRoles={['admin']}><AdminPastStudents /></RequireAuth>} />
+        <Route path="/admin/bulk-import" element={<RequireAuth allowedRoles={['admin']}><AdminBulkImport /></RequireAuth>} />
         <Route path="/admin/2fa-compliance" element={<RequireAuth allowedRoles={['admin']}><TwoFactorCompliance /></RequireAuth>} />
         <Route path="/admin/profile" element={<RequireAuth allowedRoles={['admin']}><ProfilePage /></RequireAuth>} />
 

@@ -16,6 +16,7 @@ function Login() {
   const [showTwoFactor, setShowTwoFactor] = useState(false);
   const [otpSessionToken, setOtpSessionToken] = useState('');
   const [suspendedModal, setSuspendedModal] = useState(null);
+  const [parentBlockedModal, setParentBlockedModal] = useState(null);
   const [twoFaWarningDeadline, set2faWarningDeadline] = useState(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -82,12 +83,25 @@ function Login() {
       login(response.user, response.token);
       navigateByRole(response.user.role);
     } catch (err) {
-      if (err.response?.data?.error === "school_suspended_admin") {
+      if (err.response?.data?.error === "account_locked") {
+        const rawUntil = err.response?.data?.locked_until;
+        if (rawUntil) {
+          const when = new Date(rawUntil).toLocaleString();
+          setError(`Account locked due to failed attempts. Try again after ${when}.`);
+        } else {
+          setError(err.response?.data?.message || "Account temporarily locked.");
+        }
+      } else if (err.response?.data?.error === "school_suspended_admin") {
         setSuspendedModal({ type: "admin", message: err.response.data.message, contact: err.response.data.contact });
       } else if (err.response?.data?.error === "school_suspended") {
         setSuspendedModal({ type: "user", message: err.response.data.message });
+      } else if (err.response?.data?.error === "parent_login_blocked") {
+        setParentBlockedModal({
+          message: err.response.data.message,
+          unblockAt: err.response.data.unblock_at || null,
+        });
       } else {
-        setError("Failed to login. Please check your credentials.");
+        setError(err.response?.data?.error || "Failed to login. Please check your credentials.");
       }
     } finally {
       setLoading(false);
@@ -124,6 +138,33 @@ function Login() {
             )}
             <button
               onClick={() => setSuspendedModal(null)}
+              className="w-full py-3 rounded-xl font-semibold text-white transition"
+              style={{ background: "#1e293b" }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {parentBlockedModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="rounded-2xl shadow-2xl max-w-md w-full p-7 bg-white">
+            <div className="text-center mb-5">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-lock text-amber-500 text-2xl" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Parent Portal Temporarily Closed</h3>
+              <p className="text-gray-600 text-sm whitespace-pre-line">{parentBlockedModal.message}</p>
+            </div>
+            {parentBlockedModal.unblockAt && (
+              <div className="bg-amber-50 rounded-xl p-3 mb-5 text-sm text-amber-800 text-center">
+                <p className="font-semibold">You can try logging in again after:</p>
+                <p className="mt-1">{new Date(parentBlockedModal.unblockAt).toLocaleString()}</p>
+              </div>
+            )}
+            <button
+              onClick={() => setParentBlockedModal(null)}
               className="w-full py-3 rounded-xl font-semibold text-white transition"
               style={{ background: "#1e293b" }}
             >

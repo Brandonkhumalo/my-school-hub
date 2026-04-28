@@ -13,9 +13,12 @@ Covers:
 """
 
 import datetime
+import csv
+import io
 from unittest.mock import patch
 
 from django.core.signing import TimestampSigner
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -342,6 +345,50 @@ class AssignmentSubmissionModelTest(TestCase):
                 student=self.student,
                 text_submission="Duplicate",
             )
+
+
+# ---------------------------------------------------------------------------
+# API tests — Assignment submissions (teacher ownership)
+# ---------------------------------------------------------------------------
+
+class AssignmentSubmissionOwnershipAPITest(APITestCase):
+    """Assignment submission endpoints must scope by assignment.teacher."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.cls = make_class(self.school)
+        self.subject = make_subject(self.school, code="OWN01")
+        self.owner_teacher = make_teacher(self.school, username="owner_teacher")
+        self.other_teacher = make_teacher(self.school, username="other_teacher")
+        self.student = make_student(self.school, self.cls, username="owner_student", student_number="OWN001")
+        self.assignment = Assignment.objects.create(
+            title="Ownership Test Assignment",
+            description="Ensure teacher ownership filtering works.",
+            subject=self.subject,
+            teacher=self.owner_teacher,
+            assigned_class=self.cls,
+            deadline=timezone.now() + datetime.timedelta(days=2),
+        )
+        AssignmentSubmission.objects.create(
+            assignment=self.assignment,
+            student=self.student,
+            text_submission="My submission",
+            status="submitted",
+        )
+        self.url = f"/api/v1/teachers/assignments/{self.assignment.id}/submissions/"
+
+    def test_owner_teacher_can_list_submissions(self):
+        self.client.force_authenticate(user=self.owner_teacher.user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get("assignment_id"), self.assignment.id)
+        self.assertEqual(response.data.get("submitted_count"), 1)
+
+    def test_non_owner_teacher_gets_not_found(self):
+        self.client.force_authenticate(user=self.other_teacher.user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 # ---------------------------------------------------------------------------
@@ -932,6 +979,113 @@ class AnnouncementSuspensionPermissionAPITest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         suspension = Suspension.objects.get(id=response.data["id"])
         self.assertEqual(suspension.teacher_id, self.teacher.id)
+
+
+class BulkImportWizardAPITest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school(name="Bulk Import School")
+        self.admin = make_user(self.school, "bulk_admin", role="admin")
+        self.teacher = make_teacher(self.school, username="bulk_teacher")
+        self.class_a = make_class(self.school, teacher_user=self.teacher.user, name="Form 1A", grade_level=1)
+        self.catalog_url = "/api/v1/academics/bulk-import/catalog/"
+        self.validate_url = "/api/v1/academics/bulk-import/validate/"
+        self.commit_url = "/api/v1/academics/bulk-import/commit/"
+        self.history_url = "/api/v1/academics/bulk-import/history/"
+
+    def _csv_file(self, rows):
+        if not rows:
+            headers = ["first_name", "last_name", "grade", "class"]
+            content = ",".join(headers) + "\n"
+        else:
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+            content = buf.getvalue()
+        return SimpleUploadedFile("students.csv", content.encode("utf-8"), content_type="text/csv")
+
+    def test_catalog_admin_ok(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(self.catalog_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, msg=getattr(res, "data", None))
+        self.assertIn("parameter_library", res.data)
+        self.assertIn("students", res.data["parameter_library"])
+
+    def test_catalog_teacher_forbidden(self):
+        self.client.force_authenticate(user=self.teacher.user)
+        res = self.client.get(self.catalog_url)
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_validate_missing_required_fields_reports_errors(self):
+        self.client.force_authenticate(user=self.admin)
+        file_obj = self._csv_file([{"first_name": "John", "last_name": "", "grade": "1", "class": ""}])
+        res = self.client.post(self.validate_url, {
+            "import_type": "students",
+            "selected_parameters": '["first_name","last_name","grade","class"]',
+            "file": file_obj,
+        }, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, msg=getattr(res, "data", None))
+        self.assertFalse(res.data["valid"])
+        self.assertGreaterEqual(len(res.data["errors"]), 1)
+
+    def test_commit_students_uses_existing_student_import(self):
+        self.client.force_authenticate(user=self.admin)
+        file_obj = self._csv_file([{
+            "full_name": "John Doe",
+            "email": "john.bulk@example.com",
+            "phone": "0770000000",
+            "class_name": "Form 1A",
+            "date_of_birth": "2012-05-01",
+            "gender": "M",
+        }])
+        res = self.client.post(self.commit_url, {
+            "import_type": "students",
+            "file": file_obj,
+        }, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, msg=str(getattr(res, "data", None)))
+        self.assertIn("created", res.data)
+
+    def test_commit_subjects_creates_subject(self):
+        self.client.force_authenticate(user=self.admin)
+        file_obj = self._csv_file([{"name": "Mathematics", "code": "MTH100", "is_priority": "true"}])
+        res = self.client.post(self.commit_url, {
+            "import_type": "subjects",
+            "file": file_obj,
+        }, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(Subject.objects.filter(school=self.school, code="MTH100").count(), 1)
+
+    def test_commit_classes_creates_class(self):
+        self.client.force_authenticate(user=self.admin)
+        file_obj = self._csv_file([{"name": "Form 2B", "grade": "2", "academic_year": "2026"}])
+        res = self.client.post(self.commit_url, {
+            "import_type": "classes",
+            "file": file_obj,
+        }, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(Class.objects.filter(school=self.school, name="Form 2B", academic_year="2026").count(), 1)
+
+    def test_commit_with_mapping_and_then_rollback(self):
+        self.client.force_authenticate(user=self.admin)
+        file_obj = self._csv_file([{"Class Name": "Form 3C", "Grade Level": "3", "Year": "2026"}])
+        res = self.client.post(self.commit_url, {
+            "import_type": "classes",
+            "mapping": '{"name":"Class Name","grade":"Grade Level","academic_year":"Year"}',
+            "file": file_obj,
+        }, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(Class.objects.filter(school=self.school, name="Form 3C", academic_year="2026").count(), 1)
+        job_id = res.data.get("job_id")
+        self.assertTrue(job_id)
+
+        hist = self.client.get(self.history_url)
+        self.assertEqual(hist.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(hist.data), 1)
+
+        rb = self.client.post(f"{self.history_url}{job_id}/rollback/", {}, format="json")
+        self.assertEqual(rb.status_code, status.HTTP_200_OK)
+        self.assertEqual(Class.objects.filter(school=self.school, name="Form 3C", academic_year="2026").count(), 0)
 
 
 # ---------------------------------------------------------------------------

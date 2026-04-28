@@ -818,6 +818,20 @@ class PayNowCallbackAPITest(APITestCase):
         self.assertEqual(self.record.amount_paid, Decimal("150.00"))
         self.assertEqual(self.record.payment_status, "partial")
 
+    def test_callback_accepts_fully_paid_status_alias(self):
+        response = self.client.post(self.url, {
+            "reference": self.intent.provider_reference,
+            "paynowreference": "PAYNOW-REF-ALIAS",
+            "status": "fully paid",
+            "amount": "150.00",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.intent.refresh_from_db()
+        self.record.refresh_from_db()
+        self.assertEqual(self.intent.status, "paid")
+        self.assertEqual(self.record.amount_paid, Decimal("150.00"))
+        self.assertEqual(self.record.payment_status, "partial")
+
 # ---------------------------------------------------------------------------
 # API tests — Bulk fee CSV import
 # ---------------------------------------------------------------------------

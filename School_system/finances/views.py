@@ -2386,7 +2386,9 @@ def paynow_result_callback(request):
     reference = request.data.get('reference', '').strip()
     paynow_reference = request.data.get('paynowreference', '').strip()
     amount = request.data.get('amount', 0)
-    status_value = request.data.get('status', '').lower()
+    status_value = str(request.data.get('status', '')).strip().lower().replace('_', ' ')
+    if status_value == 'fully paid':
+        status_value = 'paid'
 
     logger.info('PayNow callback: ref=%s paynow_ref=%s status=%s amount=%s',
                 reference, paynow_reference, status_value, amount)

@@ -58,6 +58,8 @@ export function SchoolSettingsProvider({ children }) {
     lateFeePercentage: settings?.late_fee_percentage ?? "",
     // System
     timezone: settings?.timezone || "",
+    // Page visibility
+    hiddenPages: settings?.hidden_pages || [],
   };
 
   useEffect(() => {

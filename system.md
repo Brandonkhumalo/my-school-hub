@@ -1,22 +1,49 @@
 # My School Hub — System Overview
 
 **Last Updated:** 22 April 2026  
-**Stack:** Django 5.2 + React 19 + Vite 7 (pure Django/React — no Go layer)
+**Stack:** Django 5.2 + Go services + React 19 + Vite 7
 
 ---
 
 ## Architecture
 
-| Layer        | Technology                                              |
-|--------------|---------------------------------------------------------|
-| Frontend     | React 19.2, Vite 7.3, React Router 7.13, Tailwind CSS  |
-| Backend      | Django 5.2, Django REST Framework 3.16                  |
-| Auth         | Custom JWT (HS256, 30-day access / 60-day refresh) + 2FA TOTP |
-| Database     | SQLite (dev) / PostgreSQL (prod) — per-school FK isolation |
-| Async Tasks  | Celery + django_celery_results                          |
-| Storage      | django-storages (S3-compatible for media/logos)         |
-| Payments     | PayNow Zimbabwe (per-school credentials, real-time polling) |
-| API Schema   | drf-spectacular (OpenAPI 3)                             |
+### Production (Docker / AWS)
+
+```
+Internet → Go Gateway (schoolhub-gateway)
+               ↓
+         Django API (schoolhub-web)   ←→   Go Services (schoolhub-services)
+               ↓                                   ↓
+          PostgreSQL (RDS)              Go Workers (schoolhub-workers)
+          ElastiCache (Redis)           Celery async tasks
+          S3 (media/logos)
+```
+
+| Layer           | Technology                                              | Docker Image           |
+|-----------------|---------------------------------------------------------|------------------------|
+| Frontend        | React 19.2, Vite 7.3, React Router 7.13, Tailwind CSS  | `schoolhub-web`        |
+| API / Domain    | Django 5.2, Django REST Framework 3.16                  | `schoolhub-web`        |
+| Gateway         | Go — request routing, auth caching, rate limiting       | `schoolhub-gateway`    |
+| Services        | Go — high-throughput / low-latency processing paths     | `schoolhub-services`   |
+| Workers         | Go — async background jobs, messaging, queue consumers  | `schoolhub-workers`    |
+| Auth            | Custom JWT (HS256) + 2FA TOTP — issued by Django, validated by Go gateway | — |
+| Database        | SQLite (dev) / PostgreSQL RDS (prod)                    | —                      |
+| Cache / Sessions| Redis (ElastiCache in prod)                             | —                      |
+| Async Tasks     | Celery + django_celery_results                          | —                      |
+| Storage         | django-storages → S3 (media, logos, reports)            | —                      |
+| Payments        | PayNow Zimbabwe (per-school credentials, real-time polling) | —                  |
+| API Schema      | drf-spectacular (OpenAPI 3)                             | —                      |
+
+### Why Django + Go Hybrid
+
+Django is the system of record — it owns all domain models, business logic, migrations, and the REST API. Go handles the paths where Django would be a bottleneck:
+
+| Concern | Handled by |
+|---|---|
+| Request routing and auth token validation at scale | Go gateway |
+| High-throughput async jobs (messaging, notifications) | Go workers |
+| Low-latency service calls between internal components | Go services |
+| All data writes, business rules, report generation | Django |
 
 ---
 
@@ -216,43 +243,142 @@ Light/dark toggle backed by localStorage.
 
 ---
 
-## Essential Commands
+## Security Design
 
-```bash
-# Frontend
-npm run dev          # Vite dev server on port 5000 (proxies /api → :8000)
-npm run build
-
-# Backend
-cd School_system
-python manage.py runserver
-python manage.py makemigrations && python manage.py migrate
-python manage.py populate_demo_data
-python manage.py generate_parents
-```
+My School Hub is built with a defence-in-depth approach — multiple independent security layers so that no single failure exposes school data. The sections below cover every layer, what is live today, and what is on the security roadmap.
 
 ---
 
-## Known Technical Debt
+### 1. Data Isolation — Every School is an Island
 
-| Item | Risk |
-|------|------|
-| WhatsApp PIN flow: serializer exposes `pin`/`confirm_pin` but code reads `whatsapp_pin` | Runtime error on PIN set |
-| Payment status enums: `'fully paid'` used in callback vs model choices `paid` | Silent status mismatch |
-| Superadmin secret has hardcoded fallback default | Security risk in prod |
-| School `admin_password` stored in plaintext | Must be hashed before enterprise rollout |
-| No automated test suite for Django views | Regressions require manual verification |
-| `Assignment` model uses `teacher` field; some views filter on `created_by` | QuerySet returns empty silently |
+Every single record in the system — students, results, fees, staff, health data, boarding records — carries a `school` foreign key. Three custom database managers enforce this automatically on every query:
+
+| Manager | Behaviour |
+|---|---|
+| `TenantAwareManager` | All queries pre-filtered to `Model.objects.for_school(school)` |
+| `SoftDeleteManager` | Deleted records stay in database but are invisible to queries |
+| `TenantSoftDeleteManager` | Both combined — school-scoped and soft-delete safe |
+
+**What this means for schools:** It is architecturally impossible for School A to see School B's data. Tenant isolation is not a permission check — it is enforced at the database query level on every request.
+
+Suspicious schools can also be suspended by the platform operator. A suspended school's admin cannot log in, and all API access is blocked at authentication time.
 
 ---
 
-## Frontend Dependencies
+### 2. Authentication — Proving Who You Are
+
+#### JWT Tokens
+All sessions use signed JSON Web Tokens (HS256). Tokens carry an expiry timestamp and a type field that is validated on every request. There are no persistent sessions on the server — the signed token is the only credential.
+
+| Token | Lifetime |
+|---|---|
+| Access token | Configurable (default 24 h) |
+| Refresh token | Configurable (default 72 h) |
+
+On logout, the token is written to a `BlacklistedToken` table. Every subsequent request checks this table — a logged-out token is permanently dead even if it has not expired yet.
+
+#### Two-Factor Authentication (2FA)
+2FA is built in, not bolted on.
+
+- **TOTP** — works with Google Authenticator, Authy, and any RFC 6238-compatible app
+- **Backup codes** — 10 single-use codes generated with `secrets.choice()` (cryptographically secure RNG), stored as Django PBKDF2 hashes — never readable after generation
+- **Trusted devices** — once a device passes 2FA, its IP address is remembered; returning from the same IP skips the OTP prompt
+- **Backup code audit trail** — every backup code use is logged with timestamp, IP address, and device fingerprint
+- **School-level enforcement** — school admins can make 2FA mandatory for all staff from the Settings page
+- **2FA compliance dashboard** — admins see a live table of which staff members have 2FA enabled vs. not
+
+Rate limits on 2FA endpoints:
+- OTP verification: **5 attempts per minute** per IP
+- Backup code verification: **3 attempts per minute** per IP (stricter)
+
+#### Password Security
+- Minimum 8 characters enforced at serializer and validator level
+- Four Django password validators active: similarity check, minimum length, common-password dictionary, numeric-only block
+- Passwords hashed with **PBKDF2-SHA256** — never stored in plaintext
+- Password confirmation required on registration and change
+- Old password verified before any password change is accepted
+
+#### Login Security
+- Rate limited to **5 attempts per minute** per IP — brute-force attacks are blocked at the network level
+- Returns `HTTP 429 Too Many Requests` with a clear wait message
+- Every successful login is written to the Audit Log with the user's IP address
+- Suspended schools see a specific error with contact details — no ambiguous failures
+
+---
+
+### 3. Role-Based Access Control — The Right People See the Right Things
+
+The system has 11 distinct roles, each with its own set of pages and API endpoints. Access is enforced at three independent layers:
 
 ```
-react@19.2.4            react-dom@19.2.4
-react-router-dom@7.13.0
-chart.js@4.5.1          react-chartjs-2@5.3.1
-lucide-react@1.8.0
-react-hot-toast@2.6.0
-vite@7.3.1              eslint@9.39.2
+Request → JWT Authentication → Role Middleware → Endpoint Permission Class → Tenant Filter
 ```
+
+No single bypass defeats all layers.
+
+#### Standard Roles
+Each role maps to a fixed set of API endpoints. A teacher cannot call a finance endpoint. A parent cannot call a staff endpoint. These are hard endpoint-level restrictions enforced on the server — not just hidden buttons in the UI.
+
+#### HR & Accountant Granular Permissions
+HR and Accountant roles have an additional permission layer below the role level:
+
+- `HRPermissionProfile` — 35 pages, each with independent `can_read` and `can_write` flags
+- `AccountantPermissionProfile` — 7 financial page scopes with the same read/write split
+- Root-level HR/Accountant heads bypass page checks and get full access within their domain
+- Enforced by `HRAccessControlMiddleware` and `AccountantAccessControlMiddleware` on every request — not just on the frontend
+
+**What this means in practice:** An HR officer can be given read access to payroll but no write access. Another can be allowed to manage leaves but blocked from seeing salary figures. The school admin configures this from the Permissions page — no code changes required.
+
+---
+
+### 4. Full Audit Trail — Every Action Recorded
+
+Every write operation (CREATE, UPDATE, DELETE) and every authentication event (LOGIN, LOGOUT, SUSPEND, APPROVE) is written to the `AuditLog` table automatically by `AuditMiddleware`.
+
+Each log entry records:
+- **Who** — user ID, name, role
+- **What** — model name, object ID, human-readable description
+- **What changed** — JSON diff of before/after field values
+- **When** — timestamp, database-indexed
+- **Where** — IP address
+- **Outcome** — HTTP response status (did it succeed or fail?)
+
+Sensitive fields — passwords, tokens, PINs, secrets — are stripped from the log before writing. The audit log stores *what changed*, not credentials.
+
+School admins view the full audit log at `/admin/audit-logs`.
+
+**What this means for schools:** If a fee record is edited, a student is suspended, or a staff record is deleted, the log shows exactly who did it, from which IP, and at what time. There is no way to take a write action without being recorded.
+
+---
+
+### 5. Payment Security — PayNow Integration
+
+Payment callbacks from PayNow Zimbabwe are cryptographically verified before any payment is recorded:
+
+- **Dual HMAC signature verification** — supports both SHA-256 and SHA-512
+- **Constant-time comparison** — `hmac.compare_digest()` instead of `==`, which prevents timing-based attacks that could allow forged signatures
+- **Canonical payload construction** — keys sorted deterministically before hashing, preventing payload reordering attacks
+- **Per-school credentials** — each school's `paynow_integration_id` and `paynow_integration_key` stored in `SchoolSettings`, never shared between tenants
+- **PaymentIntent tracking** — every initiated payment creates a `PaymentIntent` record with a poll URL and provider reference, enabling full reconciliation
+
+A forged or tampered payment callback is rejected before any database write occurs.
+
+---
+
+### 6. Transport & Infrastructure Security
+
+| Protection | Status | Detail |
+|---|---|---|
+| HTTPS enforcement | **Live** | `SECURE_PROXY_SSL_HEADER` set for reverse proxy; TLS termination at ALB/nginx |
+| HSTS | **Live** | 1-year max-age, `includeSubDomains`, `preload` — browsers permanently enforce HTTPS after first visit |
+| Secure cookies | **Live** | `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` enabled in production |
+| Clickjacking protection | **Live** | `X_FRAME_OPTIONS = 'DENY'` — the app cannot be embedded in iframes on other sites |
+| MIME sniffing protection | **Live** | `SECURE_CONTENT_TYPE_NOSNIFF = True` — browsers cannot reinterpret uploaded file types |
+| XSS filter header | **Live** | `SECURE_BROWSER_XSS_FILTER = True` |
+| CORS whitelist | **Live** | Only `myschoolhub.co.zw` and local dev origins allowed; `CORS_ALLOW_ALL_ORIGINS = False` |
+| CSRF protection | **Live** | Django CSRF middleware active; trusted origins explicitly configured |
+| No XSS in frontend | **Live** | Zero uses of `dangerouslySetInnerHTML` confirmed across the entire React codebase |
+| File upload validation | **Live** | School logo capped at 10 MB with type validation on upload |
+| SQL injection | **Live** | 100% Django ORM — no raw SQL strings, no user input interpolated into queries |
+| Secret management | **Live** | All secrets loaded from environment via `python-decouple`; no production secrets in source code |
+| Redis-backed sessions | **Live** | When Redis available; database-backed fallback — no insecure in-memory sessions |

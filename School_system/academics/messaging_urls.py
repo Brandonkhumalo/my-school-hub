@@ -25,4 +25,9 @@ urlpatterns = [
     
     # Get student's parents (for teachers)
     path('students/<int:student_id>/parents/', messaging_views.get_student_parents, name='get-student-parents'),
+
+    # Admin conversation review
+    path('admin/conversations/', messaging_views.admin_list_conversations, name='admin-list-conversations'),
+    path('admin/conversations/<int:teacher_id>/<int:parent_id>/',
+         messaging_views.admin_get_conversation, name='admin-get-conversation'),
 ]

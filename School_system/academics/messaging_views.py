@@ -1,6 +1,7 @@
 import logging
+import re
 
-from django.db.models import Q
+from django.db.models import Q, Max, Count
 from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -12,6 +13,30 @@ from .serializers import ParentTeacherMessageSerializer, TeacherSerializer
 from django.utils import timezone
 
 from email_service import send_teacher_message_email
+
+
+# Detect phone numbers (Zimbabwe formats with optional spaces) and email addresses.
+# Phone: +263 / 263 / 0 prefixes followed by 9 digits with optional whitespace between any digit.
+# Email: standard local@domain.tld with optional whitespace inserted by the user.
+_CONTACT_PATTERNS = [
+    # +263 or 263 followed by 9 more digits (with optional spaces between any digits)
+    re.compile(r'\+?\s*2\s*6\s*3(?:\s*\d){9}'),
+    # Local Zimbabwe mobile: 0 then 9 more digits (07x, 08x, etc.) with optional spaces
+    re.compile(r'(?<!\d)0(?:\s*\d){9}'),
+    # Email addresses, tolerant of whitespace around @ and dots
+    re.compile(r'[\w.+\-]+\s*@\s*[\w\-]+(?:\s*\.\s*[\w\-]+)+', re.IGNORECASE),
+]
+
+
+def _scan_for_contact_info(text):
+    """Return the first matched contact string, or None if clean."""
+    if not text:
+        return None
+    for pattern in _CONTACT_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(0)
+    return None
 
 
 @api_view(['GET'])
@@ -75,9 +100,19 @@ def send_message(request):
     parent_message_id = request.data.get('parent_message_id')
     
     if not recipient_id or not message_text:
-        return Response({'error': 'Recipient and message are required'}, 
+        return Response({'error': 'Recipient and message are required'},
                        status=status.HTTP_400_BAD_REQUEST)
-    
+
+    # Block messages containing phone numbers or email addresses. Parents and
+    # teachers must keep correspondence on-platform so the school can supervise.
+    flagged = _scan_for_contact_info(message_text) or _scan_for_contact_info(subject)
+    if flagged:
+        return Response(
+            {'error': 'Messages cannot contain phone numbers or email addresses. '
+                      'Please keep all communication on the platform.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     try:
         from users.models import CustomUser
         from .models import Timetable, Class, ParentChildLink
@@ -377,5 +412,70 @@ def get_unread_count(request):
         recipient=user, is_read=False,
         sender__school=user.school
     ).count()
-    
+
     return Response({'unread_count': count})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_list_conversations(request):
+    """List every parent-teacher conversation thread within the admin's school."""
+    user = request.user
+    if user.role != 'admin':
+        return Response({'error': 'Only admins can review conversations'},
+                       status=status.HTTP_403_FORBIDDEN)
+
+    qs = ParentTeacherMessage.objects.filter(
+        sender__school=user.school, recipient__school=user.school,
+        sender__role__in=['parent', 'teacher'],
+        recipient__role__in=['parent', 'teacher'],
+    ).select_related('sender', 'recipient')
+
+    threads = {}
+    for msg in qs:
+        teacher_user = msg.sender if msg.sender.role == 'teacher' else msg.recipient
+        parent_user = msg.sender if msg.sender.role == 'parent' else msg.recipient
+        key = (teacher_user.id, parent_user.id)
+        thread = threads.get(key)
+        if thread is None:
+            thread = {
+                'teacher_id': teacher_user.id,
+                'teacher_name': f"{teacher_user.first_name} {teacher_user.last_name}".strip() or teacher_user.email,
+                'parent_id': parent_user.id,
+                'parent_name': f"{parent_user.first_name} {parent_user.last_name}".strip() or parent_user.email,
+                'message_count': 0,
+                'last_message': '',
+                'last_message_date': None,
+            }
+            threads[key] = thread
+        thread['message_count'] += 1
+        if thread['last_message_date'] is None or msg.date_sent > thread['last_message_date']:
+            thread['last_message'] = msg.message[:120]
+            thread['last_message_date'] = msg.date_sent
+
+    result = sorted(
+        threads.values(),
+        key=lambda t: t['last_message_date'] or timezone.now(),
+        reverse=True,
+    )
+    return Response(result)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_get_conversation(request, teacher_id, parent_id):
+    """Read-only view of the full thread between a specific teacher and parent."""
+    user = request.user
+    if user.role != 'admin':
+        return Response({'error': 'Only admins can review conversations'},
+                       status=status.HTTP_403_FORBIDDEN)
+
+    messages = ParentTeacherMessage.objects.filter(
+        sender__school=user.school, recipient__school=user.school,
+    ).filter(
+        (Q(sender_id=teacher_id) & Q(recipient_id=parent_id)) |
+        (Q(sender_id=parent_id) & Q(recipient_id=teacher_id))
+    ).select_related('sender', 'recipient', 'student__user').order_by('date_sent')
+
+    serializer = ParentTeacherMessageSerializer(messages, many=True)
+    return Response(serializer.data)

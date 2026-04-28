@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /$
+Allow: /about
+Allow: /contact
+Allow: /login
+Allow: /register/parent
+
+Disallow: /admin/
+Disallow: /teacher/
+Disallow: /student/
+Disallow: /parent/
+Disallow: /hr/
+Disallow: /accountant/
+Disallow: /security/
+Disallow: /cleaner/
+Disallow: /librarian/
+Disallow: /tishanyq/
+Disallow: /api/
+Disallow: /payment/
+Disallow: /logout
+Disallow: /setup-2fa-required
+
+Sitemap: https://myschoolhub.co.zw/sitemap.xml

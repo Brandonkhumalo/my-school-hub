@@ -156,6 +156,9 @@ class CustomUser(AbstractUser):
     whatsapp_pin = models.CharField(max_length=128, null=True, blank=True)
     school = models.ForeignKey(School, on_delete=models.CASCADE, null=True, blank=True, related_name='users', db_index=True)
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_users')
+    failed_login_attempts = models.PositiveIntegerField(default=0, help_text='Consecutive failed login attempts')
+    last_failed_login_at = models.DateTimeField(null=True, blank=True, help_text='Timestamp of latest failed login attempt')
+    account_locked_until = models.DateTimeField(null=True, blank=True, help_text='Account lockout expiry time')
 
     class Meta:
         ordering = ['-id']
@@ -169,6 +172,25 @@ class CustomUser(AbstractUser):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip() or self.email
+
+    def is_account_locked(self):
+        if not self.account_locked_until:
+            return False
+        return timezone.now() < self.account_locked_until
+
+    def register_failed_login_attempt(self, threshold=5, lockout_minutes=15):
+        self.failed_login_attempts = (self.failed_login_attempts or 0) + 1
+        self.last_failed_login_at = timezone.now()
+        if self.failed_login_attempts >= max(1, int(threshold)):
+            self.account_locked_until = timezone.now() + timezone.timedelta(minutes=max(1, int(lockout_minutes)))
+        self.save(update_fields=['failed_login_attempts', 'last_failed_login_at', 'account_locked_until'])
+
+    def clear_login_failures(self):
+        if self.failed_login_attempts or self.last_failed_login_at or self.account_locked_until:
+            self.failed_login_attempts = 0
+            self.last_failed_login_at = None
+            self.account_locked_until = None
+            self.save(update_fields=['failed_login_attempts', 'last_failed_login_at', 'account_locked_until'])
 
 
 class BlacklistedToken(models.Model):
@@ -277,6 +299,18 @@ class SchoolSettings(models.Model):
     font_family = models.CharField(max_length=10, choices=FONT_FAMILY_CHOICES, default='sans')
     welcome_message = models.TextField(blank=True, help_text='Custom greeting shown on the dashboard')
     logo = models.ImageField(upload_to='school_logos/', blank=True, null=True, help_text='Custom logo for the dashboard')
+
+    # Page visibility — list of page keys admin has hidden for every role
+    hidden_pages = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of page registry keys (e.g. ["admin.library", "parent.conferences"]) hidden school-wide'
+    )
+
+    # Parent login block
+    parent_login_blocked = models.BooleanField(default=False, help_text='Block all parent logins for this school')
+    parent_login_blocked_until = models.DateTimeField(null=True, blank=True, help_text='Informational date shown to parents for when they can log in again')
+    parent_login_block_message = models.TextField(blank=True, default='', help_text='Required message shown to parents when login is blocked')
 
     # 2FA Enforcement
     enforce_2fa = models.BooleanField(default=False, help_text='Enable 2FA enforcement for this school')

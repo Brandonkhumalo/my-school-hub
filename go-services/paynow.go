@@ -310,7 +310,11 @@ func PayNowCallbackHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		reference := r.FormValue("reference")
 		paynowRef := r.FormValue("paynowreference")
 		amount := r.FormValue("amount")
-		statusVal := strings.ToLower(r.FormValue("status"))
+		statusVal := strings.ToLower(strings.TrimSpace(r.FormValue("status")))
+		statusVal = strings.ReplaceAll(statusVal, "_", " ")
+		if statusVal == "fully paid" {
+			statusVal = "paid"
+		}
 
 		log.Printf("PayNow callback: ref=%s paynow_ref=%s status=%s amount=%s",
 			reference, paynowRef, statusVal, amount)

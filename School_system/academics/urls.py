@@ -74,6 +74,11 @@ urlpatterns = [
     path('students/<int:student_id>/grade-prediction/', views.student_grade_prediction, name='grade-prediction'),
 
     # Bulk CSV import
+    path('bulk-import/catalog/', views.bulk_import_parameter_catalog, name='bulk-import-catalog'),
+    path('bulk-import/validate/', views.bulk_import_validate, name='bulk-import-validate'),
+    path('bulk-import/commit/', views.bulk_import_commit, name='bulk-import-commit'),
+    path('bulk-import/history/', views.bulk_import_history, name='bulk-import-history'),
+    path('bulk-import/history/<int:job_id>/rollback/', views.bulk_import_rollback, name='bulk-import-rollback'),
     path('students/bulk-import/', views.bulk_import_students, name='bulk-import-students'),
     path('results/bulk-import/', views.bulk_import_results, name='bulk-import-results'),
 

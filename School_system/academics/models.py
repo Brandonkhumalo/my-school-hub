@@ -1321,3 +1321,42 @@ class AtRiskAlert(models.Model):
 
     def __str__(self):
         return f"{self.student.user.full_name} - {self.subject.name if self.subject else 'Overall'} ({self.status})"
+
+
+class BulkImportJob(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('validated', 'Validated'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('rolled_back', 'Rolled Back'),
+    ]
+
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='bulk_import_jobs')
+    initiated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='bulk_import_jobs')
+    import_type = models.CharField(max_length=50, db_index=True)
+    file_name = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    selected_parameters = models.JSONField(default=list, blank=True)
+    mapping = models.JSONField(default=dict, blank=True)
+    options = models.JSONField(default=dict, blank=True)
+    total_rows = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    errors = models.JSONField(default=list, blank=True)
+    changes = models.JSONField(default=list, blank=True, help_text='Replay log for rollback')
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    rollback_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['school', 'import_type']),
+            models.Index(fields=['school', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.school.name} {self.import_type} ({self.status})"

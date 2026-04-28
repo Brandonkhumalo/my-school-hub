@@ -1,10 +1,11 @@
 import React from "react";
-import { Outlet, NavLink, useLocation, Link } from "react-router-dom";
+import { Outlet, NavLink, useLocation, Link, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useSchoolSettings } from "../context/SchoolSettingsContext";
 import NotificationBell from "./NotificationBell";
 import { canStudentUseBoarding, isSchoolBoardingEnabled } from "../utils/boardingAccess";
+import { getPageKeyForPath, isPathHidden } from "../utils/pageRegistry";
 
 // ── Sidebar menu definitions (unchanged logic) ────────────────────────────
 const ALL_MENU_ITEMS = {
@@ -39,6 +40,7 @@ const ALL_MENU_ITEMS = {
     ]},
     { section: "COMMUNICATION", items: [
       { path: "/admin/announcements", icon: "fa-bullhorn",          title: "Announcements" },
+      { path: "/admin/messages",      icon: "fa-comments",           title: "Parent–Teacher Messages" },
       { path: "/admin/complaints",    icon: "fa-exclamation-circle", title: "Complaints" },
     ]},
     { section: "CAMPUS", items: [
@@ -53,6 +55,7 @@ const ALL_MENU_ITEMS = {
     { section: "SYSTEM", items: [
       { path: "/admin/staff",         icon: "fa-id-badge",      title: "Staff / HR" },
       { path: "/admin/permissions",   icon: "fa-user-shield",   title: "Permissions" },
+      { path: "/admin/bulk-import",   icon: "fa-file-import",   title: "Bulk Import" },
       { path: "/admin/extras",        icon: "fa-cogs",          title: "Extras" },
       { path: "/admin/analytics",     icon: "fa-chart-line",    title: "Analytics" },
       { path: "/admin/audit-logs",    icon: "fa-clipboard-list",title: "Audit Logs" },
@@ -292,8 +295,9 @@ function getPageTitle(pathname) {
 function Layout() {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { logoUrl } = useSchoolSettings();
+  const { logoUrl, hiddenPages } = useSchoolSettings();
   const location = useLocation();
+  const hiddenSet = React.useMemo(() => new Set(hiddenPages || []), [hiddenPages]);
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const role = user?.role || "student";
@@ -308,6 +312,8 @@ function Layout() {
       if (item.boardingOnly && !boardingEnabled) return false;
       if (item.boardingStudentOnly && !studentBoarding) return false;
       if (item.requiresRootHrBoss && !isRootHrBoss) return false;
+      const pageKey = getPageKeyForPath(item.path);
+      if (pageKey && hiddenSet.has(pageKey)) return false;
       if (role === "hr" && !isRootHrBoss) {
         const permissionKey = HR_PATH_TO_PERMISSION_KEY[item.path];
         if (!permissionKey) return false;
@@ -322,6 +328,14 @@ function Layout() {
   const pageTitle = getPageTitle(location.pathname);
   const initials  = getInitials(user);
   const roleColor = ROLE_COLORS[role] || "bg-blue-600";
+
+  // If the admin has hidden the current page, redirect to the role dashboard.
+  if (isPathHidden(location.pathname, hiddenPages)) {
+    const dashboardPath = `/${role}`;
+    if (location.pathname !== dashboardPath) {
+      return <Navigate to={dashboardPath} replace />;
+    }
+  }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)" }}>
