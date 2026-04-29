@@ -538,6 +538,98 @@ class Notification(models.Model):
         return f"{self.user.email} - {self.title} ({'Read' if self.is_read else 'Unread'})"
 
 
+class SuperadminImpersonationRequest(models.Model):
+    STATUS_CHOICES = [
+        ("requested", "Requested"),
+        ("approved", "Approved"),
+        ("revoked", "Revoked"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="impersonation_requests")
+    requested_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="requested_impersonations")
+    reviewed_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_impersonations"
+    )
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="requested", db_index=True)
+    max_duration_minutes = models.PositiveIntegerField(default=30)
+    requested_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"Impersonation request: {self.school.name} ({self.status})"
+
+
+class SchoolFeatureFlag(models.Model):
+    FLAG_CHOICES = [
+        ("boarding", "Boarding"),
+        ("library", "Library"),
+        ("advanced_analytics", "Advanced Analytics"),
+        ("whatsapp_alerts", "WhatsApp Alerts"),
+        ("transport", "Transport"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="feature_flags")
+    flag_key = models.CharField(max_length=50, choices=FLAG_CHOICES)
+    is_enabled = models.BooleanField(default=False)
+    updated_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("school", "flag_key")
+        ordering = ["school_id", "flag_key"]
+
+    def __str__(self):
+        return f"{self.school.name} - {self.flag_key}: {self.is_enabled}"
+
+
+class SuperadminSupportTicket(models.Model):
+    STATUS_CHOICES = [
+        ("open", "Open"),
+        ("in_progress", "In Progress"),
+        ("resolved", "Resolved"),
+    ]
+    PRIORITY_CHOICES = [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE, related_name="support_tickets")
+    title = models.CharField(max_length=200)
+    owner = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open", db_index=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium")
+    sla_hours = models.PositiveIntegerField(default=24)
+    notes = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name="created_support_tickets")
+    updated_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="updated_support_tickets")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Ticket #{self.id} - {self.school.name}: {self.title}"
+
+
+class SuperadminPlatformNotice(models.Model):
+    message = models.TextField()
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name="platform_notices")
+    schools = models.ManyToManyField(School, blank=True, related_name="platform_notices")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Notice #{self.id} by {self.created_by.email if self.created_by else 'system'}"
+
+
 class HRPermissionProfile(models.Model):
     """Per-HR-employee permission profile managed by admin."""
     user = models.OneToOneField(

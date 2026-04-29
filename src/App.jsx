@@ -86,6 +86,7 @@ const CreateSchool = lazy(() => import("./pages/tishanyq/CreateSchool"));
 const SchoolsList = lazy(() => import("./pages/tishanyq/SchoolsList"));
 const SuperadminAuditLog = lazy(() => import("./pages/tishanyq/SuperadminAuditLog"));
 const LockedAccountsManager = lazy(() => import("./pages/tishanyq/LockedAccountsManager"));
+const TishanyqControlCenter = lazy(() => import("./pages/tishanyq/TishanyqControlCenter"));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -258,6 +259,7 @@ function App() {
         <Route path="dashboard" element={<TishanyqHome />} />
         <Route path="create-school" element={<CreateSchool />} />
         <Route path="schools" element={<SchoolsList />} />
+        <Route path="control-center" element={<TishanyqControlCenter />} />
         <Route path="audit-logs" element={<SuperadminAuditLog />} />
         <Route path="locked-accounts" element={<LockedAccountsManager />} />
       </Route>

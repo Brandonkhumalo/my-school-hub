@@ -95,4 +95,10 @@ urlpatterns = [
     path('superadmin/locked-accounts/', superadmin_views.superadmin_locked_accounts, name='superadmin-locked-accounts'),
     path('superadmin/locked-accounts/<int:user_id>/unlock/', superadmin_views.superadmin_unlock_account, name='superadmin-unlock-account'),
     path('superadmin/system-health/', superadmin_views.superadmin_system_health, name='superadmin-system-health'),
+    path('superadmin/impersonation-requests/', superadmin_views.superadmin_impersonation_requests, name='superadmin-impersonation-requests'),
+    path('superadmin/impersonation-requests/<int:request_id>/', superadmin_views.superadmin_impersonation_request_update, name='superadmin-impersonation-request-update'),
+    path('superadmin/feature-flags/', superadmin_views.superadmin_feature_flags, name='superadmin-feature-flags'),
+    path('superadmin/support-tickets/', superadmin_views.superadmin_support_tickets, name='superadmin-support-tickets'),
+    path('superadmin/support-tickets/<int:ticket_id>/', superadmin_views.superadmin_support_ticket_update, name='superadmin-support-ticket-update'),
+    path('superadmin/platform-notices/', superadmin_views.superadmin_platform_notices, name='superadmin-platform-notices'),
 ]

@@ -86,6 +86,19 @@ export default function TishanyqDashboard() {
             </li>
             <li>
               <Link
+                to="/tishanyq/admin/control-center"
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+                  isActive("/tishanyq/admin/control-center")
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                <i className="fas fa-sliders-h w-5"></i>
+                Control Center
+              </Link>
+            </li>
+            <li>
+              <Link
                 to="/tishanyq/admin/audit-logs"
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
                   isActive("/tishanyq/admin/audit-logs")

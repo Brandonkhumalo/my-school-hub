@@ -14,9 +14,11 @@ const FALLBACK_IMPORT_TYPES = [
 ];
 
 // Recommended order — earlier types are referenced by later ones.
-const IMPORT_ORDER = ["subjects", "classes", "teachers", "students", "parents", "fees", "attendance"];
+const IMPORT_ORDER = ["subjects", "teachers", "classes", "students", "parents", "fees", "attendance"];
 
 const DEPENDENCIES = {
+  classes: ["teachers"],
+  teachers: ["subjects"],
   students: ["classes"],
   parents: ["students"],
   fees: ["students"],
@@ -104,16 +106,60 @@ export default function AdminBulkImport() {
   };
 
   const downloadTemplate = () => {
-    const headers = selectedFieldObjects.map((f) => f.key).join(",");
-    const sample = selectedFieldObjects
-      .map((f) => {
-        if (f.type === "date") return "2026-01-15";
-        if (f.type === "number") return "0";
-        if (f.type === "boolean") return "true";
-        return "";
-      })
-      .join(",");
-    const csv = `${headers}\n${sample}\n`;
+    const escape = (val) => {
+      const s = String(val ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const formatSampleDate = () => {
+      if (dateFormat === "DD/MM/YYYY") return "15/01/2026";
+      if (dateFormat === "MM/DD/YYYY") return "01/15/2026";
+      return "2026-01-15";
+    };
+
+    const sampleFor = (f) => {
+      if (f.type === "date") return formatSampleDate();
+      if (f.type === "number") {
+        if (f.key === "amount") return "100";
+        if (f.key === "grade") return "1";
+        if (f.key === "ca_weight") return "0.4";
+        if (f.key === "exam_weight") return "0.6";
+        return "0";
+      }
+      if (f.type === "boolean") return "false";
+      if (f.type === "enum" && Array.isArray(f.enum_values) && f.enum_values.length) {
+        return f.enum_values[0];
+      }
+      const placeholders = {
+        first_name: "Tendai",
+        last_name: "Moyo",
+        email: "name@example.com",
+        phone: "+263788000000",
+        class: "Form 1A",
+        name: importType === "subjects" ? "Mathematics" : "Form 1A",
+        code: "MATH",
+        academic_year: "2026",
+        student_admission_no: "STU-2024-001",
+        fee_type: "Tuition",
+        subjects: "MATH, ENG",
+        child_admission_nos: "STU-2024-001, STU-2024-002",
+        assigned_class: "Form 1A",
+        class_teacher_email: "teacher@example.com",
+        qualification: "BSc Mathematics",
+        address: "123 Sample Rd, Harare",
+        occupation: "Engineer",
+        gender: importType === "students" ? "Male" : "M",
+        residence_type: "day",
+        reason: "",
+        description: "",
+        emergency_contact: "+263788000001",
+      };
+      return placeholders[f.key] ?? "";
+    };
+
+    const headerLine = selectedFieldObjects.map((f) => escape(f.key)).join(",");
+    const sampleLine = selectedFieldObjects.map((f) => escape(sampleFor(f))).join(",");
+    const csv = `${headerLine}\n${sampleLine}\n`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -292,6 +338,10 @@ export default function AdminBulkImport() {
                       <span>
                         <span className="block text-sm font-semibold">{f.label || f.key}</span>
                         <span className="block text-xs text-gray-500">{f.key} • {f.type}{f.required ? " • required" : ""}</span>
+                        {f.help && <span className="block text-xs text-gray-600 mt-1">{f.help}</span>}
+                        {Array.isArray(f.enum_values) && f.enum_values.length > 0 && (
+                          <span className="block text-xs text-gray-600 mt-1">Allowed: {f.enum_values.join(", ")}</span>
+                        )}
                       </span>
                     </label>
                   );
@@ -431,7 +481,9 @@ export default function AdminBulkImport() {
           <div className="flex flex-wrap gap-3 mt-6">
             <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="px-4 py-2 rounded-lg border border-gray-300">Back</button>
             <button type="button" onClick={() => setStep((s) => Math.min(4, s + 1))} className="px-4 py-2 rounded-lg bg-blue-600 text-white">Next</button>
-            <button type="button" onClick={downloadTemplate} className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Download Template</button>
+            {step === 3 && (
+              <button type="button" onClick={downloadTemplate} className="px-4 py-2 rounded-lg bg-emerald-600 text-white">Download Template</button>
+            )}
           </div>
         </div>
 

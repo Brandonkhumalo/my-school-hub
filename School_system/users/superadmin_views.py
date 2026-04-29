@@ -23,7 +23,17 @@ from rest_framework.response import Response
 
 from academics.models import Class, Parent, ParentChildLink, Student
 from finances.models import Invoice, StudentPaymentRecord
-from users.models import AuditLog, CustomUser, Notification, School, SchoolSettings
+from users.models import (
+    AuditLog,
+    CustomUser,
+    Notification,
+    School,
+    SchoolFeatureFlag,
+    SchoolSettings,
+    SuperadminImpersonationRequest,
+    SuperadminPlatformNotice,
+    SuperadminSupportTicket,
+)
 from users.token import JWTAuthentication
 
 logger = logging.getLogger(__name__)
@@ -908,3 +918,370 @@ def superadmin_system_health(request):
             "blacklisted_tokens": BlacklistedToken.objects.count(),
         }
     )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def superadmin_impersonation_requests(request):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        qs = SuperadminImpersonationRequest.objects.select_related("school", "requested_by", "reviewed_by").all()
+        school_id = request.GET.get("school_id")
+        status_filter = request.GET.get("status")
+        if school_id:
+            qs = qs.filter(school_id=school_id)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        page_qs, page_meta = _paginate_queryset(request, qs, default_page_size=50)
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": row.id,
+                        "school_id": row.school_id,
+                        "school_name": row.school.name,
+                        "reason": row.reason,
+                        "status": row.status,
+                        "max_duration_minutes": row.max_duration_minutes,
+                        "requested_by": row.requested_by.email if row.requested_by else None,
+                        "reviewed_by": row.reviewed_by.email if row.reviewed_by else None,
+                        "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+                        "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+                    }
+                    for row in page_qs
+                ],
+                **page_meta,
+            }
+        )
+
+    school_id = request.data.get("school_id")
+    reason = (request.data.get("reason") or "").strip()
+    max_duration_minutes = request.data.get("max_duration_minutes", 30)
+    if not school_id or not reason:
+        return Response({"error": "school_id and reason are required"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({"error": "School not found"}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        max_duration_minutes = int(max_duration_minutes)
+        if max_duration_minutes < 1 or max_duration_minutes > 120:
+            raise ValueError
+    except Exception:
+        return Response({"error": "max_duration_minutes must be between 1 and 120"}, status=status.HTTP_400_BAD_REQUEST)
+
+    row = SuperadminImpersonationRequest.objects.create(
+        school=school,
+        requested_by=request.user,
+        reason=reason,
+        max_duration_minutes=max_duration_minutes,
+    )
+    _audit(
+        request,
+        action="CREATE",
+        model_name="SuperadminImpersonationRequest",
+        object_id=row.id,
+        object_repr=f"Impersonation request for {school.name}",
+        changes={"school_id": school.id, "reason": reason, "max_duration_minutes": max_duration_minutes},
+        response_status=201,
+        school=None,
+    )
+    return Response({"id": row.id, "message": "Request created"}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def superadmin_impersonation_request_update(request, request_id):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        row = SuperadminImpersonationRequest.objects.select_related("school").get(id=request_id)
+    except SuperadminImpersonationRequest.DoesNotExist:
+        return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
+    status_value = request.data.get("status")
+    if status_value not in {"requested", "approved", "revoked"}:
+        return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+    row.status = status_value
+    row.reviewed_by = request.user
+    row.reviewed_at = timezone.now()
+    row.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+    _audit(
+        request,
+        action="UPDATE",
+        model_name="SuperadminImpersonationRequest",
+        object_id=row.id,
+        object_repr=f"Impersonation request {status_value} for {row.school.name}",
+        changes={"status": status_value},
+        response_status=200,
+        school=None,
+    )
+    return Response({"message": "Request updated", "status": row.status})
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def superadmin_feature_flags(request):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        qs = SchoolFeatureFlag.objects.select_related("school", "updated_by").all()
+        school_id = request.GET.get("school_id")
+        if school_id:
+            qs = qs.filter(school_id=school_id)
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": row.id,
+                        "school_id": row.school_id,
+                        "school_name": row.school.name,
+                        "flag_key": row.flag_key,
+                        "is_enabled": row.is_enabled,
+                        "updated_by": row.updated_by.email if row.updated_by else None,
+                        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    }
+                    for row in qs
+                ]
+            }
+        )
+
+    school_id = request.data.get("school_id")
+    flag_key = request.data.get("flag_key")
+    if school_id is None or flag_key is None:
+        return Response({"error": "school_id and flag_key are required"}, status=status.HTTP_400_BAD_REQUEST)
+    valid_keys = {choice[0] for choice in SchoolFeatureFlag.FLAG_CHOICES}
+    if flag_key not in valid_keys:
+        return Response({"error": "Invalid flag_key"}, status=status.HTTP_400_BAD_REQUEST)
+    enabled = bool(request.data.get("is_enabled", False))
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({"error": "School not found"}, status=status.HTTP_404_NOT_FOUND)
+    row, _ = SchoolFeatureFlag.objects.update_or_create(
+        school=school,
+        flag_key=flag_key,
+        defaults={"is_enabled": enabled, "updated_by": request.user},
+    )
+    _audit(
+        request,
+        action="UPDATE",
+        model_name="SchoolFeatureFlag",
+        object_id=row.id,
+        object_repr=f"{school.name} {flag_key}={'on' if enabled else 'off'}",
+        changes={"school_id": school.id, "flag_key": flag_key, "is_enabled": enabled},
+        response_status=200,
+        school=None,
+    )
+    return Response({"message": "Feature flag updated"})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def superadmin_support_tickets(request):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        qs = SuperadminSupportTicket.objects.select_related("school", "created_by", "updated_by").all()
+        school_id = request.GET.get("school_id")
+        status_filter = request.GET.get("status")
+        q = request.GET.get("q")
+        if school_id:
+            qs = qs.filter(school_id=school_id)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if q:
+            qs = qs.filter(Q(title__icontains=q) | Q(owner__icontains=q) | Q(school__name__icontains=q))
+        page_qs, page_meta = _paginate_queryset(request, qs, default_page_size=50)
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": row.id,
+                        "school_id": row.school_id,
+                        "school_name": row.school.name,
+                        "title": row.title,
+                        "owner": row.owner,
+                        "status": row.status,
+                        "priority": row.priority,
+                        "sla_hours": row.sla_hours,
+                        "notes": row.notes or [],
+                        "created_at": row.created_at.isoformat() if row.created_at else None,
+                        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    }
+                    for row in page_qs
+                ],
+                **page_meta,
+            }
+        )
+
+    school_id = request.data.get("school_id")
+    title = (request.data.get("title") or "").strip()
+    owner = (request.data.get("owner") or "").strip()
+    priority = request.data.get("priority", "medium")
+    sla_hours = request.data.get("sla_hours", 24)
+    if not school_id or not title:
+        return Response({"error": "school_id and title are required"}, status=status.HTTP_400_BAD_REQUEST)
+    if priority not in {"low", "medium", "high"}:
+        return Response({"error": "Invalid priority"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        sla_hours = int(sla_hours)
+        if sla_hours < 1 or sla_hours > 720:
+            raise ValueError
+    except Exception:
+        return Response({"error": "sla_hours must be between 1 and 720"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        school = School.objects.get(id=school_id)
+    except School.DoesNotExist:
+        return Response({"error": "School not found"}, status=status.HTTP_404_NOT_FOUND)
+    row = SuperadminSupportTicket.objects.create(
+        school=school,
+        title=title,
+        owner=owner,
+        priority=priority,
+        sla_hours=sla_hours,
+        created_by=request.user,
+        updated_by=request.user,
+    )
+    _audit(
+        request,
+        action="CREATE",
+        model_name="SuperadminSupportTicket",
+        object_id=row.id,
+        object_repr=f"Support ticket {row.id} for {school.name}",
+        changes={"school_id": school.id, "title": title, "priority": priority, "sla_hours": sla_hours},
+        response_status=201,
+        school=None,
+    )
+    return Response({"id": row.id, "message": "Ticket created"}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def superadmin_support_ticket_update(request, ticket_id):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        row = SuperadminSupportTicket.objects.select_related("school").get(id=ticket_id)
+    except SuperadminSupportTicket.DoesNotExist:
+        return Response({"error": "Ticket not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    updates = {}
+    if "status" in request.data:
+        status_value = request.data.get("status")
+        if status_value not in {"open", "in_progress", "resolved"}:
+            return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
+        updates["status"] = status_value
+    if "owner" in request.data:
+        updates["owner"] = (request.data.get("owner") or "").strip()
+    if "priority" in request.data:
+        priority = request.data.get("priority")
+        if priority not in {"low", "medium", "high"}:
+            return Response({"error": "Invalid priority"}, status=status.HTTP_400_BAD_REQUEST)
+        updates["priority"] = priority
+    if "sla_hours" in request.data:
+        try:
+            sla_hours = int(request.data.get("sla_hours"))
+            if sla_hours < 1 or sla_hours > 720:
+                raise ValueError
+        except Exception:
+            return Response({"error": "sla_hours must be between 1 and 720"}, status=status.HTTP_400_BAD_REQUEST)
+        updates["sla_hours"] = sla_hours
+
+    append_note = (request.data.get("append_note") or "").strip()
+    if append_note:
+        notes = list(row.notes or [])
+        notes.append(
+            {
+                "text": append_note,
+                "by": request.user.email,
+                "at": timezone.now().isoformat(),
+            }
+        )
+        updates["notes"] = notes
+
+    if not updates:
+        return Response({"error": "No valid updates supplied"}, status=status.HTTP_400_BAD_REQUEST)
+    updates["updated_by"] = request.user
+    audit_changes = {k: v for k, v in updates.items() if k != "updated_by"}
+    for key, value in updates.items():
+        setattr(row, key, value)
+    row.save(update_fields=list(updates.keys()) + ["updated_at"])
+    _audit(
+        request,
+        action="UPDATE",
+        model_name="SuperadminSupportTicket",
+        object_id=row.id,
+        object_repr=f"Updated support ticket {row.id}",
+        changes=audit_changes,
+        response_status=200,
+        school=None,
+    )
+    return Response({"message": "Ticket updated"})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def superadmin_platform_notices(request):
+    if not _is_superadmin(request.user):
+        return Response({"error": "Access denied"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        qs = SuperadminPlatformNotice.objects.select_related("created_by").prefetch_related("schools").all()
+        page_qs, page_meta = _paginate_queryset(request, qs, default_page_size=30)
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": row.id,
+                        "message": row.message,
+                        "created_by": row.created_by.email if row.created_by else None,
+                        "created_at": row.created_at.isoformat() if row.created_at else None,
+                        "school_ids": [s.id for s in row.schools.all()],
+                        "school_names": [s.name for s in row.schools.all()],
+                    }
+                    for row in page_qs
+                ],
+                **page_meta,
+            }
+        )
+
+    message = (request.data.get("message") or "").strip()
+    school_ids = request.data.get("school_ids") or []
+    notify_admins = bool(request.data.get("notify_admins", True))
+    if not message:
+        return Response({"error": "message is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    target_schools = School.objects.filter(id__in=school_ids) if school_ids else School.objects.all()
+    notice = SuperadminPlatformNotice.objects.create(message=message, created_by=request.user)
+    notice.schools.set(target_schools)
+
+    if notify_admins:
+        admins = CustomUser.objects.filter(role="admin", school__in=target_schools, is_active=True)
+        Notification.objects.bulk_create(
+            [
+                Notification(
+                    user=admin,
+                    title="Platform Notice",
+                    message=message,
+                    notification_type="announcement",
+                    link="/admin/dashboard",
+                )
+                for admin in admins
+            ]
+        )
+
+    _audit(
+        request,
+        action="CREATE",
+        model_name="SuperadminPlatformNotice",
+        object_id=notice.id,
+        object_repr="Created platform notice",
+        changes={"message": message, "school_ids": list(target_schools.values_list("id", flat=True))},
+        response_status=201,
+        school=None,
+    )
+    return Response({"id": notice.id, "message": "Notice created"}, status=status.HTTP_201_CREATED)

@@ -20,6 +20,10 @@ export default function SchoolsList() {
   }, []);
 
   const API_BASE_URL = "/api/v1";
+  const formatLabel = (value) =>
+    String(value || "-")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
 
   const fetchSchools = async () => {
     try {
@@ -276,11 +280,24 @@ export default function SchoolsList() {
                 {schools.map((school) => (
                   <tr key={school.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
-                      <div>
-                        <button className="font-semibold text-gray-800 hover:text-blue-700" onClick={() => openSchoolDetail(school)}>{school.name}</button>
-                        <p className="text-sm text-gray-500">{school.city} | {school.school_type}</p>
-                        <p className="text-xs text-gray-400">{school.accommodation_type_display || school.accommodation_type || 'day'} | {school.curriculum}</p>
-                        <p className="text-xs text-gray-500">Student Limit: {school.student_limit ?? "-"}</p>
+                      <div className="space-y-2">
+                        <button className="text-left font-semibold text-gray-900 hover:text-blue-700" onClick={() => openSchoolDetail(school)}>
+                          {school.name}
+                        </button>
+                        <p className="text-sm text-gray-500">
+                          {school.city || "Unknown City"} <span className="mx-1 text-gray-300">|</span> {formatLabel(school.school_type)}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                            {formatLabel(school.accommodation_type_display || school.accommodation_type || "day")}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                            {formatLabel(school.curriculum)}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                            Student Limit: {school.student_limit ?? "-"}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -402,11 +419,6 @@ export default function SchoolsList() {
                   <p>Parents: {schoolDetail.counts?.parents ?? 0}</p>
                   <p>Staff: {schoolDetail.counts?.staff ?? 0}</p>
                   <p>Student Limit: {schoolDetail.capacity?.student_limit ?? "-"}</p>
-                </section>
-                <section className="border rounded-lg p-3">
-                  <p className="font-semibold mb-2">Finance</p>
-                  <p>Revenue: ${schoolDetail.finance?.revenue_collected ?? "0"}</p>
-                  <p>Outstanding: ${schoolDetail.finance?.outstanding_fees ?? "0"}</p>
                 </section>
                 <section className="border rounded-lg p-3">
                   <p className="font-semibold mb-2">Setup & Security</p>

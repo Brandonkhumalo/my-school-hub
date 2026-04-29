@@ -40,63 +40,65 @@ from users.models import SchoolSettings
 
 
 BULK_IMPORT_PARAMETER_LIBRARY = {
-    "students": [
-        {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
-        {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
-        {"key": "admission_no", "label": "Admission Number", "required": False, "type": "text"},
-        {"key": "grade", "label": "Grade", "required": True, "type": "text"},
-        {"key": "class", "label": "Class", "required": True, "type": "text"},
-        {"key": "gender", "label": "Gender", "required": False, "type": "enum"},
-        {"key": "date_of_birth", "label": "Date of Birth", "required": False, "type": "date"},
-        {"key": "email", "label": "Email", "required": False, "type": "email"},
-        {"key": "phone", "label": "Phone", "required": False, "type": "text"},
-        {"key": "address", "label": "Address", "required": False, "type": "text"},
-        {"key": "status", "label": "Status", "required": False, "type": "enum"},
+    "subjects": [
+        {"key": "name", "label": "Subject Name", "required": True, "type": "text", "help": "e.g. Mathematics"},
+        {"key": "code", "label": "Subject Code", "required": False, "type": "text", "help": "Short unique code (auto-generated from name if blank)"},
+        {"key": "description", "label": "Description", "required": False, "type": "text"},
+        {"key": "ca_weight", "label": "CA Weight", "required": False, "type": "number", "help": "Continuous Assessment weight (0-1, e.g. 0.4)"},
+        {"key": "exam_weight", "label": "Exam Weight", "required": False, "type": "number", "help": "Final Exam weight (0-1, e.g. 0.6)"},
+        {"key": "is_priority", "label": "Priority Subject", "required": False, "type": "boolean", "help": "true/false — priority subjects get daily timetable periods"},
+    ],
+    "classes": [
+        {"key": "name", "label": "Class Name", "required": True, "type": "text", "help": "Unique within the academic year, e.g. Form 1A"},
+        {"key": "grade", "label": "Grade Level", "required": True, "type": "number", "help": "Numeric grade (e.g. 1, 7, 12)"},
+        {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to current year (e.g. 2026)"},
+        {"key": "class_teacher_email", "label": "Class Teacher Email", "required": False, "type": "email", "help": "Email of an existing teacher in this school"},
     ],
     "teachers": [
         {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
         {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
-        {"key": "employee_no", "label": "Employee Number", "required": False, "type": "text"},
-        {"key": "department", "label": "Department", "required": False, "type": "text"},
-        {"key": "subjects", "label": "Subjects", "required": False, "type": "text"},
-        {"key": "email", "label": "Email", "required": False, "type": "email"},
+        {"key": "email", "label": "Email", "required": False, "type": "email", "help": "Auto-generated if blank"},
+        {"key": "phone", "label": "Phone", "required": False, "type": "text", "help": "Zimbabwe number (any of: 0788..., +263788..., 263788...)"},
+        {"key": "gender", "label": "Gender", "required": False, "type": "enum", "enum_values": ["M", "F", "O"], "help": "M / F / O"},
+        {"key": "hire_date", "label": "Hire Date", "required": False, "type": "date", "help": "Defaults to today if blank"},
+        {"key": "qualification", "label": "Qualification", "required": False, "type": "text", "help": "e.g. BSc Mathematics, PGCE"},
+        {"key": "subjects", "label": "Subjects Taught", "required": False, "type": "text", "help": "Comma-separated subject codes or names (must already exist)"},
+        {"key": "assigned_class", "label": "Assigned Class", "required": False, "type": "text", "help": "Class name to assign as class teacher (must already exist & be unassigned)"},
+    ],
+    "students": [
+        {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
+        {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
+        {"key": "class", "label": "Class Name", "required": True, "type": "text", "help": "Must match an existing class name in this school"},
+        {"key": "gender", "label": "Gender", "required": False, "type": "text", "help": "Male / Female / Other"},
+        {"key": "date_of_birth", "label": "Date of Birth", "required": False, "type": "date"},
+        {"key": "email", "label": "Email", "required": False, "type": "email", "help": "Auto-generated if blank"},
         {"key": "phone", "label": "Phone", "required": False, "type": "text"},
-        {"key": "hire_date", "label": "Hire Date", "required": False, "type": "date"},
-    ],
-    "classes": [
-        {"key": "name", "label": "Class Name", "required": True, "type": "text"},
-        {"key": "grade", "label": "Grade", "required": True, "type": "text"},
-        {"key": "stream", "label": "Stream", "required": False, "type": "text"},
-        {"key": "class_teacher", "label": "Class Teacher", "required": False, "type": "text"},
-    ],
-    "subjects": [
-        {"key": "name", "label": "Subject Name", "required": True, "type": "text"},
-        {"key": "code", "label": "Subject Code", "required": False, "type": "text"},
-        {"key": "grade", "label": "Grade", "required": False, "type": "text"},
-        {"key": "is_priority", "label": "Priority Subject", "required": False, "type": "boolean"},
+        {"key": "address", "label": "Address", "required": False, "type": "text"},
+        {"key": "residence_type", "label": "Residence", "required": False, "type": "enum", "enum_values": ["day", "boarding"], "help": "day / boarding (must match school's accommodation type)"},
+        {"key": "admission_date", "label": "Admission Date", "required": False, "type": "date", "help": "Defaults to today if blank"},
+        {"key": "emergency_contact", "label": "Emergency Contact", "required": False, "type": "text"},
     ],
     "parents": [
         {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
         {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
-        {"key": "phone", "label": "Phone", "required": True, "type": "text"},
-        {"key": "email", "label": "Email", "required": False, "type": "email"},
-        {"key": "child_admission_no", "label": "Child Admission Number", "required": False, "type": "text"},
-        {"key": "relationship", "label": "Relationship", "required": False, "type": "enum"},
+        {"key": "phone", "label": "Phone", "required": True, "type": "text", "help": "Zimbabwe number"},
+        {"key": "email", "label": "Email", "required": False, "type": "email", "help": "Auto-generated if blank"},
+        {"key": "occupation", "label": "Occupation", "required": False, "type": "text"},
+        {"key": "child_admission_nos", "label": "Child Admission Numbers", "required": False, "type": "text", "help": "Comma-separated student admission numbers to link as children"},
     ],
     "fees": [
         {"key": "student_admission_no", "label": "Student Admission Number", "required": True, "type": "text"},
-        {"key": "term", "label": "Term", "required": True, "type": "enum"},
-        {"key": "fee_type", "label": "Fee Type", "required": True, "type": "text"},
-        {"key": "amount", "label": "Amount", "required": True, "type": "number"},
-        {"key": "due_date", "label": "Due Date", "required": False, "type": "date"},
-        {"key": "payment_status", "label": "Payment Status", "required": False, "type": "enum"},
+        {"key": "fee_type", "label": "Fee Type", "required": True, "type": "text", "help": "Created automatically if it doesn't exist"},
+        {"key": "amount", "label": "Amount Due", "required": True, "type": "number"},
+        {"key": "term", "label": "Term", "required": True, "type": "enum", "enum_values": ["term_1", "term_2", "term_3"], "help": "term_1 / term_2 / term_3 (also accepts t1, term1, etc.)"},
+        {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to current year"},
+        {"key": "due_date", "label": "Due Date", "required": False, "type": "date", "help": "Defaults to today if blank"},
     ],
     "attendance": [
         {"key": "student_admission_no", "label": "Student Admission Number", "required": True, "type": "text"},
         {"key": "date", "label": "Date", "required": True, "type": "date"},
-        {"key": "session", "label": "Session", "required": False, "type": "enum"},
-        {"key": "status", "label": "Status", "required": True, "type": "enum"},
-        {"key": "reason", "label": "Reason", "required": False, "type": "text"},
+        {"key": "status", "label": "Status", "required": True, "type": "enum", "enum_values": ["present", "absent", "late", "excused"]},
+        {"key": "reason", "label": "Reason / Remarks", "required": False, "type": "text"},
     ],
 }
 
@@ -131,6 +133,55 @@ def _parse_bulk_rows_from_upload(upload):
         return out
 
     raise ValidationError("Unsupported file type. Upload .csv or .xlsx")
+
+
+def _parse_import_date(value, date_format='YYYY-MM-DD'):
+    """Parse a date string from a bulk-import row. Honours the user-selected
+    date_format dropdown but always falls back to common formats so a single
+    bad row doesn't fail an entire import. Returns a datetime.date or None."""
+    import datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    raw = str(value).strip()
+    if not raw:
+        return None
+    raw = raw.split(' ')[0].split('T')[0]
+    primary_map = {
+        'DD/MM/YYYY': ['%d/%m/%Y', '%d-%m-%Y', '%d.%m.%Y'],
+        'MM/DD/YYYY': ['%m/%d/%Y', '%m-%d-%Y'],
+        'YYYY-MM-DD': ['%Y-%m-%d', '%Y/%m/%d'],
+    }
+    primary = primary_map.get(date_format, primary_map['YYYY-MM-DD'])
+    fallbacks = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y']
+    seen = set()
+    for fmt in primary + [f for f in fallbacks if f not in primary]:
+        if fmt in seen:
+            continue
+        seen.add(fmt)
+        try:
+            return datetime.datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_bool(value):
+    return str(value or '').strip().lower() in ('1', 'true', 'yes', 'y', 't')
+
+
+def _split_csv_field(value):
+    """Split a comma/semicolon/pipe-separated cell into clean tokens."""
+    if value is None:
+        return []
+    raw = str(value).strip()
+    if not raw:
+        return []
+    parts = re.split(r'[,;|]+', raw)
+    return [p.strip() for p in parts if p.strip()]
 
 
 def _normalize_term(value):
@@ -2473,50 +2524,48 @@ def bulk_import_commit(request):
         alphabet = string.ascii_letters + string.digits
         return "Tmp!" + "".join(secrets.choice(alphabet) for _ in range(8))
 
-    if import_type == "students":
-        from .serializers import CreateStudentSerializer
+    date_format = (request.data.get("date_format") or "YYYY-MM-DD").strip()
+    current_year = str(timezone.now().year)
+    today = timezone.now().date()
+
+    if import_type == "subjects":
         for i, row in enumerate(mapped_rows, start=2):
             try:
-                first_name = (row.get("first_name") or "").strip()
-                last_name = (row.get("last_name") or "").strip()
-                if not first_name and not last_name:
-                    full_name = (row.get("full_name") or "").strip()
-                    if full_name:
-                        parts = full_name.split(" ", 1)
-                        first_name = parts[0]
-                        last_name = parts[1] if len(parts) > 1 else ""
-                class_name = (row.get("class") or row.get("class_name") or "").strip()
-                if not first_name or not last_name or not class_name:
-                    raise ValueError("Missing first_name, last_name, or class")
-                student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
-                if not student_class:
-                    raise ValueError(f"Class '{class_name}' not found")
-                email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "student", i)
-                phone_norm = _normalize_phone(row.get("phone"))
-                serializer = CreateStudentSerializer(
-                    data={
-                        "user": {
-                            "first_name": first_name,
-                            "last_name": last_name,
-                            "password": _password_for_row(),
-                        },
-                        "student_class": student_class.id,
-                        "admission_date": str(timezone.now().date()),
-                        "student_email": email,
-                        "student_contact": phone_norm,
-                        "student_address": (row.get("address") or "").strip(),
-                        "date_of_birth": (row.get("date_of_birth") or "").strip() or None,
-                        "gender": (row.get("gender") or "").strip(),
-                    },
-                    context={"request": request},
+                name = (row.get("name") or "").strip()
+                if not name:
+                    raise ValueError("Missing subject name")
+                code = (row.get("code") or name[:10].upper().replace(" ", "")).strip()
+                description = (row.get("description") or "").strip()
+                ca_weight_raw = (row.get("ca_weight") or "").strip()
+                exam_weight_raw = (row.get("exam_weight") or "").strip()
+                defaults = {"name": name, "is_priority": _parse_bool(row.get("is_priority"))}
+                if description:
+                    defaults["description"] = description
+                if ca_weight_raw:
+                    try:
+                        defaults["ca_weight"] = float(ca_weight_raw)
+                    except ValueError:
+                        raise ValueError(f"Invalid ca_weight '{ca_weight_raw}'")
+                if exam_weight_raw:
+                    try:
+                        defaults["exam_weight"] = float(exam_weight_raw)
+                    except ValueError:
+                        raise ValueError(f"Invalid exam_weight '{exam_weight_raw}'")
+                obj, was_created = Subject.objects.update_or_create(
+                    school=school, code=code, defaults=defaults,
                 )
-                if serializer.is_valid():
-                    student = serializer.save()
+                if was_created:
                     created += 1
-                    if hasattr(student, "id"):
-                        changes.append({"action": "create", "model": "academics.Student", "pk": student.id})
+                    changes.append({"action": "create", "model": "academics.Subject", "pk": obj.pk})
                 else:
-                    raise ValueError(serializer.errors)
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "academics.Subject",
+                        "pk": obj.pk,
+                        "before": {"name": obj.name, "is_priority": obj.is_priority},
+                        "after": {"name": name, "is_priority": defaults["is_priority"]},
+                    })
             except Exception as exc:
                 errors.append({"row": i, "error": str(exc)})
 
@@ -2528,13 +2577,25 @@ def bulk_import_commit(request):
                     raise ValueError("Missing class name")
                 grade_level = _as_int(row.get("grade"), 0)
                 if grade_level <= 0:
-                    raise ValueError("Invalid grade")
-                academic_year = (row.get("academic_year") or str(timezone.now().year)).strip()
+                    raise ValueError("Invalid grade level (must be a positive number)")
+                academic_year = (row.get("academic_year") or current_year).strip()
+
+                class_teacher_user = None
+                teacher_email = (row.get("class_teacher_email") or "").strip().lower()
+                if teacher_email:
+                    from users.models import CustomUser as _CU
+                    class_teacher_user = _CU.objects.filter(
+                        school=school, role='teacher', email__iexact=teacher_email,
+                    ).first()
+                    if not class_teacher_user:
+                        raise ValueError(f"Teacher with email '{teacher_email}' not found in this school")
+
+                defaults = {"grade_level": grade_level}
+                if class_teacher_user is not None:
+                    defaults["class_teacher"] = class_teacher_user
+
                 obj, was_created = Class.objects.update_or_create(
-                    school=school,
-                    name=name,
-                    academic_year=academic_year,
-                    defaults={"grade_level": grade_level},
+                    school=school, name=name, academic_year=academic_year, defaults=defaults,
                 )
                 if was_created:
                     created += 1
@@ -2551,35 +2612,6 @@ def bulk_import_commit(request):
             except Exception as exc:
                 errors.append({"row": i, "error": str(exc)})
 
-    elif import_type == "subjects":
-        for i, row in enumerate(mapped_rows, start=2):
-            try:
-                name = (row.get("name") or "").strip()
-                if not name:
-                    raise ValueError("Missing subject name")
-                code = (row.get("code") or name[:10].upper().replace(" ", "")).strip()
-                is_priority_raw = str(row.get("is_priority") or "").strip().lower()
-                is_priority = is_priority_raw in ("1", "true", "yes", "y")
-                obj, was_created = Subject.objects.update_or_create(
-                    school=school,
-                    code=code,
-                    defaults={"name": name, "is_priority": is_priority},
-                )
-                if was_created:
-                    created += 1
-                    changes.append({"action": "create", "model": "academics.Subject", "pk": obj.pk})
-                else:
-                    updated += 1
-                    changes.append({
-                        "action": "update",
-                        "model": "academics.Subject",
-                        "pk": obj.pk,
-                        "before": {"name": obj.name, "is_priority": obj.is_priority},
-                        "after": {"name": name, "is_priority": is_priority},
-                    })
-            except Exception as exc:
-                errors.append({"row": i, "error": str(exc)})
-
     elif import_type == "teachers":
         from .serializers import CreateTeacherSerializer
         for i, row in enumerate(mapped_rows, start=2):
@@ -2589,22 +2621,112 @@ def bulk_import_commit(request):
                 if not first_name or not last_name:
                     raise ValueError("Missing first_name or last_name")
                 email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "teacher", i)
+                hire_date = _parse_import_date(row.get("hire_date"), date_format) or today
+
+                gender_raw = (row.get("gender") or "").strip().upper()
+                gender = gender_raw if gender_raw in ("M", "F", "O", "P") else ""
+
+                subject_tokens = _split_csv_field(row.get("subjects"))
+                subject_ids = []
+                for token in subject_tokens:
+                    subj = Subject.objects.filter(school=school).filter(
+                        Q(code__iexact=token) | Q(name__iexact=token)
+                    ).first()
+                    if not subj:
+                        raise ValueError(f"Subject '{token}' not found in this school")
+                    subject_ids.append(subj.id)
+
+                assigned_class_id = None
+                assigned_class_name = (row.get("assigned_class") or "").strip()
+                if assigned_class_name:
+                    assigned_class = Class.objects.filter(
+                        school=school, name__iexact=assigned_class_name,
+                    ).order_by('-academic_year').first()
+                    if not assigned_class:
+                        raise ValueError(f"Class '{assigned_class_name}' not found")
+                    assigned_class_id = assigned_class.id
+
                 payload = {
                     "first_name": first_name,
                     "last_name": last_name,
                     "email": email,
                     "phone_number": _normalize_phone(row.get("phone")),
-                    "hire_date": (row.get("hire_date") or str(timezone.now().date())).strip(),
-                    "qualification": (row.get("department") or "").strip(),
+                    "gender": gender,
+                    "hire_date": str(hire_date),
+                    "qualification": (row.get("qualification") or "").strip(),
                     "password": _password_for_row(),
-                    "is_secondary_teacher": False,
+                    "is_secondary_teacher": bool(subject_ids),
+                    "subject_ids": subject_ids,
                 }
+                if assigned_class_id:
+                    payload["assigned_class_id"] = assigned_class_id
+
                 serializer = CreateTeacherSerializer(data=payload, context={"request": request})
                 if serializer.is_valid():
                     out = serializer.save()
                     created += 1
                     if isinstance(out, dict) and out.get("id"):
                         changes.append({"action": "create", "model": "academics.Teacher", "pk": out["id"]})
+                else:
+                    raise ValueError(serializer.errors)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "students":
+        from .serializers import CreateStudentSerializer
+        school_mode = getattr(school, 'accommodation_type', 'day')
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
+                if not first_name and not last_name:
+                    full_name = (row.get("full_name") or "").strip()
+                    if full_name:
+                        parts = full_name.split(" ", 1)
+                        first_name = parts[0]
+                        last_name = parts[1] if len(parts) > 1 else ""
+                class_name = (row.get("class") or row.get("class_name") or "").strip()
+                if not first_name or not last_name or not class_name:
+                    raise ValueError("Missing first_name, last_name, or class")
+                student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
+                if not student_class:
+                    raise ValueError(f"Class '{class_name}' not found in this school")
+
+                # Residence: respect school accommodation type
+                residence_raw = (row.get("residence_type") or "").strip().lower()
+                if residence_raw not in ("day", "boarding"):
+                    residence_raw = "boarding" if school_mode == "boarding" else "day"
+
+                admission_date = _parse_import_date(row.get("admission_date"), date_format) or today
+                dob = _parse_import_date(row.get("date_of_birth"), date_format)
+
+                email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "student", i)
+                phone_norm = _normalize_phone(row.get("phone"))
+
+                serializer = CreateStudentSerializer(
+                    data={
+                        "user": {
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "password": _password_for_row(),
+                        },
+                        "student_class": student_class.id,
+                        "residence_type": residence_raw,
+                        "admission_date": str(admission_date),
+                        "student_email": email,
+                        "student_contact": phone_norm,
+                        "student_address": (row.get("address") or "").strip(),
+                        "date_of_birth": str(dob) if dob else None,
+                        "gender": (row.get("gender") or "").strip(),
+                        "emergency_contact": _normalize_phone(row.get("emergency_contact")),
+                    },
+                    context={"request": request},
+                )
+                if serializer.is_valid():
+                    student = serializer.save()
+                    created += 1
+                    if hasattr(student, "id"):
+                        changes.append({"action": "create", "model": "academics.Student", "pk": student.id})
                 else:
                     raise ValueError(serializer.errors)
             except Exception as exc:
@@ -2620,17 +2742,27 @@ def bulk_import_commit(request):
                 if not first_name or not last_name or not phone:
                     raise ValueError("Missing first_name, last_name, or phone")
                 email = (row.get("email") or "").strip() or _generate_import_email(school, first_name, last_name, "parent", i)
+
+                # Accept either child_admission_nos (preferred) or child_admission_no (legacy single)
+                child_tokens = _split_csv_field(row.get("child_admission_nos") or row.get("child_admission_no"))
                 student_ids = []
-                child_adm = (row.get("child_admission_no") or "").strip()
-                if child_adm:
-                    student = Student.objects.filter(user__school=school, user__student_number=child_adm).first()
+                missing_children = []
+                for token in child_tokens:
+                    student = Student.objects.filter(
+                        user__school=school, user__student_number=token,
+                    ).first()
                     if student:
-                        student_ids = [student.id]
+                        student_ids.append(student.id)
+                    else:
+                        missing_children.append(token)
+                if missing_children:
+                    raise ValueError(f"Child admission number(s) not found: {', '.join(missing_children)}")
+
                 payload = {
                     "full_name": f"{first_name} {last_name}".strip(),
                     "contact_number": phone,
                     "email": email,
-                    "occupation": (row.get("relationship") or "").strip(),
+                    "occupation": (row.get("occupation") or "").strip(),
                     "password": _password_for_row(),
                     "student_ids": student_ids,
                 }
@@ -2646,33 +2778,35 @@ def bulk_import_commit(request):
                 errors.append({"row": i, "error": str(exc)})
 
     elif import_type == "fees":
-        import datetime
         for i, row in enumerate(mapped_rows, start=2):
             try:
                 admission_no = (row.get("student_admission_no") or "").strip()
                 fee_type_name = (row.get("fee_type") or "").strip()
-                amount = float(row.get("amount") or 0)
+                try:
+                    amount = float(row.get("amount") or 0)
+                except (TypeError, ValueError):
+                    raise ValueError(f"Invalid amount '{row.get('amount')}'")
                 term = _normalize_term(row.get("term"))
-                academic_year = (row.get("academic_year") or str(timezone.now().year)).strip()
+                academic_year = (row.get("academic_year") or current_year).strip()
                 if not admission_no or not fee_type_name or amount <= 0:
-                    raise ValueError("Missing required fee fields")
-                student = Student.objects.get(user__school=school, user__student_number=admission_no)
+                    raise ValueError("Missing required fee fields (student_admission_no, fee_type, amount)")
+                student = Student.objects.filter(
+                    user__school=school, user__student_number=admission_no,
+                ).first()
+                if not student:
+                    raise ValueError(f"Student '{admission_no}' not found in this school")
                 fee_type, _ = FeeType.objects.get_or_create(
                     name=fee_type_name,
                     school=school,
-                    defaults={"amount": amount, "academic_year": academic_year}
+                    defaults={"amount": amount, "academic_year": academic_year},
                 )
-                due_date_val = (row.get("due_date") or "").strip()
-                due_date = datetime.date.fromisoformat(due_date_val) if due_date_val else datetime.date.today()
-                _, was_created = StudentFee.objects.update_or_create(
+                due_date = _parse_import_date(row.get("due_date"), date_format) or today
+                fee_obj, was_created = StudentFee.objects.update_or_create(
                     student=student,
                     fee_type=fee_type,
                     academic_year=academic_year,
                     academic_term=term,
                     defaults={"amount_due": amount, "due_date": due_date},
-                )
-                fee_obj = StudentFee.objects.get(
-                    student=student, fee_type=fee_type, academic_year=academic_year, academic_term=term
                 )
                 if was_created:
                     created += 1
@@ -2690,21 +2824,23 @@ def bulk_import_commit(request):
                 errors.append({"row": i, "error": str(exc)})
 
     elif import_type == "attendance":
-        import datetime
         for i, row in enumerate(mapped_rows, start=2):
             try:
                 admission_no = (row.get("student_admission_no") or "").strip()
-                date_val = (row.get("date") or "").strip()
                 status_val = (row.get("status") or "").strip().lower()
-                if not admission_no or not date_val or not status_val:
-                    raise ValueError("Missing required attendance fields")
+                if not admission_no or not status_val:
+                    raise ValueError("Missing required attendance fields (student_admission_no, status)")
                 if status_val not in ("present", "absent", "late", "excused"):
-                    raise ValueError(f"Invalid status '{status_val}'")
-                student = Student.objects.select_related("student_class").get(
-                    user__school=school, user__student_number=admission_no
-                )
-                attendance_date = datetime.date.fromisoformat(date_val)
-                _, was_created = ClassAttendance.objects.update_or_create(
+                    raise ValueError(f"Invalid status '{status_val}' (use: present, absent, late, excused)")
+                attendance_date = _parse_import_date(row.get("date"), date_format)
+                if not attendance_date:
+                    raise ValueError(f"Invalid or missing date '{row.get('date')}'")
+                student = Student.objects.select_related("student_class").filter(
+                    user__school=school, user__student_number=admission_no,
+                ).first()
+                if not student:
+                    raise ValueError(f"Student '{admission_no}' not found in this school")
+                att_obj, was_created = ClassAttendance.objects.update_or_create(
                     student=student,
                     date=attendance_date,
                     defaults={
@@ -2714,7 +2850,6 @@ def bulk_import_commit(request):
                         "recorded_by": request.user,
                     },
                 )
-                att_obj = ClassAttendance.objects.get(student=student, date=attendance_date)
                 if was_created:
                     created += 1
                     changes.append({"action": "create", "model": "academics.ClassAttendance", "pk": att_obj.pk})
