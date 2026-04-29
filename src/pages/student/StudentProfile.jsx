@@ -222,6 +222,27 @@ export default function StudentProfile() {
           </div>
         </div>
 
+        {/* User Guide Download */}
+        <div className="bg-white rounded-lg shadow-lg p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <i className="fas fa-book text-blue-600"></i>
+            </div>
+            <div>
+              <p className="font-medium text-gray-800 text-sm">User Guide</p>
+              <p className="text-xs text-gray-500">Download the platform user guide (PDF)</p>
+            </div>
+          </div>
+          <a
+            href="/USER_GUIDE.pdf"
+            download="MySchoolHub_User_Guide.pdf"
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+          >
+            <i className="fas fa-download"></i>
+            Download
+          </a>
+        </div>
+
         {/* Change Password Section */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <button
