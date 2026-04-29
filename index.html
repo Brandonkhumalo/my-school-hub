@@ -10,9 +10,10 @@
 
     <!-- Primary SEO -->
     <title>MySchoolHub — School Management System Zimbabwe | ZIMSEC &amp; Cambridge</title>
-    <meta name="description" content="MySchoolHub is Zimbabwe's leading school management system. Manage students, fees, results, timetables, attendance, and parent communication — all in one platform. Supports ZIMSEC and Cambridge. Used by primary and secondary schools across Zimbabwe." />
-    <meta name="keywords" content="school management system Zimbabwe, ZIMSEC school software, school fees management Zimbabwe, student results system Zimbabwe, school administration software Zimbabwe, Zimbabwe school ERP, Cambridge school Zimbabwe, secondary school management Zimbabwe, primary school software Zimbabwe, school management Harare, Bulawayo school system, MySchoolHub" />
-    <meta name="author" content="Tishanyq Digital" />
+    <meta name="description" content="MySchoolHub is Zimbabwe's leading school management system — a PWA that works offline. Manage students, fees, results, timetables, attendance, and parent communication — all in one platform. Supports ZIMSEC and Cambridge. Used by primary and secondary schools across Zimbabwe." />
+    <meta name="keywords" content="school management system Zimbabwe, school management systems in Zimbabwe, PWA school management system Zimbabwe, offline school management system Zimbabwe, progressive web app school software Zimbabwe, offline-capable school system Zimbabwe, ZIMSEC school software, school fees management Zimbabwe, student results system Zimbabwe, school administration software Zimbabwe, Zimbabwe school ERP, Cambridge school Zimbabwe, secondary school management Zimbabwe, primary school software Zimbabwe, school management Harare, Bulawayo school system, MySchoolHub" />
+    <meta name="author" content="Tishanyq Digital — Lead Developer: Brandon Khumalo (CTO)" />
+    <meta name="creator" content="Brandon Khumalo — Chief Technology Officer, Tishanyq Digital" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://myschoolhub.co.zw/" />
 
@@ -20,7 +21,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://myschoolhub.co.zw/" />
     <meta property="og:title" content="MySchoolHub — School Management System Zimbabwe" />
-    <meta property="og:description" content="Zimbabwe's all-in-one school management platform. Students, fees, results, timetables, attendance, and WhatsApp parent alerts — built for ZIMSEC and Cambridge schools." />
+    <meta property="og:description" content="Zimbabwe's all-in-one school management platform — a PWA with offline support. Students, fees, results, timetables, attendance, and WhatsApp parent alerts — built for ZIMSEC and Cambridge schools." />
     <meta property="og:image" content="https://myschoolhub.co.zw/logo.png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
@@ -31,7 +32,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://myschoolhub.co.zw/" />
     <meta name="twitter:title" content="MySchoolHub — School Management System Zimbabwe" />
-    <meta name="twitter:description" content="Zimbabwe's all-in-one school management platform. Students, fees, results, timetables, attendance, and WhatsApp parent alerts." />
+    <meta name="twitter:description" content="Zimbabwe's all-in-one school management platform — PWA with offline support. Students, fees, results, timetables, attendance, and WhatsApp parent alerts." />
     <meta name="twitter:image" content="https://myschoolhub.co.zw/logo.png" />
 
     <!-- Geo / Regional -->
@@ -53,9 +54,10 @@
       "name": "MySchoolHub",
       "url": "https://myschoolhub.co.zw",
       "logo": "https://myschoolhub.co.zw/logo.png",
-      "description": "Zimbabwe's all-in-one school management system covering students, fees, results, timetables, attendance, and WhatsApp parent communication. Supports ZIMSEC and Cambridge curricula.",
+      "description": "Zimbabwe's all-in-one school management system — a Progressive Web App (PWA) with full offline support. Covers students, fees, results, timetables, attendance, and WhatsApp parent communication. Supports ZIMSEC and Cambridge curricula.",
       "applicationCategory": "EducationApplication",
       "operatingSystem": "Web, Android, iOS",
+      "applicationSubCategory": "Progressive Web App (PWA)",
       "offers": {
         "@type": "Offer",
         "availability": "https://schema.org/OnlineOnly",
@@ -66,11 +68,23 @@
         "name": "Tishanyq Digital",
         "url": "https://myschoolhub.co.zw"
       },
+      "creator": {
+        "@type": "Person",
+        "name": "Brandon Khumalo",
+        "jobTitle": "Chief Technology Officer",
+        "worksFor": {
+          "@type": "Organization",
+          "name": "Tishanyq Digital"
+        },
+        "url": "https://brandonportfoliodev.netlify.app/"
+      },
       "areaServed": {
         "@type": "Country",
         "name": "Zimbabwe"
       },
       "featureList": [
+        "Progressive Web App (PWA) — installable on any device",
+        "Offline support — works without internet connection",
         "Student management",
         "Fee collection and invoicing",
         "ZIMSEC and Cambridge results tracking",
@@ -93,6 +107,16 @@
       "name": "Tishanyq Digital",
       "url": "https://myschoolhub.co.zw",
       "logo": "https://myschoolhub.co.zw/logo.png",
+      "member": {
+        "@type": "OrganizationRole",
+        "member": {
+          "@type": "Person",
+          "name": "Brandon Khumalo",
+          "url": "https://brandonportfoliodev.netlify.app/"
+        },
+        "roleName": "Chief Technology Officer",
+        "description": "Led the design and development of the MySchoolHub platform"
+      },
       "contactPoint": {
         "@type": "ContactPoint",
         "email": "info@myschoolhub.co.zw",
@@ -108,12 +132,46 @@
     }
     </script>
 
+    <!-- Structured Data: Lead Developer -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Person",
+      "name": "Brandon Khumalo",
+      "jobTitle": "Chief Technology Officer",
+      "worksFor": {
+        "@type": "Organization",
+        "name": "Tishanyq Digital",
+        "url": "https://myschoolhub.co.zw"
+      },
+      "url": "https://brandonportfoliodev.netlify.app/",
+      "description": "Brandon Khumalo is the CTO of Tishanyq Digital and the lead developer behind MySchoolHub — Zimbabwe's school management platform.",
+      "knowsAbout": ["School Management Systems", "Software Engineering", "EdTech", "Zimbabwe Education Technology"]
+    }
+    </script>
+
     <!-- Structured Data: FAQ (rich snippets in search results) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does MySchoolHub work offline?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. MySchoolHub is a Progressive Web App (PWA) that works offline. Data is cached locally so teachers, students, and admins can continue working without an internet connection. Changes sync automatically when connectivity is restored."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can MySchoolHub be installed as an app on a phone or computer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. As a Progressive Web App (PWA), MySchoolHub can be installed directly from the browser on Android, iOS, Windows, and Mac — no app store required. It behaves like a native app with offline support."
+          }
+        },
         {
           "@type": "Question",
           "name": "What is MySchoolHub?",
