@@ -7,6 +7,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import { SchoolSettingsProvider } from "./context/SchoolSettingsContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import WhatsAppButton from "./components/WhatsAppButton.jsx";
+import OfflineBanner from "./components/OfflineBanner.jsx";
 import { registerSW } from "./registerSW.js";
 import "./index.css";
 
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <ThemeProvider>
           <AuthProvider>
             <SchoolSettingsProvider>
+              <OfflineBanner />
               <App />
               <WhatsAppButton />
             </SchoolSettingsProvider>

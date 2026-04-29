@@ -1,6 +1,61 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { clearUserCache, setMetaToken, setMetaUserId, clearMetaToken } from "../utils/offlineDB.js";
+import apiService from "../services/apiService.jsx";
 
 const AuthContext = createContext();
+
+// Pre-fetch key endpoints per role so data is cached before going offline
+function runCacheWarmup(role) {
+  const roleEndpoints = {
+    student: [
+      () => apiService.getStudentDashboardStats(),
+      () => apiService.getStudentTimetable(),
+      () => apiService.getStudentMarks(),
+      () => apiService.getStudentHomework(),
+      () => apiService.getStudentAnnouncements(),
+    ],
+    parent: [
+      () => apiService.getParentChildren(),
+      () => apiService.getParentHomework(),
+      () => apiService.fetchAnnouncements(),
+    ],
+    teacher: [
+      () => apiService.getTeacherClasses(),
+      () => apiService.getTeacherSubjects(),
+      () => apiService.getTeacherHomework(),
+      () => apiService.fetchAnnouncements(),
+    ],
+    admin: [
+      () => apiService.getDashboardStats(),
+      () => apiService.fetchAnnouncements(),
+      () => apiService.fetchClasses(),
+    ],
+    hr: [
+      () => apiService.getHRDashboardStats(),
+      () => apiService.getDepartments(),
+    ],
+    accountant: [
+      () => apiService.getDashboardStats(),
+      () => apiService.fetchFeeTypes(),
+    ],
+    librarian: [
+      () => apiService.getBooks(),
+      () => apiService.getLoans(),
+    ],
+  };
+
+  const sharedFetchers = [
+    () => apiService.getUnreadNotificationCount(),
+    () => apiService.getSchoolCustomization(),
+  ];
+
+  const fetchers = [...sharedFetchers, ...(roleEndpoints[role] || [])];
+
+  // Fire-and-forget after a short delay to not block login flow
+  setTimeout(() => {
+    fetchers.forEach((fn) => fn().catch(() => {}));
+  }, 800);
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -56,17 +111,24 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // Login: save user + token
+  // Login: save user + token, write meta to IndexedDB for SW sync queue, warm cache
   const login = (userData, jwtToken) => {
     setUser(userData);
     setToken(jwtToken);
     setAuthLoading(false);
     localStorage.setItem("user", JSON.stringify(userData));
     localStorage.setItem("token", jwtToken);
+
+    const userId = userData?.id || userData?.user_id;
+    setMetaToken(jwtToken).catch(() => {});
+    if (userId) setMetaUserId(userId).catch(() => {});
+
+    runCacheWarmup(userData?.role);
   };
 
-  // Logout: call backend to blacklist token, then clear storage + state
+  // Logout: blacklist token, clear storage + IndexedDB cache
   const logout = async () => {
+    const currentUser = user;
     try {
       const savedToken = localStorage.getItem("token");
       if (savedToken) {
@@ -81,6 +143,12 @@ export function AuthProvider({ children }) {
     } catch (e) {
       // Continue logout even if backend call fails
     }
+
+    // Clear IndexedDB user cache
+    const userId = currentUser?.id || currentUser?.user_id;
+    if (userId) clearUserCache(userId).catch(() => {});
+    clearMetaToken().catch(() => {});
+
     setUser(null);
     setToken(null);
     localStorage.removeItem("user");

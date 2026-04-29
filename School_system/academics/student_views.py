@@ -718,7 +718,13 @@ def student_submit_attempt(request, attempt_id):
     except TestAttempt.DoesNotExist:
         return Response({'error': 'Attempt not found'}, status=status.HTTP_404_NOT_FOUND)
     if attempt.status == 'submitted':
-        return Response({'error': 'Attempt already submitted.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Return the existing result instead of an error — makes sync-queue retries idempotent
+        return Response({
+            'attempt_id': attempt.id,
+            'status': attempt.status,
+            'auto_score': attempt.auto_score,
+            'final_score': attempt.final_score,
+        })
 
     elapsed = (timezone.now() - attempt.started_at).total_seconds() if attempt.started_at else 0
     if elapsed > (attempt.test.duration_minutes * 60):

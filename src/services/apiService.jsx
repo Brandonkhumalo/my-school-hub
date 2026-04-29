@@ -1,7 +1,18 @@
+import { getCachedResponse, setCachedResponse, addToSyncQueue } from '../utils/offlineDB.js';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 function getToken() {
   return localStorage.getItem('token');
+}
+
+function getUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    return user?.id || user?.user_id || null;
+  } catch {
+    return null;
+  }
 }
 
 // Handle 401 — clear auth and redirect to login
@@ -62,6 +73,9 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
     config.body = JSON.stringify(body);
   }
 
+  const isGet = method.toUpperCase() === "GET";
+  const isMutation = ["POST", "PUT", "PATCH"].includes(method.toUpperCase());
+
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
@@ -95,6 +109,7 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
       error.response = { data: errorData, status: response.status };
       throw error;
     }
+
     if (response.status === 204) {
       return null;
     }
@@ -112,7 +127,7 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
         Array.isArray(data.results) &&
         ("next" in data || "previous" in data || "count" in data);
 
-      if (method.toUpperCase() === "GET" && isPaginated && data.next) {
+      if (isGet && isPaginated && data.next) {
         const allResults = [...data.results];
         const visitedUrls = new Set([`${API_BASE_URL}${endpoint}`]);
         let nextUrl = data.next;
@@ -143,14 +158,40 @@ async function request(endpoint, method = "GET", body = null, useAuth = true) {
           nextUrl = nextData.next;
         }
 
+        if (isGet && useAuth) {
+          const uid = getUserId();
+          if (uid) setCachedResponse(uid, endpoint, allResults).catch(() => {});
+        }
         return allResults;
       }
 
+      if (isGet && useAuth) {
+        const uid = getUserId();
+        if (uid) setCachedResponse(uid, endpoint, data.results).catch(() => {});
+      }
       return data.results;
     }
 
+    if (isGet && useAuth) {
+      const uid = getUserId();
+      if (uid) setCachedResponse(uid, endpoint, data).catch(() => {});
+    }
     return data;
   } catch (error) {
+    // Offline or network error — serve from cache / queue writes
+    if (!navigator.onLine || error instanceof TypeError) {
+      if (isGet && useAuth) {
+        const uid = getUserId();
+        if (uid) {
+          const cached = await getCachedResponse(uid, endpoint);
+          if (cached) return cached.data;
+        }
+      }
+      if (isMutation && useAuth) {
+        await addToSyncQueue(endpoint, method, body);
+        return { queued: true };
+      }
+    }
     console.error("API Service Error:", error.message);
     throw error;
   }
@@ -1062,5 +1103,7 @@ const apiService = {
     return request(`/academics/admin/at-risk-students/?${params.toString()}`, "GET");
   },
 };
+
+export const isOnline = () => navigator.onLine;
 
 export default apiService;
