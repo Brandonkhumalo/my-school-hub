@@ -93,6 +93,7 @@ class UserSerializer(serializers.ModelSerializer):
     school_name = serializers.SerializerMethodField()
     school_code = serializers.SerializerMethodField()
     school_accommodation_type = serializers.SerializerMethodField()
+    school_type = serializers.SerializerMethodField()
     student_residence_type = serializers.SerializerMethodField()
     salary = serializers.SerializerMethodField()
     staff_position = serializers.SerializerMethodField()
@@ -111,7 +112,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'phone_number', 'gender', 'role', 'student_number', 'is_active',
             'date_joined', 'password', 'school_name', 'school_code',
-            'school_accommodation_type', 'student_residence_type',
+            'school_accommodation_type', 'school_type', 'student_residence_type',
             'salary', 'staff_position', 'employee_id', 'staff_department_id', 'staff_hire_date',
             'hr_is_root_boss', 'hr_page_permissions',
             'accountant_is_root_head', 'accountant_page_permissions',
@@ -133,6 +134,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_school_accommodation_type(self, obj):
         return obj.school.accommodation_type if obj.school else None
+
+    def get_school_type(self, obj):
+        return obj.school.school_type if obj.school else None
 
     def get_student_residence_type(self, obj):
         if obj.role != 'student':

@@ -56,7 +56,7 @@ PAGE_REGISTRY = [
     {"key": "teacher.marks",            "label": "Add Marks",           "role": "teacher", "group": "Teacher"},
     {"key": "teacher.report_feedback",  "label": "Report Feedback",     "role": "teacher", "group": "Teacher"},
     {"key": "teacher.attendance",       "label": "Attendance",          "role": "teacher", "group": "Teacher"},
-    {"key": "teacher.performance",      "label": "Performance",         "role": "teacher", "group": "Teacher"},
+    {"key": "teacher.performance",      "label": "At-Risk Students",    "role": "teacher", "group": "Teacher"},
     {"key": "teacher.homework",         "label": "Homework",            "role": "teacher", "group": "Teacher"},
     {"key": "teacher.assignments",      "label": "Assignments",         "role": "teacher", "group": "Teacher"},
     {"key": "teacher.past_papers",      "label": "Past Exam Papers",    "role": "teacher", "group": "Teacher"},

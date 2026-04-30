@@ -70,7 +70,7 @@ const ALL_MENU_ITEMS = {
       { path: "/teacher/marks",        icon: "fa-pen-square",       title: "Add Marks" },
       { path: "/teacher/report-feedback", icon: "fa-comment-dots",  title: "Report Feedback" },
       { path: "/teacher/attendance",   icon: "fa-clipboard-check",  title: "Attendance" },
-      { path: "/teacher/performance",  icon: "fa-chart-line",       title: "Performance" },
+      { path: "/teacher/performance",  icon: "fa-chart-line",       title: "At-Risk Students" },
       { path: "/teacher/homework",     icon: "fa-book-open",        title: "Homework" },
       { path: "/teacher/assignments",  icon: "fa-tasks",            title: "Assignments" },
       { path: "/teacher/past-papers",  icon: "fa-file-pdf",         title: "Past Exam Papers" },

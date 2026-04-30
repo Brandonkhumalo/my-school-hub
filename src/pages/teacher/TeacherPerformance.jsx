@@ -304,10 +304,25 @@ export default function TeacherPerformance() {
     );
   };
 
+  const topPerformers = useMemo(() => {
+    const rows = students?.results || [];
+    return rows
+      .filter((s) => !s.at_risk)
+      .sort((a, b) => Number(b.current_percentage || 0) - Number(a.current_percentage || 0))
+      .slice(0, 6);
+  }, [students]);
+
+  const atRiskStudents = useMemo(() => {
+    const rows = students?.results || [];
+    return rows
+      .filter((s) => Boolean(s.at_risk))
+      .sort((a, b) => Number(b.risk_score || 0) - Number(a.risk_score || 0));
+  }, [students]);
+
   if (loading) {
     return (
       <div>
-        <Header title="Performance by Subject" user={user} />
+        <Header title="At-Risk Students" user={user} />
         <LoadingSpinner />
       </div>
     );
@@ -315,11 +330,11 @@ export default function TeacherPerformance() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <Header title="Performance by Subject" user={user} />
+      <Header title="At-Risk Students" user={user} />
       <div className="p-6">
         <div className="mb-6">
-          <h2 className="text-3xl font-bold text-gray-800">Student Performance Monitoring</h2>
-          <p className="text-gray-600 mt-2">View student performance and identify at-risk students</p>
+          <h2 className="text-3xl font-bold text-gray-800">At-Risk Students</h2>
+          <p className="text-gray-600 mt-2">Track top performers and identify students needing intervention</p>
         </div>
 
         {subjects.length === 0 ? (
@@ -444,6 +459,47 @@ export default function TeacherPerformance() {
                     </div>
                     <i className="fas fa-check-circle text-4xl text-green-200"></i>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {viewMode === "risk" && students && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                    <i className="fas fa-trophy mr-2 text-yellow-500"></i>Top Performers
+                  </h3>
+                  {topPerformers.length === 0 ? (
+                    <p className="text-sm text-gray-500">No top performer data yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {topPerformers.map((s) => (
+                        <div key={s.student_id} className="p-3 rounded border border-green-200 bg-green-50">
+                          <p className="font-medium text-gray-800">{s.name}</p>
+                          <p className="text-xs text-gray-600">#{s.student_number}</p>
+                          <p className="text-sm text-green-800">Current: {s.current_grade} ({s.current_percentage}%)</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                    <i className="fas fa-exclamation-triangle mr-2 text-red-500"></i>Students At Risk
+                  </h3>
+                  {atRiskStudents.length === 0 ? (
+                    <p className="text-sm text-gray-500">No at-risk students in this selection.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {atRiskStudents.slice(0, 8).map((s) => (
+                        <div key={s.student_id} className="p-3 rounded border border-red-200 bg-red-50">
+                          <p className="font-medium text-gray-800">{s.name}</p>
+                          <p className="text-xs text-gray-600">#{s.student_number}</p>
+                          <p className="text-sm text-red-800">Current: {s.current_grade} ({s.current_percentage}%)</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

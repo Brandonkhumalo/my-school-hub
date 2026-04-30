@@ -42,7 +42,7 @@ from users.models import SchoolSettings
 BULK_IMPORT_PARAMETER_LIBRARY = {
     "subjects": [
         {"key": "name", "label": "Subject Name", "required": True, "type": "text", "help": "e.g. Mathematics"},
-        {"key": "code", "label": "Subject Code", "required": False, "type": "text", "help": "Short unique code (auto-generated from name if blank)"},
+        {"key": "code", "label": "Subject Code", "required": False, "type": "text", "help": "Optional. Leave blank (or omit this column entirely) and the system will auto-generate a code from the subject name."},
         {"key": "description", "label": "Description", "required": False, "type": "text"},
         {"key": "ca_weight", "label": "CA Weight", "required": False, "type": "number", "help": "Continuous Assessment weight (0-1, e.g. 0.4)"},
         {"key": "exam_weight", "label": "Exam Weight", "required": False, "type": "number", "help": "Final Exam weight (0-1, e.g. 0.6)"},
@@ -50,17 +50,10 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
     ],
     "classes": [
         {"key": "name", "label": "Class Name", "required": True, "type": "text", "help": "Unique within the academic year, e.g. Form 1A"},
-        {"key": "grade", "label": "Grade Level", "required": True, "type": "number", "help": "Numeric grade (e.g. 1, 7, 12)"},
+        {"key": "grade", "label": "Grade Level", "required": False, "type": "number", "help": "Required for primary/combined schools (e.g. 1–7). Auto-derived from Form number for secondary/high schools."},
         {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to current year (e.g. 2026)"},
         {"key": "class_teacher_email", "label": "Class Teacher Email", "required": False, "type": "email", "help": "Email of an existing teacher in this school"},
-    ],
-    "class_subjects": [
-        {"key": "class_name", "label": "Class Name", "required": True, "type": "text", "help": "Target class name (e.g. Form 1A, Grade 2 Red)"},
-        {"key": "subject_code", "label": "Subject Code", "required": False, "type": "text", "help": "Preferred unique subject identifier"},
-        {"key": "subject_name", "label": "Subject Name", "required": False, "type": "text", "help": "Used when subject_code is blank"},
-        {"key": "teacher_email", "label": "Teacher Email", "required": False, "type": "email", "help": "Optional teacher assigned to this class-subject"},
-        {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to class year or current year"},
-        {"key": "is_core", "label": "Core Subject", "required": False, "type": "boolean", "help": "true/false. Core subjects can be prioritized"},
+        {"key": "subjects", "label": "Subject Codes", "required": False, "type": "text", "help": "Comma-separated subject codes to assign to this class (subjects must already exist). e.g. MATH,ENG,SCI"},
     ],
     "teachers": [
         {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
@@ -113,7 +106,6 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
 _BULK_IMPORT_ROLE_MATRIX = {
     "subjects": {"admin", "hr", "superadmin"},
     "classes": {"admin", "hr", "superadmin"},
-    "class_subjects": {"admin", "hr", "superadmin"},
     "teachers": {"admin", "hr", "superadmin"},
     "students": {"admin", "hr", "superadmin"},
     "parents": {"admin", "hr", "superadmin"},
@@ -2530,32 +2522,13 @@ def bulk_import_validate(request):
         if row_errors:
             errors.append({"row": idx, "errors": row_errors})
             continue
-        if import_type == "class_subjects":
-            class_name = (row.get("class_name") or "").strip()
-            subject_code = (row.get("subject_code") or "").strip()
-            subject_name = (row.get("subject_name") or "").strip()
-            if not subject_code and not subject_name:
-                row_errors.append("Provide either subject_code or subject_name.")
-            else:
-                cls = Class.objects.filter(school=school, name__iexact=class_name).first()
-                if not cls:
-                    row_errors.append(f"Class '{class_name}' not found in this school.")
-                subj = None
-                if subject_code:
-                    subj = Subject.objects.filter(school=school, code__iexact=subject_code).first()
-                if not subj and subject_name:
-                    subj = Subject.objects.filter(school=school, name__iexact=subject_name).first()
-                if not subj:
-                    row_errors.append(
-                        f"Subject not found (code='{subject_code}' name='{subject_name}')."
-                    )
-                teacher_email = (row.get("teacher_email") or "").strip().lower()
-                if teacher_email:
-                    teacher_user = Teacher.objects.filter(
-                        user__school=school, user__email__iexact=teacher_email
-                    ).first()
-                    if not teacher_user:
-                        row_errors.append(f"Teacher '{teacher_email}' not found in this school.")
+        if import_type == "classes":
+            subjects_raw = (row.get("subjects") or "").strip()
+            if subjects_raw:
+                codes = [c.strip() for c in subjects_raw.split(",") if c.strip()]
+                for code in codes:
+                    if not Subject.objects.filter(school=school, code__iexact=code).exists():
+                        row_errors.append(f"Subject code '{code}' not found — import subjects first.")
             if row_errors:
                 errors.append({"row": idx, "errors": row_errors})
 
@@ -2695,7 +2668,16 @@ def bulk_import_commit(request):
                 name = (row.get("name") or "").strip()
                 if not name:
                     raise ValueError("Missing subject name")
-                code = (row.get("code") or name[:10].upper().replace(" ", "")).strip()
+                raw_code = (row.get("code") or "").strip()
+                if raw_code:
+                    code = raw_code
+                else:
+                    base = name[:8].upper().replace(" ", "")
+                    code = base
+                    suffix = 1
+                    while Subject.objects.filter(school=school, code=code).exists():
+                        code = f"{base[:7]}{suffix}"
+                        suffix += 1
                 description = (row.get("description") or "").strip()
                 ca_weight_raw = (row.get("ca_weight") or "").strip()
                 exam_weight_raw = (row.get("exam_weight") or "").strip()
@@ -2746,9 +2728,18 @@ def bulk_import_commit(request):
                 name = (row.get("name") or "").strip()
                 if not name:
                     raise ValueError("Missing class name")
-                grade_level = _as_int(row.get("grade"), 0)
-                if grade_level <= 0:
-                    raise ValueError("Invalid grade level (must be a positive number)")
+                grade_raw = (row.get("grade") or "").strip()
+                school_type = school.school_type
+                if grade_raw:
+                    grade_level = _as_int(grade_raw, 0)
+                    if grade_level <= 0:
+                        raise ValueError("Invalid grade level (must be a positive number)")
+                elif school_type in ('secondary', 'high'):
+                    import re as _re
+                    m = _re.match(r'form\s*(\d+)', name.lower())
+                    grade_level = 7 + int(m.group(1)) if m else 8
+                else:
+                    raise ValueError("Grade level is required for primary/combined schools")
                 academic_year = (row.get("academic_year") or current_year).strip()
 
                 class_teacher_user = None
@@ -2790,87 +2781,28 @@ def bulk_import_commit(request):
                         "before": {"grade_level": obj.grade_level},
                         "after": {"grade_level": grade_level},
                     })
-            except Exception as exc:
-                errors.append({"row": i, "error": str(exc)})
 
-    elif import_type == "class_subjects":
-        for i, row in enumerate(mapped_rows, start=2):
-            try:
-                class_name = (row.get("class_name") or "").strip()
-                subject_code = (row.get("subject_code") or "").strip()
-                subject_name = (row.get("subject_name") or "").strip()
-                if not class_name:
-                    raise ValueError("Missing class_name")
-                if not subject_code and not subject_name:
-                    raise ValueError("Provide either subject_code or subject_name")
+                subjects_raw = (row.get("subjects") or "").strip()
+                if subjects_raw:
+                    codes = [c.strip() for c in subjects_raw.split(",") if c.strip()]
+                    for code in codes:
+                        subject = Subject.objects.filter(school=school, code__iexact=code).first()
+                        if not subject:
+                            continue
+                        assignment_year = obj.academic_year or current_year
+                        existing_assignment = ClassSubjectAssignment.objects.filter(
+                            school=school, class_obj=obj, subject=subject, academic_year=assignment_year
+                        ).first()
+                        if not existing_assignment:
+                            ClassSubjectAssignment.objects.create(
+                                school=school,
+                                class_obj=obj,
+                                subject=subject,
+                                academic_year=assignment_year,
+                                created_by=request.user,
+                            )
+                            changes.append({"action": "create", "model": "academics.ClassSubjectAssignment", "pk": None})
 
-                class_obj = Class.objects.filter(school=school, name__iexact=class_name).first()
-                if not class_obj:
-                    raise ValueError(f"Class '{class_name}' not found in this school")
-
-                subject = None
-                if subject_code:
-                    subject = Subject.objects.filter(school=school, code__iexact=subject_code).first()
-                if not subject and subject_name:
-                    subject = Subject.objects.filter(school=school, name__iexact=subject_name).first()
-                if not subject:
-                    raise ValueError(f"Subject not found (code='{subject_code}' name='{subject_name}')")
-
-                teacher = None
-                teacher_email = (row.get("teacher_email") or "").strip().lower()
-                if teacher_email:
-                    teacher = Teacher.objects.filter(
-                        user__school=school, user__email__iexact=teacher_email
-                    ).first()
-                    if not teacher:
-                        raise ValueError(f"Teacher '{teacher_email}' not found in this school")
-
-                row_year = (row.get("academic_year") or class_obj.academic_year or current_year).strip()
-                is_core = _parse_bool(row.get("is_core"))
-                existing = ClassSubjectAssignment.objects.filter(
-                    school=school,
-                    class_obj=class_obj,
-                    subject=subject,
-                    academic_year=row_year,
-                ).first()
-
-                label = f"class_subject {class_obj.name}/{subject.code}/{row_year}"
-                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing), i, label, errors):
-                    continue
-
-                if existing and duplicate_strategy == "update":
-                    before_teacher_id = existing.teacher_id
-                    before_is_core = existing.is_core
-                    existing.teacher = teacher
-                    existing.is_core = is_core
-                    existing.save()
-                    obj, was_created = existing, False
-                elif existing:
-                    obj, was_created = existing, False
-                else:
-                    obj = ClassSubjectAssignment.objects.create(
-                        school=school,
-                        class_obj=class_obj,
-                        subject=subject,
-                        teacher=teacher,
-                        academic_year=row_year,
-                        is_core=is_core,
-                        created_by=request.user,
-                    )
-                    was_created = True
-
-                if was_created:
-                    created += 1
-                    changes.append({"action": "create", "model": "academics.ClassSubjectAssignment", "pk": obj.pk})
-                else:
-                    updated += 1
-                    changes.append({
-                        "action": "update",
-                        "model": "academics.ClassSubjectAssignment",
-                        "pk": obj.pk,
-                        "before": {"teacher_id": before_teacher_id, "is_core": before_is_core},
-                        "after": {"teacher_id": teacher.id if teacher else None, "is_core": is_core},
-                    })
             except Exception as exc:
                 errors.append({"row": i, "error": str(exc)})
 
@@ -4293,8 +4225,8 @@ def admin_at_risk_students(request):
         class_id: Filter by class
         sort_by: 'risk_score' (default), 'name', 'date'
     """
-    if request.user.role not in ('admin', 'superadmin'):
-        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    if request.user.role not in ('admin', 'hr', 'superadmin', 'teacher'):
+        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
     
     school = request.user.school
     view_type = request.query_params.get('view', 'overall')
@@ -4305,6 +4237,28 @@ def admin_at_risk_students(request):
     
     # Get students
     students = Student.objects.filter(user__school=school, user__is_active=True).select_related('user', 'student_class')
+    if request.user.role == 'teacher':
+        teacher_profile = Teacher.objects.filter(user=request.user).first()
+        taught_class_ids = set(
+            Class.objects.filter(class_teacher=request.user, school=school).values_list('id', flat=True)
+        )
+        if teacher_profile:
+            taught_class_ids.update(
+                teacher_profile.teaching_classes.filter(school=school).values_list('id', flat=True)
+            )
+        if not taught_class_ids:
+            return Response({
+                'students': [],
+                'top_performers': [],
+                'total_at_risk': 0,
+                'view_type': view_type,
+                'filter': {
+                    'search': search,
+                    'subject_id': subject_id,
+                    'class_id': class_id,
+                }
+            })
+        students = students.filter(student_class_id__in=list(taught_class_ids))
     
     if class_id:
         try:
@@ -4322,6 +4276,7 @@ def admin_at_risk_students(request):
         )
     
     at_risk_data = []
+    non_risk_data = []
     from .ml_predictions import predict_student_grades
     from .at_risk_alerts import get_student_risk_score
     
@@ -4405,6 +4360,22 @@ def admin_at_risk_students(request):
                         'recent_alerts': recent_alerts,
                     }
                     at_risk_data.append(entry)
+                else:
+                    avg_pct = 0.0
+                    if predictions:
+                        avg_pct = round(
+                            sum(float(p.get('current_percentage', 0) or 0) for p in predictions) / len(predictions), 1
+                        )
+                    non_risk_data.append({
+                        'student_id': student.id,
+                        'name': student.user.full_name,
+                        'student_number': student.user.student_number or '',
+                        'email': student.user.email,
+                        'class': student.student_class.name,
+                        'overall_risk_score': overall_risk_score,
+                        'average_percentage': avg_pct,
+                        'total_subjects': total_subjects,
+                    })
         
         except Exception as e:
             logger.error(f"Error processing student {student.id} for at-risk view: {str(e)}")
@@ -4422,8 +4393,15 @@ def admin_at_risk_students(request):
     else:  # risk_score (default)
         at_risk_data.sort(key=lambda x: x['overall_risk_score'], reverse=True)
     
+    non_risk_data.sort(
+        key=lambda x: (x.get('average_percentage', 0), -x.get('overall_risk_score', 0)),
+        reverse=True
+    )
+    top_performers = non_risk_data[:10]
+
     return Response({
         'students': at_risk_data,
+        'top_performers': top_performers,
         'total_at_risk': len(at_risk_data),
         'view_type': view_type,
         'filter': {

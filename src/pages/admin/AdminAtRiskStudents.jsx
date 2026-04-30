@@ -296,6 +296,27 @@ export default function AdminAtRiskStudents() {
           </div>
         )}
 
+        {/* Top Performers */}
+        {activeTab !== "marks" && students && Array.isArray(students.top_performers) && students.top_performers.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">
+              <i className="fas fa-trophy mr-2 text-yellow-500"></i>
+              Top Performers
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {students.top_performers.slice(0, 9).map((s) => (
+                <div key={s.student_id} className="p-4 rounded-lg border border-green-200 bg-green-50">
+                  <p className="font-semibold text-gray-800">{s.name}</p>
+                  <p className="text-xs text-gray-600">#{s.student_number} • {s.class}</p>
+                  <p className="text-sm text-green-800 mt-1">
+                    Avg: <span className="font-semibold">{s.average_percentage}%</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Student Marks view */}
         {activeTab === "marks" && (
           loadingMarks ? <LoadingSpinner /> : (

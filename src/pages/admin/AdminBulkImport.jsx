@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Header from "../../components/Header";
+import SearchableSelect from "../../components/SearchableSelect";
 import apiService from "../../services/apiService";
 import { formatDateTime } from "../../utils/dateFormat";
+import { useAuth } from "../../context/AuthContext";
 
 const FALLBACK_IMPORT_TYPES = [
   { key: "subjects", label: "Subjects" },
   { key: "classes", label: "Classes" },
-  { key: "class_subjects", label: "Class Subject Assignments" },
   { key: "teachers", label: "Teachers" },
   { key: "students", label: "Students" },
   { key: "parents", label: "Parents / Guardians" },
@@ -15,12 +16,11 @@ const FALLBACK_IMPORT_TYPES = [
 ];
 
 // Recommended order — earlier types are referenced by later ones.
-const IMPORT_ORDER = ["subjects", "classes", "class_subjects", "teachers", "students", "parents", "fees", "attendance"];
+const IMPORT_ORDER = ["subjects", "classes", "teachers", "students", "parents", "fees", "attendance"];
 
 const DEPENDENCIES = {
-  class_subjects: ["subjects", "classes"],
-  classes: [],
-  teachers: ["subjects", "class_subjects"],
+  classes: ["subjects"],
+  teachers: ["subjects", "classes"],
   students: ["classes"],
   parents: ["students"],
   fees: ["students"],
@@ -32,6 +32,8 @@ const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"];
 const PERSON_TYPES = new Set(["students", "teachers", "parents"]);
 
 export default function AdminBulkImport() {
+  const { user } = useAuth();
+  const isPrimarySchool = ['primary', 'combined'].includes(user?.school_type);
   const [step, setStep] = useState(1);
   const [importType, setImportType] = useState("students");
   const [catalog, setCatalog] = useState(null);
@@ -48,7 +50,6 @@ export default function AdminBulkImport() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [classes, setClasses] = useState([]);
-  const [classSearch, setClassSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
 
   useEffect(() => {
@@ -80,10 +81,13 @@ export default function AdminBulkImport() {
     return FALLBACK_IMPORT_TYPES;
   }, [catalog]);
 
-  const fields = useMemo(
-    () => catalog?.parameter_library?.[importType] || [],
-    [catalog, importType]
-  );
+  const fields = useMemo(() => {
+    const raw = catalog?.parameter_library?.[importType] || [];
+    if (importType === "classes" && !isPrimarySchool) {
+      return raw.filter((f) => f.key !== "grade");
+    }
+    return raw;
+  }, [catalog, importType, isPrimarySchool]);
 
   const requiredKeys = useMemo(
     () => fields.filter((f) => f.required).map((f) => f.key),
@@ -95,14 +99,10 @@ export default function AdminBulkImport() {
     return fields.filter((f) => keySet.has(f.key) && !(importType === "students" && f.key === "class"));
   }, [fields, requiredKeys, selectedParams]);
 
-  const filteredClasses = useMemo(() => {
-    const q = classSearch.trim().toLowerCase();
-    if (!q) return classes;
-    return classes.filter((cls) => {
-      const label = `${cls.name || ""} ${cls.grade_level || ""} ${cls.academic_year || ""}`.toLowerCase();
-      return label.includes(q);
-    });
-  }, [classes, classSearch]);
+  const classOptions = useMemo(
+    () => classes.map((cls) => ({ id: cls.id, label: `${cls.name} • ${cls.academic_year}` })),
+    [classes]
+  );
 
   const selectedClass = useMemo(
     () => classes.find((c) => String(c.id) === String(selectedClassId)) || null,
@@ -172,7 +172,7 @@ export default function AdminBulkImport() {
         academic_year: "2026",
         student_admission_no: "STU-2024-001",
         fee_type: "Tuition",
-        subjects: "MATH, ENG",
+        subjects: importType === "classes" ? "MATH,ENG,SCI" : "MATH,ENG",
         child_admission_nos: "STU-2024-001, STU-2024-002",
         assigned_class: "Form 1A",
         class_teacher_email: "teacher@example.com",
@@ -434,25 +434,12 @@ export default function AdminBulkImport() {
                   <p className="text-xs text-blue-800">
                     Upload one class at a time. The selected class will be assigned to all students in this file.
                   </p>
-                  <input
-                    type="text"
-                    placeholder='Search class (e.g. "Form 1A", "Grade 2 Red")'
-                    value={classSearch}
-                    onChange={(e) => setClassSearch(e.target.value)}
-                    className="w-full p-2 rounded-lg border bg-white"
-                  />
-                  <select
+                  <SearchableSelect
+                    options={classOptions}
                     value={selectedClassId}
-                    onChange={(e) => setSelectedClassId(e.target.value)}
-                    className="w-full p-2 rounded-lg border bg-white"
-                  >
-                    <option value="">Select a class...</option>
-                    {filteredClasses.map((cls) => (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.name} • Grade {cls.grade_level} • {cls.academic_year}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(id) => setSelectedClassId(id)}
+                    placeholder='Search class (e.g. "Form 1A")'
+                  />
                 </div>
               )}
 
@@ -500,7 +487,7 @@ export default function AdminBulkImport() {
                 <p className="text-sm"><strong>Type:</strong> {importTypes.find((t) => t.key === importType)?.label}</p>
                 <p className="text-sm"><strong>File:</strong> {uploadFile?.name || "No file selected"}</p>
                 {importType === "students" && (
-                  <p className="text-sm"><strong>Class:</strong> {selectedClass ? `${selectedClass.name} (Grade ${selectedClass.grade_level}, ${selectedClass.academic_year})` : "Not selected"}</p>
+                  <p className="text-sm"><strong>Class:</strong> {selectedClass ? `${selectedClass.name} • ${selectedClass.academic_year}` : "Not selected"}</p>
                 )}
                 <p className="text-sm"><strong>Date format:</strong> {dateFormat}</p>
                 <p className="text-sm"><strong>Duplicates:</strong> {duplicateStrategy}</p>
@@ -508,11 +495,14 @@ export default function AdminBulkImport() {
               </div>
 
               {validation && (
-                <div className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50 text-green-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
-                  <p className="text-sm font-semibold">
+                <div
+                  className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50" : "border-amber-300 bg-amber-50"}`}
+                  style={{ color: validation.valid ? "#14532d" : "#78350f" }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: validation.valid ? "#14532d" : "#78350f" }}>
                     {validation.valid ? "✓ All rows valid" : `⚠ ${validation.errors?.length || 0} row(s) with errors`}
                   </p>
-                  <p className="text-sm">Total rows: {validation.total_rows}</p>
+                  <p className="text-sm" style={{ color: validation.valid ? "#14532d" : "#78350f" }}>Total rows: {validation.total_rows}</p>
                   {validation.errors?.length > 0 && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-sm font-medium text-amber-900">Show row errors</summary>

@@ -6,15 +6,43 @@ Multi-tenant SaaS school management platform serving ten user roles. Covers acad
 
 ## Tech Stack
 
-| Layer      | Technology                                                  |
-|------------|-------------------------------------------------------------|
-| Frontend   | React 19, Vite 7, React Router 7, Tailwind CSS              |
-| Backend    | Django 5.2, Django REST Framework 3.16                      |
-| Auth       | Custom JWT (HS256, 30-day access / 60-day refresh)          |
-| Database   | SQLite (dev) — multi-tenant via School FK on all models     |
-| Task Queue | Celery (email service, async WhatsApp tasks)                |
-| Messaging  | WhatsApp Business API integration (built, currently disabled)|
-| Payments   | PayNow Zimbabwe integration (per-school credentials)        |
+| Layer           | Technology                                                                 |
+|-----------------|----------------------------------------------------------------------------|
+| Frontend        | React 19, Vite 7, React Router 7, Tailwind CSS                             |
+| API Gateway     | Go (Echo) — JWT auth, rate limiting, CORS, reverse proxy (port 8080)       |
+| Go Services     | Go — PDF report cards, PayNow payments, email, WhatsApp API (port 8082)    |
+| Go Workers      | Go — bulk CSV imports for students, fees, results (port 8081)              |
+| Core Backend    | Django 5.2, Django REST Framework — business logic, ORM (port 8000)        |
+| Auth            | Custom JWT (HS256, 30-day access / 60-day refresh) — enforced at gateway   |
+| Database        | PostgreSQL (prod) / SQLite (dev) — multi-tenant via School FK              |
+| Task Queue      | Celery + Redis — async email and WhatsApp tasks                            |
+| Cache / Broker  | Redis                                                                       |
+| Messaging       | WhatsApp Business API — handled by go-services (built, currently disabled) |
+| Payments        | PayNow Zimbabwe — handled by go-services (per-school credentials)          |
+| Containerisation| Docker + Docker Compose — all services orchestrated                        |
+
+### Microservices Architecture
+
+All traffic enters through the **Go Gateway** (port 8080), which authenticates JWTs, enforces rate limiting, logs audit events, and routes requests to downstream services:
+
+```
+Internet → Go Gateway (:8080) → Django (:8000)        — core business logic
+                              → Go Workers (:8081)    — bulk CSV imports
+                              → Go Services (:8082)   — PDF, PayNow, email, WhatsApp
+```
+
+| Service       | Directory      | Responsibilities                                               |
+|---------------|----------------|----------------------------------------------------------------|
+| `go-gateway`  | `go-gateway/`  | JWT validation, token blacklisting, CORS, rate limiting, routing |
+| `go-workers`  | `go-workers/`  | Streaming CSV bulk imports (students, fees, results)           |
+| `go-services` | `go-services/` | PDF report card generation, PayNow integration, email (Resend), WhatsApp API |
+
+**Gateway routing rules:**
+- `/api/v1/bulk/*` → go-workers
+- `/api/v1/finances/payments/paynow/*` → go-services
+- `/api/v1/services/*` → go-services
+- `/api/v1/academics/students/{id}/report-card/` → go-services
+- All other requests → Django
 
 ## User Roles
 
@@ -46,6 +74,26 @@ src/
     dateFormat.js     # Date parsing/formatting (Africa/Harare timezone)
   App.jsx             # Route definitions
 
+go-gateway/           # Go: API gateway — JWT auth, rate limiting, reverse proxy
+  main.go             # Entry point, routing
+  auth.go             # JWT validation + token blacklisting
+  audit.go            # Audit log middleware
+  db.go               # PostgreSQL connection
+
+go-services/          # Go: external integrations & PDF generation
+  main.go             # Entry point + HTTP handlers
+  report_card.go      # PDF report card generation (fpdf)
+  paynow.go           # PayNow Zimbabwe payment processing
+  email.go            # Transactional email via Resend API
+  whatsapp.go         # WhatsApp Business API messaging
+  papers.go           # Exam papers file handling
+
+go-workers/           # Go: bulk background data imports
+  main.go             # Entry point + HTTP handlers
+  import_students.go  # Streaming CSV student bulk import
+  import_fees.go      # CSV fee import with conflict handling
+  import_results.go   # CSV results upsert (term/year keyed)
+
 School_system/
   School_system/      # Project config (settings.py, urls.py, celery)
   users/              # Auth, School, CustomUser, SchoolSettings, permissions, audit
@@ -54,6 +102,10 @@ School_system/
   staff/              # HR: departments, staff, leaves, payroll, incidents, cleaning, meetings
   library/            # Books, loans, fines
   whatsapp_intergration/ # WhatsApp session/message/payment handling
+
+docker-compose.yml    # Full multi-service orchestration
+Dockerfile            # Django backend container
+goinfo.md             # Go services architecture reference
 ```
 
 ## Key Files
@@ -69,7 +121,19 @@ School_system/
 - Boarding route guard: `src/components/RequireBoardingAccess.jsx`
 - Dashboard customization page: `src/pages/shared/Customization.jsx`
 
-### Backend
+### Go Microservices
+- Gateway entry point & routing: `go-gateway/main.go`
+- Gateway JWT auth: `go-gateway/auth.go`
+- PDF report card generation: `go-services/report_card.go`
+- PayNow payment handler: `go-services/paynow.go`
+- Email service: `go-services/email.go`
+- WhatsApp service: `go-services/whatsapp.go`
+- Student bulk import: `go-workers/import_students.go`
+- Fees bulk import: `go-workers/import_fees.go`
+- Results bulk import: `go-workers/import_results.go`
+- Go services architecture docs: `goinfo.md`
+
+### Django Backend
 - JWT token implementation: `School_system/users/token.py`
 - School & CustomUser models: `School_system/users/models.py:49-159`
 - SchoolSettings model: `School_system/users/models.py:169-210`
@@ -102,12 +166,45 @@ python manage.py populate_demo_data     # Seed demo data
 python manage.py generate_parents       # Generate parent accounts
 ```
 
-### Running Both Together
-Start backend (`python manage.py runserver`) and frontend (`npm run dev`) in separate terminals. Vite proxies `/api` requests to Django at `localhost:8000` (configured in `vite.config.js`).
+### Go Services
+```bash
+# Run individual services
+cd go-gateway  && go run .   # Gateway on port 8080
+cd go-services && go run .   # Services on port 8082
+cd go-workers  && go run .   # Workers on port 8081
+
+# Run tests
+cd go-gateway  && go test ./...
+cd go-services && go test ./...
+```
+
+### Docker (full stack)
+```bash
+docker-compose up --build    # Start all services
+docker-compose up -d         # Start in background
+docker-compose down          # Stop all services
+```
+
+### Running in Development (without Docker)
+Start Django (`python manage.py runserver`), each Go service (`go run .`), and frontend (`npm run dev`) in separate terminals. In dev, Vite proxies `/api` directly to Django at `localhost:8000` (bypassing the Go gateway). In production all traffic routes through the Go gateway on port 8080.
 
 ## API Structure
 
-All endpoints prefixed with `/api/v1/`:
+In production all requests go through the Go Gateway (`:8080`). Django-served endpoints are prefixed `/api/v1/`. Go-native endpoints are routed by the gateway before reaching Django.
+
+**Go-native endpoints (handled before Django):**
+
+| Path | Service | Purpose |
+|------|---------|---------|
+| `/api/v1/bulk/students` | go-workers | Streaming CSV student import |
+| `/api/v1/bulk/fees` | go-workers | CSV fee import |
+| `/api/v1/bulk/results` | go-workers | CSV results upsert |
+| `/api/v1/finances/payments/paynow/*` | go-services | PayNow payment processing |
+| `/api/v1/services/report-card/*` | go-services | PDF report card generation |
+| `/api/v1/services/email` | go-services | Transactional email |
+| `/api/v1/services/whatsapp` | go-services | WhatsApp messaging |
+
+**Django endpoints (all prefixed `/api/v1/`):**
 
 | Mount path          | App file                        | Purpose                                              |
 |---------------------|---------------------------------|------------------------------------------------------|
@@ -265,11 +362,12 @@ In-app `Notification` model with 7 types: announcement, message, fee_reminder, h
 - **Activities & Sports**: `Activity`, `ActivityEnrollment` (request/approval), `ActivityEvent`, `Accolade`, `StudentAccolade`
 - **Conferences**: `ConferenceSlot` (teacher availability), `ConferenceBooking` (parent scheduling)
 - **Discipline & Welfare**: `DisciplinaryRecord`, `HealthRecord`, `ClinicVisit`, `AtRiskAlert`
-- **Bulk imports**: CSV import for students and results
+- **Bulk imports**: CSV import for students, fees, and results — handled by go-workers (streaming, batch inserts, conflict/upsert handling)
 - **Parent linking**: `ParentChildLink` with admin-approval workflow
 
 ## Additional Documentation
 
 - [Architectural Patterns](.claude/docs/architectural_patterns.md) — Backend/frontend design patterns, conventions, model relationships, view patterns, form handling, data fetching
 - [Backend API Documentation](BACKEND_API_DOCUMENTATION.md) — Full endpoint reference with request/response formats
+- [Go Services Reference](goinfo.md) — Go microservices architecture, endpoints, and concepts
 - [Hosting Guide](Host.md) — Deployment and hosting configuration
