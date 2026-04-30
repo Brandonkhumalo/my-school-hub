@@ -63,6 +63,24 @@ class Class(models.Model):
         return f"{self.name} - {self.academic_year}"
 
 
+class ClassSubjectAssignment(models.Model):
+    school = models.ForeignKey('users.School', on_delete=models.CASCADE, related_name='class_subject_assignments')
+    class_obj = models.ForeignKey('Class', on_delete=models.CASCADE, related_name='subject_assignments')
+    subject = models.ForeignKey('Subject', on_delete=models.CASCADE, related_name='class_assignments')
+    teacher = models.ForeignKey('Teacher', on_delete=models.SET_NULL, null=True, blank=True, related_name='class_subject_assignments')
+    academic_year = models.CharField(max_length=20)
+    is_core = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('school', 'class_obj', 'subject', 'academic_year')
+        ordering = ['class_obj__name', 'subject__name']
+
+    def __str__(self):
+        return f"{self.class_obj.name} - {self.subject.code} ({self.academic_year})"
+
+
 class SportsHouse(models.Model):
     school = models.ForeignKey('users.School', on_delete=models.CASCADE)
     name = models.CharField(max_length=100)

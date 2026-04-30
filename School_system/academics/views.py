@@ -25,7 +25,7 @@ from email_service import (
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
     Timetable, Announcement, AnnouncementDismissal, Complaint, Suspension,
-    ClassAttendance, SubjectAttendance, AttendancePermission, BulkImportJob
+    ClassAttendance, SubjectAttendance, AttendancePermission, BulkImportJob, ClassSubjectAssignment
 )
 from .serializers import (
     SubjectSerializer, ClassSerializer, StudentSerializer, TeacherSerializer,
@@ -54,6 +54,14 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
         {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to current year (e.g. 2026)"},
         {"key": "class_teacher_email", "label": "Class Teacher Email", "required": False, "type": "email", "help": "Email of an existing teacher in this school"},
     ],
+    "class_subjects": [
+        {"key": "class_name", "label": "Class Name", "required": True, "type": "text", "help": "Target class name (e.g. Form 1A, Grade 2 Red)"},
+        {"key": "subject_code", "label": "Subject Code", "required": False, "type": "text", "help": "Preferred unique subject identifier"},
+        {"key": "subject_name", "label": "Subject Name", "required": False, "type": "text", "help": "Used when subject_code is blank"},
+        {"key": "teacher_email", "label": "Teacher Email", "required": False, "type": "email", "help": "Optional teacher assigned to this class-subject"},
+        {"key": "academic_year", "label": "Academic Year", "required": False, "type": "text", "help": "Defaults to class year or current year"},
+        {"key": "is_core", "label": "Core Subject", "required": False, "type": "boolean", "help": "true/false. Core subjects can be prioritized"},
+    ],
     "teachers": [
         {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
         {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
@@ -68,7 +76,7 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
     "students": [
         {"key": "first_name", "label": "First Name", "required": True, "type": "text"},
         {"key": "last_name", "label": "Last Name", "required": True, "type": "text"},
-        {"key": "class", "label": "Class Name", "required": True, "type": "text", "help": "Must match an existing class name in this school"},
+        {"key": "class", "label": "Class Name", "required": False, "type": "text", "help": "Optional when class is selected in the upload wizard. If provided, it can be used as fallback."},
         {"key": "gender", "label": "Gender", "required": False, "type": "text", "help": "Male / Female / Other"},
         {"key": "date_of_birth", "label": "Date of Birth", "required": False, "type": "date"},
         {"key": "email", "label": "Email", "required": False, "type": "email", "help": "Auto-generated if blank"},
@@ -101,6 +109,29 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
         {"key": "reason", "label": "Reason / Remarks", "required": False, "type": "text"},
     ],
 }
+
+_BULK_IMPORT_ROLE_MATRIX = {
+    "subjects": {"admin", "hr", "superadmin"},
+    "classes": {"admin", "hr", "superadmin"},
+    "class_subjects": {"admin", "hr", "superadmin"},
+    "teachers": {"admin", "hr", "superadmin"},
+    "students": {"admin", "hr", "superadmin"},
+    "parents": {"admin", "hr", "superadmin"},
+    "fees": {"admin", "hr", "superadmin", "accountant"},
+    "attendance": {"admin", "hr", "superadmin"},
+}
+
+
+def _allowed_import_types_for_role(role):
+    user_role = (role or "").strip().lower()
+    return [
+        key for key in BULK_IMPORT_PARAMETER_LIBRARY.keys()
+        if user_role in _BULK_IMPORT_ROLE_MATRIX.get(key, set())
+    ]
+
+
+def _can_access_import_type(role, import_type):
+    return (role or "").strip().lower() in _BULK_IMPORT_ROLE_MATRIX.get(import_type, set())
 
 
 def _parse_bulk_rows_from_upload(upload):
@@ -242,16 +273,65 @@ def _normalize_mapping(mapping):
     return out
 
 
+def _normalize_header_key(value):
+    """Normalize incoming CSV/XLSX header keys to a predictable snake_case token."""
+    token = re.sub(r'[^a-z0-9]+', '_', str(value or '').strip().lower()).strip('_')
+    return token
+
+
+_HEADER_ALIASES = {
+    "firstname": "first_name",
+    "lastname": "last_name",
+    "surname": "last_name",
+    "fullname": "full_name",
+    "class_name": "class",
+    "student_class": "class",
+    "classname": "class_name",
+    "subjectname": "subject_name",
+    "subjectcode": "subject_code",
+    "teacheremail": "teacher_email",
+    "admission_no": "student_admission_no",
+    "admission_number": "student_admission_no",
+    "student_number": "student_admission_no",
+    "student_admission_number": "student_admission_no",
+    "child_admission_no": "child_admission_nos",
+    "fee": "fee_type",
+}
+
+
+def _normalized_row_lookup(row):
+    """Build a row lookup that accepts both raw and normalized/aliased header names."""
+    lookup = {}
+    for raw_key, raw_val in (row or {}).items():
+        key = str(raw_key or "").strip()
+        if key:
+            lookup[key] = raw_val
+        norm_key = _normalize_header_key(raw_key)
+        if norm_key and norm_key not in lookup:
+            lookup[norm_key] = raw_val
+        alias_key = _HEADER_ALIASES.get(norm_key)
+        if alias_key and alias_key not in lookup:
+            lookup[alias_key] = raw_val
+    return lookup
+
+
 def _map_row_to_parameters(row, mapping):
+    row_lookup = _normalized_row_lookup(row)
     if not mapping:
-        return dict(row)
+        # Preserve original row shape while also exposing normalized/aliased keys.
+        return row_lookup
     mapped = {}
     # Accept both parameter->header and header->parameter shapes.
     for mk, mv in mapping.items():
-        if mk in row and mv not in row:
-            mapped[mv] = row.get(mk, "")
+        source_key = str(mk or "").strip()
+        target_key = str(mv or "").strip()
+        source_val = row_lookup.get(source_key, row_lookup.get(_normalize_header_key(source_key), ""))
+        target_val = row_lookup.get(target_key, row_lookup.get(_normalize_header_key(target_key), ""))
+
+        if source_key in row_lookup and target_key not in row_lookup:
+            mapped[target_key] = source_val
         else:
-            mapped[mk] = row.get(mv, "")
+            mapped[source_key] = target_val
     return mapped
 
 
@@ -260,6 +340,20 @@ def _get_request_ip(request):
     if xff:
         return xff.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR')
+
+
+def _should_apply_row_for_strategy(strategy, exists, row_idx, label, errors):
+    normalized = (strategy or "skip").strip().lower()
+    if normalized not in ("skip", "update", "error"):
+        normalized = "skip"
+    if not exists:
+        return True
+    if normalized == "update":
+        return True
+    if normalized == "skip":
+        return False
+    errors.append({"row": row_idx, "error": f"Duplicate found for {label}."})
+    return False
 
 
 # Subject Views
@@ -2353,11 +2447,13 @@ def _build_report_card_pdf(student, results, school, year, term):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def bulk_import_parameter_catalog(request):
-    if request.user.role not in ('admin', 'hr', 'superadmin'):
+    allowed_types = _allowed_import_types_for_role(request.user.role)
+    if not allowed_types:
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    visible_library = {k: v for k, v in BULK_IMPORT_PARAMETER_LIBRARY.items() if k in allowed_types}
     return Response({
-        "import_types": [{"key": key, "label": key.replace("_", " ").title()} for key in BULK_IMPORT_PARAMETER_LIBRARY.keys()],
-        "parameter_library": BULK_IMPORT_PARAMETER_LIBRARY,
+        "import_types": [{"key": key, "label": key.replace("_", " ").title()} for key in allowed_types],
+        "parameter_library": visible_library,
         "date_formats": ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"],
         "duplicate_strategies": ["skip", "update", "error"],
     })
@@ -2366,12 +2462,25 @@ def bulk_import_parameter_catalog(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def bulk_import_validate(request):
-    if request.user.role not in ('admin', 'hr', 'superadmin'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
     import_type = (request.data.get('import_type') or '').strip().lower()
     if import_type not in BULK_IMPORT_PARAMETER_LIBRARY:
         return Response({'error': 'Invalid import_type.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _can_access_import_type(request.user.role, import_type):
+        return Response({'error': f'Permission denied for import type: {import_type}.'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    if not school:
+        return Response({'error': 'No school context found.'}, status=status.HTTP_400_BAD_REQUEST)
+    selected_class = None
+    class_id_raw = (request.data.get("class_id") or "").strip()
+    if import_type == "students":
+        if not class_id_raw:
+            return Response({'error': 'Please select a class for student bulk import.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            selected_class = Class.objects.filter(school=school, id=int(class_id_raw)).first()
+        except (TypeError, ValueError):
+            selected_class = None
+        if not selected_class:
+            return Response({'error': 'Selected class was not found in this school.'}, status=status.HTTP_400_BAD_REQUEST)
 
     upload = request.FILES.get('file')
     if not upload:
@@ -2400,6 +2509,8 @@ def bulk_import_validate(request):
     library = BULK_IMPORT_PARAMETER_LIBRARY[import_type]
     known_keys = {f['key'] for f in library}
     required = [f['key'] for f in library if f.get('required')]
+    if import_type == "students":
+        required = [k for k in required if k != "class"]
     effective_keys = sorted(set(required + [p for p in selected_parameters if p in known_keys]))
 
     try:
@@ -2418,12 +2529,45 @@ def bulk_import_validate(request):
                 row_errors.append(f"Missing required field: {field_key}")
         if row_errors:
             errors.append({"row": idx, "errors": row_errors})
+            continue
+        if import_type == "class_subjects":
+            class_name = (row.get("class_name") or "").strip()
+            subject_code = (row.get("subject_code") or "").strip()
+            subject_name = (row.get("subject_name") or "").strip()
+            if not subject_code and not subject_name:
+                row_errors.append("Provide either subject_code or subject_name.")
+            else:
+                cls = Class.objects.filter(school=school, name__iexact=class_name).first()
+                if not cls:
+                    row_errors.append(f"Class '{class_name}' not found in this school.")
+                subj = None
+                if subject_code:
+                    subj = Subject.objects.filter(school=school, code__iexact=subject_code).first()
+                if not subj and subject_name:
+                    subj = Subject.objects.filter(school=school, name__iexact=subject_name).first()
+                if not subj:
+                    row_errors.append(
+                        f"Subject not found (code='{subject_code}' name='{subject_name}')."
+                    )
+                teacher_email = (row.get("teacher_email") or "").strip().lower()
+                if teacher_email:
+                    teacher_user = Teacher.objects.filter(
+                        user__school=school, user__email__iexact=teacher_email
+                    ).first()
+                    if not teacher_user:
+                        row_errors.append(f"Teacher '{teacher_email}' not found in this school.")
+            if row_errors:
+                errors.append({"row": idx, "errors": row_errors})
 
     sample_rows = mapped_rows[:5]
     headers = list(rows[0].keys()) if rows else []
 
     return Response({
         "import_type": import_type,
+        "selected_class": (
+            {"id": selected_class.id, "name": selected_class.name, "academic_year": selected_class.academic_year}
+            if selected_class else None
+        ),
         "selected_parameters": effective_keys,
         "mapping": mapping,
         "total_rows": len(rows),
@@ -2438,13 +2582,15 @@ def bulk_import_validate(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def bulk_import_commit(request):
-    if request.user.role not in ('admin', 'hr', 'superadmin'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
     from users.models import AuditLog
     from finances.models import FeeType, StudentFee
 
     import_type = (request.data.get('import_type') or '').strip().lower()
+    if import_type not in BULK_IMPORT_PARAMETER_LIBRARY:
+        return Response({'error': 'Invalid import_type.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _can_access_import_type(request.user.role, import_type):
+        return Response({'error': f'Permission denied for import type: {import_type}.'}, status=status.HTTP_403_FORBIDDEN)
+
     upload = request.FILES.get('file')
     if not upload:
         return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -2452,6 +2598,17 @@ def bulk_import_commit(request):
     school = request.user.school
     if not school:
         return Response({'error': 'No school context found.'}, status=status.HTTP_400_BAD_REQUEST)
+    selected_class = None
+    class_id_raw = (request.data.get("class_id") or "").strip()
+    if import_type == "students":
+        if not class_id_raw:
+            return Response({'error': 'Please select a class for student bulk import.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            selected_class = Class.objects.filter(school=school, id=int(class_id_raw)).first()
+        except (TypeError, ValueError):
+            selected_class = None
+        if not selected_class:
+            return Response({'error': 'Selected class was not found in this school.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         rows = _parse_bulk_rows_from_upload(upload)
@@ -2496,6 +2653,7 @@ def bulk_import_commit(request):
             "date_format": request.data.get("date_format", ""),
             "duplicate_strategy": request.data.get("duplicate_strategy", ""),
             "account_strategy": (request.data.get("account_strategy") or "random").strip().lower(),
+            "class_id": class_id_raw,
         },
         total_rows=len(mapped_rows),
     )
@@ -2525,6 +2683,9 @@ def bulk_import_commit(request):
         return "Tmp!" + "".join(secrets.choice(alphabet) for _ in range(8))
 
     date_format = (request.data.get("date_format") or "YYYY-MM-DD").strip()
+    duplicate_strategy = (request.data.get("duplicate_strategy") or "skip").strip().lower()
+    if duplicate_strategy not in ("skip", "update", "error"):
+        duplicate_strategy = "skip"
     current_year = str(timezone.now().year)
     today = timezone.now().date()
 
@@ -2551,9 +2712,19 @@ def bulk_import_commit(request):
                         defaults["exam_weight"] = float(exam_weight_raw)
                     except ValueError:
                         raise ValueError(f"Invalid exam_weight '{exam_weight_raw}'")
-                obj, was_created = Subject.objects.update_or_create(
-                    school=school, code=code, defaults=defaults,
-                )
+                existing = Subject.objects.filter(school=school, code=code).first()
+                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing), i, f"Subject code '{code}'", errors):
+                    continue
+                if existing and duplicate_strategy == "update":
+                    for k, v in defaults.items():
+                        setattr(existing, k, v)
+                    existing.save()
+                    obj, was_created = existing, False
+                elif existing:
+                    obj, was_created = existing, False
+                else:
+                    obj = Subject.objects.create(school=school, code=code, **defaults)
+                    was_created = True
                 if was_created:
                     created += 1
                     changes.append({"action": "create", "model": "academics.Subject", "pk": obj.pk})
@@ -2594,9 +2765,19 @@ def bulk_import_commit(request):
                 if class_teacher_user is not None:
                     defaults["class_teacher"] = class_teacher_user
 
-                obj, was_created = Class.objects.update_or_create(
-                    school=school, name=name, academic_year=academic_year, defaults=defaults,
-                )
+                existing = Class.objects.filter(school=school, name=name, academic_year=academic_year).first()
+                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing), i, f"Class '{name}' ({academic_year})", errors):
+                    continue
+                if existing and duplicate_strategy == "update":
+                    for k, v in defaults.items():
+                        setattr(existing, k, v)
+                    existing.save()
+                    obj, was_created = existing, False
+                elif existing:
+                    obj, was_created = existing, False
+                else:
+                    obj = Class.objects.create(school=school, name=name, academic_year=academic_year, **defaults)
+                    was_created = True
                 if was_created:
                     created += 1
                     changes.append({"action": "create", "model": "academics.Class", "pk": obj.pk})
@@ -2608,6 +2789,87 @@ def bulk_import_commit(request):
                         "pk": obj.pk,
                         "before": {"grade_level": obj.grade_level},
                         "after": {"grade_level": grade_level},
+                    })
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+
+    elif import_type == "class_subjects":
+        for i, row in enumerate(mapped_rows, start=2):
+            try:
+                class_name = (row.get("class_name") or "").strip()
+                subject_code = (row.get("subject_code") or "").strip()
+                subject_name = (row.get("subject_name") or "").strip()
+                if not class_name:
+                    raise ValueError("Missing class_name")
+                if not subject_code and not subject_name:
+                    raise ValueError("Provide either subject_code or subject_name")
+
+                class_obj = Class.objects.filter(school=school, name__iexact=class_name).first()
+                if not class_obj:
+                    raise ValueError(f"Class '{class_name}' not found in this school")
+
+                subject = None
+                if subject_code:
+                    subject = Subject.objects.filter(school=school, code__iexact=subject_code).first()
+                if not subject and subject_name:
+                    subject = Subject.objects.filter(school=school, name__iexact=subject_name).first()
+                if not subject:
+                    raise ValueError(f"Subject not found (code='{subject_code}' name='{subject_name}')")
+
+                teacher = None
+                teacher_email = (row.get("teacher_email") or "").strip().lower()
+                if teacher_email:
+                    teacher = Teacher.objects.filter(
+                        user__school=school, user__email__iexact=teacher_email
+                    ).first()
+                    if not teacher:
+                        raise ValueError(f"Teacher '{teacher_email}' not found in this school")
+
+                row_year = (row.get("academic_year") or class_obj.academic_year or current_year).strip()
+                is_core = _parse_bool(row.get("is_core"))
+                existing = ClassSubjectAssignment.objects.filter(
+                    school=school,
+                    class_obj=class_obj,
+                    subject=subject,
+                    academic_year=row_year,
+                ).first()
+
+                label = f"class_subject {class_obj.name}/{subject.code}/{row_year}"
+                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing), i, label, errors):
+                    continue
+
+                if existing and duplicate_strategy == "update":
+                    before_teacher_id = existing.teacher_id
+                    before_is_core = existing.is_core
+                    existing.teacher = teacher
+                    existing.is_core = is_core
+                    existing.save()
+                    obj, was_created = existing, False
+                elif existing:
+                    obj, was_created = existing, False
+                else:
+                    obj = ClassSubjectAssignment.objects.create(
+                        school=school,
+                        class_obj=class_obj,
+                        subject=subject,
+                        teacher=teacher,
+                        academic_year=row_year,
+                        is_core=is_core,
+                        created_by=request.user,
+                    )
+                    was_created = True
+
+                if was_created:
+                    created += 1
+                    changes.append({"action": "create", "model": "academics.ClassSubjectAssignment", "pk": obj.pk})
+                else:
+                    updated += 1
+                    changes.append({
+                        "action": "update",
+                        "model": "academics.ClassSubjectAssignment",
+                        "pk": obj.pk,
+                        "before": {"teacher_id": before_teacher_id, "is_core": before_is_core},
+                        "after": {"teacher_id": teacher.id if teacher else None, "is_core": is_core},
                     })
             except Exception as exc:
                 errors.append({"row": i, "error": str(exc)})
@@ -2686,11 +2948,13 @@ def bulk_import_commit(request):
                         first_name = parts[0]
                         last_name = parts[1] if len(parts) > 1 else ""
                 class_name = (row.get("class") or row.get("class_name") or "").strip()
-                if not first_name or not last_name or not class_name:
-                    raise ValueError("Missing first_name, last_name, or class")
-                student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
+                student_class = selected_class
+                if student_class is None and class_name:
+                    student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
+                if not first_name or not last_name:
+                    raise ValueError("Missing first_name or last_name")
                 if not student_class:
-                    raise ValueError(f"Class '{class_name}' not found in this school")
+                    raise ValueError("No class selected for this upload.")
 
                 # Residence: respect school accommodation type
                 residence_raw = (row.get("residence_type") or "").strip().lower()
@@ -2801,13 +3065,37 @@ def bulk_import_commit(request):
                     defaults={"amount": amount, "academic_year": academic_year},
                 )
                 due_date = _parse_import_date(row.get("due_date"), date_format) or today
-                fee_obj, was_created = StudentFee.objects.update_or_create(
+                existing = StudentFee.objects.filter(
                     student=student,
                     fee_type=fee_type,
                     academic_year=academic_year,
                     academic_term=term,
-                    defaults={"amount_due": amount, "due_date": due_date},
-                )
+                ).first()
+                if not _should_apply_row_for_strategy(
+                    duplicate_strategy,
+                    bool(existing),
+                    i,
+                    f"fee {admission_no}/{fee_type_name}/{academic_year}/{term}",
+                    errors,
+                ):
+                    continue
+                if existing and duplicate_strategy == "update":
+                    existing.amount_due = amount
+                    existing.due_date = due_date
+                    existing.save()
+                    fee_obj, was_created = existing, False
+                elif existing:
+                    fee_obj, was_created = existing, False
+                else:
+                    fee_obj = StudentFee.objects.create(
+                        student=student,
+                        fee_type=fee_type,
+                        academic_year=academic_year,
+                        academic_term=term,
+                        amount_due=amount,
+                        due_date=due_date,
+                    )
+                    was_created = True
                 if was_created:
                     created += 1
                     changes.append({"action": "create", "model": "finances.StudentFee", "pk": fee_obj.pk})
@@ -2840,16 +3128,34 @@ def bulk_import_commit(request):
                 ).first()
                 if not student:
                     raise ValueError(f"Student '{admission_no}' not found in this school")
-                att_obj, was_created = ClassAttendance.objects.update_or_create(
-                    student=student,
-                    date=attendance_date,
-                    defaults={
-                        "class_assigned": student.student_class,
-                        "status": status_val,
-                        "remarks": (row.get("reason") or "").strip(),
-                        "recorded_by": request.user,
-                    },
-                )
+                existing = ClassAttendance.objects.filter(student=student, date=attendance_date).first()
+                if not _should_apply_row_for_strategy(
+                    duplicate_strategy,
+                    bool(existing),
+                    i,
+                    f"attendance {admission_no} on {attendance_date}",
+                    errors,
+                ):
+                    continue
+                if existing and duplicate_strategy == "update":
+                    existing.class_assigned = student.student_class
+                    existing.status = status_val
+                    existing.remarks = (row.get("reason") or "").strip()
+                    existing.recorded_by = request.user
+                    existing.save()
+                    att_obj, was_created = existing, False
+                elif existing:
+                    att_obj, was_created = existing, False
+                else:
+                    att_obj = ClassAttendance.objects.create(
+                        student=student,
+                        date=attendance_date,
+                        class_assigned=student.student_class,
+                        status=status_val,
+                        remarks=(row.get("reason") or "").strip(),
+                        recorded_by=request.user,
+                    )
+                    was_created = True
                 if was_created:
                     created += 1
                     changes.append({"action": "create", "model": "academics.ClassAttendance", "pk": att_obj.pk})
@@ -2910,12 +3216,13 @@ def bulk_import_commit(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def bulk_import_history(request):
-    if request.user.role not in ('admin', 'hr', 'superadmin'):
+    allowed_types = _allowed_import_types_for_role(request.user.role)
+    if not allowed_types:
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
     school = request.user.school
     if not school:
         return Response([], status=status.HTTP_200_OK)
-    jobs = BulkImportJob.objects.filter(school=school).order_by('-created_at')[:100]
+    jobs = BulkImportJob.objects.filter(school=school, import_type__in=allowed_types).order_by('-created_at')[:100]
     data = [{
         "id": j.id,
         "import_type": j.import_type,
@@ -2938,12 +3245,15 @@ def bulk_import_rollback(request, job_id):
     from django.apps import apps
     from users.models import AuditLog
 
-    if request.user.role not in ('admin', 'hr', 'superadmin'):
+    allowed_types = _allowed_import_types_for_role(request.user.role)
+    if not allowed_types:
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
     school = request.user.school
     job = BulkImportJob.objects.filter(id=job_id, school=school).first()
     if not job:
         return Response({'error': 'Import job not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if job.import_type not in allowed_types:
+        return Response({'error': f'Permission denied for import type: {job.import_type}.'}, status=status.HTTP_403_FORBIDDEN)
     if job.status == 'rolled_back':
         return Response({'error': 'This import has already been rolled back.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -3242,7 +3552,7 @@ def timetable_conflict_check(request):
 @permission_classes([permissions.IsAuthenticated])
 def subject_teachers(request, subject_id):
     """Get all teachers assigned to a subject"""
-    if request.user.role != 'admin':
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
     try:
         subject = Subject.objects.get(id=subject_id, school=request.user.school)
@@ -3265,7 +3575,7 @@ def subject_teachers(request, subject_id):
 @permission_classes([permissions.IsAuthenticated])
 def assign_teacher_to_subject(request, subject_id):
     """Assign a teacher to a subject"""
-    if request.user.role != 'admin':
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
     try:
         subject = Subject.objects.get(id=subject_id, school=request.user.school)
@@ -3293,7 +3603,7 @@ def assign_teacher_to_subject(request, subject_id):
 @permission_classes([permissions.IsAuthenticated])
 def remove_teacher_from_subject(request, subject_id, teacher_id):
     """Remove a teacher from a subject"""
-    if request.user.role != 'admin':
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
         return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
     try:
         subject = Subject.objects.get(id=subject_id, school=request.user.school)
@@ -3308,6 +3618,134 @@ def remove_teacher_from_subject(request, subject_id, teacher_id):
 
     teacher.subjects_taught.remove(subject)
     return Response({'message': f'{teacher.user.first_name} {teacher.user.last_name} removed from {subject.name}'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def subject_class_assignments(request, subject_id):
+    """List class assignments for a subject within the user's school."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    subject = Subject.objects.filter(id=subject_id, school=school).first()
+    if not subject:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    qs = ClassSubjectAssignment.objects.filter(
+        school=school, subject=subject
+    ).select_related('class_obj', 'teacher__user').order_by('class_obj__name', 'academic_year')
+    data = [{
+        "id": a.id,
+        "class_id": a.class_obj_id,
+        "class_name": a.class_obj.name,
+        "academic_year": a.academic_year,
+        "is_core": a.is_core,
+        "teacher_id": a.teacher_id,
+        "teacher_name": a.teacher.user.get_full_name() if a.teacher and a.teacher.user else None,
+    } for a in qs]
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def assign_subject_to_classes(request, subject_id):
+    """Assign one subject to one or many classes."""
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    subject = Subject.objects.filter(id=subject_id, school=school).first()
+    if not subject:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    class_ids = request.data.get('class_ids') or []
+    if isinstance(class_ids, str):
+        class_ids = [x.strip() for x in class_ids.split(',') if x.strip()]
+    if not isinstance(class_ids, list) or not class_ids:
+        return Response({'error': 'class_ids is required (non-empty list).'}, status=status.HTTP_400_BAD_REQUEST)
+
+    teacher = None
+    teacher_id = request.data.get('teacher_id')
+    if teacher_id not in (None, '', 'null'):
+        teacher = Teacher.objects.filter(id=teacher_id, user__school=school).first()
+        if not teacher:
+            return Response({'error': 'Teacher not found in this school.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    academic_year = (request.data.get('academic_year') or '').strip()
+    is_core = _parse_bool(request.data.get('is_core'))
+    duplicate_strategy = (request.data.get('duplicate_strategy') or 'skip').strip().lower()
+    if duplicate_strategy not in ('skip', 'update', 'error'):
+        duplicate_strategy = 'skip'
+
+    created, updated = 0, 0
+    errors = []
+    assignments = []
+
+    for raw_id in class_ids:
+        try:
+            class_id = int(raw_id)
+        except (TypeError, ValueError):
+            errors.append({"class_id": raw_id, "error": "Invalid class id."})
+            continue
+
+        class_obj = Class.objects.filter(id=class_id, school=school).first()
+        if not class_obj:
+            errors.append({"class_id": class_id, "error": "Class not found in this school."})
+            continue
+
+        row_year = academic_year or class_obj.academic_year or str(timezone.now().year)
+        existing = ClassSubjectAssignment.objects.filter(
+            school=school, class_obj=class_obj, subject=subject, academic_year=row_year
+        ).first()
+        if existing:
+            if duplicate_strategy == 'skip':
+                continue
+            if duplicate_strategy == 'error':
+                errors.append({"class_id": class_id, "error": f"Assignment already exists for {class_obj.name} ({row_year})."})
+                continue
+            existing.teacher = teacher
+            existing.is_core = is_core
+            existing.save()
+            updated += 1
+            assignments.append(existing.id)
+        else:
+            a = ClassSubjectAssignment.objects.create(
+                school=school,
+                class_obj=class_obj,
+                subject=subject,
+                teacher=teacher,
+                academic_year=row_year,
+                is_core=is_core,
+                created_by=request.user,
+            )
+            created += 1
+            assignments.append(a.id)
+
+    return Response({
+        "subject_id": subject.id,
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+        "assignment_ids": assignments,
+        "message": f"Assigned {subject.code} to classes. Created {created}, updated {updated}, errors {len(errors)}."
+    })
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def remove_subject_class_assignment(request, subject_id, assignment_id):
+    if request.user.role not in ('admin', 'hr', 'superadmin'):
+        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+    school = request.user.school
+    subject = Subject.objects.filter(id=subject_id, school=school).first()
+    if not subject:
+        return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+    assignment = ClassSubjectAssignment.objects.filter(
+        id=assignment_id, school=school, subject=subject
+    ).first()
+    if not assignment:
+        return Response({'error': 'Assignment not found'}, status=status.HTTP_404_NOT_FOUND)
+    assignment.delete()
+    return Response({'message': 'Class assignment removed.'})
 
 
 # ── Report Card Publishing ─────────────────────────────────────────────────

@@ -305,7 +305,7 @@ function App() {
         <Route path="/admin/messages" element={<RequireAuth allowedRoles={['admin']}><AdminMessages /></RequireAuth>} />
         <Route path="/admin/at-risk-students" element={<RequireAuth allowedRoles={['admin', 'hr']}><AdminAtRiskStudents /></RequireAuth>} />
         <Route path="/admin/past-students" element={<RequireAuth allowedRoles={['admin']}><AdminPastStudents /></RequireAuth>} />
-        <Route path="/admin/bulk-import" element={<RequireAuth allowedRoles={['admin']}><AdminBulkImport /></RequireAuth>} />
+        <Route path="/admin/bulk-import" element={<RequireAuth allowedRoles={['admin', 'hr', 'superadmin', 'accountant']}><AdminBulkImport /></RequireAuth>} />
         <Route path="/admin/2fa-compliance" element={<RequireAuth allowedRoles={['admin']}><TwoFactorCompliance /></RequireAuth>} />
         <Route path="/admin/profile" element={<RequireAuth allowedRoles={['admin']}><ProfilePage /></RequireAuth>} />
 

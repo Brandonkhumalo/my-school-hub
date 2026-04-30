@@ -923,6 +923,9 @@ const apiService = {
   getSubjectTeachers: (subjectId) => request(`/academics/subjects/${subjectId}/teachers/`, "GET"),
   assignTeacherToSubject: (subjectId, teacherId) => request(`/academics/subjects/${subjectId}/assign-teacher/`, "POST", { teacher_id: teacherId }),
   removeTeacherFromSubject: (subjectId, teacherId) => request(`/academics/subjects/${subjectId}/remove-teacher/${teacherId}/`, "DELETE"),
+  getSubjectClassAssignments: (subjectId) => request(`/academics/subjects/${subjectId}/class-assignments/`, "GET"),
+  assignSubjectToClasses: (subjectId, data) => request(`/academics/subjects/${subjectId}/assign-classes/`, "POST", data),
+  removeSubjectClassAssignment: (subjectId, assignmentId) => request(`/academics/subjects/${subjectId}/class-assignments/${assignmentId}/`, "DELETE"),
 
   // Library endpoints
   getBooks: (params = {}) => {

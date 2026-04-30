@@ -88,6 +88,9 @@ urlpatterns = [
     path('subjects/<int:subject_id>/teachers/', views.subject_teachers, name='subject-teachers'),
     path('subjects/<int:subject_id>/assign-teacher/', views.assign_teacher_to_subject, name='assign-teacher'),
     path('subjects/<int:subject_id>/remove-teacher/<int:teacher_id>/', views.remove_teacher_from_subject, name='remove-teacher'),
+    path('subjects/<int:subject_id>/class-assignments/', views.subject_class_assignments, name='subject-class-assignments'),
+    path('subjects/<int:subject_id>/assign-classes/', views.assign_subject_to_classes, name='assign-subject-to-classes'),
+    path('subjects/<int:subject_id>/class-assignments/<int:assignment_id>/', views.remove_subject_class_assignment, name='remove-subject-class-assignment'),
 
     # Promotion endpoints
     path('promotions/preview/', promotion_views.promotion_preview, name='promotion-preview'),

@@ -6,6 +6,7 @@ import { formatDateTime } from "../../utils/dateFormat";
 const FALLBACK_IMPORT_TYPES = [
   { key: "subjects", label: "Subjects" },
   { key: "classes", label: "Classes" },
+  { key: "class_subjects", label: "Class Subject Assignments" },
   { key: "teachers", label: "Teachers" },
   { key: "students", label: "Students" },
   { key: "parents", label: "Parents / Guardians" },
@@ -14,11 +15,12 @@ const FALLBACK_IMPORT_TYPES = [
 ];
 
 // Recommended order — earlier types are referenced by later ones.
-const IMPORT_ORDER = ["subjects", "teachers", "classes", "students", "parents", "fees", "attendance"];
+const IMPORT_ORDER = ["subjects", "classes", "class_subjects", "teachers", "students", "parents", "fees", "attendance"];
 
 const DEPENDENCIES = {
-  classes: ["teachers"],
-  teachers: ["subjects"],
+  class_subjects: ["subjects", "classes"],
+  classes: [],
+  teachers: ["subjects", "class_subjects"],
   students: ["classes"],
   parents: ["students"],
   fees: ["students"],
@@ -45,6 +47,9 @@ export default function AdminBulkImport() {
   const [commitResult, setCommitResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [classes, setClasses] = useState([]);
+  const [classSearch, setClassSearch] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -87,8 +92,34 @@ export default function AdminBulkImport() {
 
   const selectedFieldObjects = useMemo(() => {
     const keySet = new Set([...requiredKeys, ...selectedParams]);
-    return fields.filter((f) => keySet.has(f.key));
+    return fields.filter((f) => keySet.has(f.key) && !(importType === "students" && f.key === "class"));
   }, [fields, requiredKeys, selectedParams]);
+
+  const filteredClasses = useMemo(() => {
+    const q = classSearch.trim().toLowerCase();
+    if (!q) return classes;
+    return classes.filter((cls) => {
+      const label = `${cls.name || ""} ${cls.grade_level || ""} ${cls.academic_year || ""}`.toLowerCase();
+      return label.includes(q);
+    });
+  }, [classes, classSearch]);
+
+  const selectedClass = useMemo(
+    () => classes.find((c) => String(c.id) === String(selectedClassId)) || null,
+    [classes, selectedClassId]
+  );
+
+  useEffect(() => {
+    if (importType !== "students") return;
+    (async () => {
+      try {
+        const data = await apiService.getClasses();
+        setClasses(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("Failed to load classes for bulk import", e);
+      }
+    })();
+  }, [importType]);
 
   const dependencyWarnings = useMemo(() => {
     const deps = DEPENDENCIES[importType] || [];
@@ -146,6 +177,11 @@ export default function AdminBulkImport() {
         assigned_class: "Form 1A",
         class_teacher_email: "teacher@example.com",
         qualification: "BSc Mathematics",
+        class_name: "Form 1A",
+        subject_code: "MATH",
+        subject_name: "Mathematics",
+        teacher_email: "teacher@example.com",
+        is_core: "true",
         address: "123 Sample Rd, Harare",
         occupation: "Engineer",
         gender: importType === "students" ? "Male" : "M",
@@ -179,6 +215,9 @@ export default function AdminBulkImport() {
     fd.append("mapping", JSON.stringify({}));
     fd.append("date_format", dateFormat);
     fd.append("duplicate_strategy", duplicateStrategy);
+    if (importType === "students" && selectedClassId) {
+      fd.append("class_id", String(selectedClassId));
+    }
     if (PERSON_TYPES.has(importType)) {
       fd.append("account_strategy", accountStrategy);
       if (accountStrategy === "shared") {
@@ -191,6 +230,10 @@ export default function AdminBulkImport() {
   const runValidation = async () => {
     if (!uploadFile) {
       alert("Please choose a file first.");
+      return;
+    }
+    if (importType === "students" && !selectedClassId) {
+      alert("Please select a class for this student upload.");
       return;
     }
     try {
@@ -226,6 +269,10 @@ export default function AdminBulkImport() {
       sharedPassword.length < 8
     ) {
       alert("Shared password must be at least 8 characters.");
+      return;
+    }
+    if (importType === "students" && !selectedClassId) {
+      alert("Please select a class for this student upload.");
       return;
     }
     try {
@@ -381,6 +428,34 @@ export default function AdminBulkImport() {
                 </label>
               </div>
 
+              {importType === "students" && (
+                <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 space-y-3">
+                  <p className="text-sm font-semibold text-blue-900">Select Class For This Upload</p>
+                  <p className="text-xs text-blue-800">
+                    Upload one class at a time. The selected class will be assigned to all students in this file.
+                  </p>
+                  <input
+                    type="text"
+                    placeholder='Search class (e.g. "Form 1A", "Grade 2 Red")'
+                    value={classSearch}
+                    onChange={(e) => setClassSearch(e.target.value)}
+                    className="w-full p-2 rounded-lg border bg-white"
+                  />
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => setSelectedClassId(e.target.value)}
+                    className="w-full p-2 rounded-lg border bg-white"
+                  >
+                    <option value="">Select a class...</option>
+                    {filteredClasses.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} • Grade {cls.grade_level} • {cls.academic_year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {isPersonType && (
                 <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 space-y-3">
                   <p className="text-sm font-semibold text-blue-900">User Account Strategy</p>
@@ -424,23 +499,26 @@ export default function AdminBulkImport() {
               <div className="p-4 rounded-lg border bg-gray-50">
                 <p className="text-sm"><strong>Type:</strong> {importTypes.find((t) => t.key === importType)?.label}</p>
                 <p className="text-sm"><strong>File:</strong> {uploadFile?.name || "No file selected"}</p>
+                {importType === "students" && (
+                  <p className="text-sm"><strong>Class:</strong> {selectedClass ? `${selectedClass.name} (Grade ${selectedClass.grade_level}, ${selectedClass.academic_year})` : "Not selected"}</p>
+                )}
                 <p className="text-sm"><strong>Date format:</strong> {dateFormat}</p>
                 <p className="text-sm"><strong>Duplicates:</strong> {duplicateStrategy}</p>
                 {isPersonType && <p className="text-sm"><strong>Account strategy:</strong> {accountStrategy}</p>}
               </div>
 
               {validation && (
-                <div className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50" : "border-amber-300 bg-amber-50"}`}>
+                <div className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50 text-green-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
                   <p className="text-sm font-semibold">
                     {validation.valid ? "✓ All rows valid" : `⚠ ${validation.errors?.length || 0} row(s) with errors`}
                   </p>
                   <p className="text-sm">Total rows: {validation.total_rows}</p>
                   {validation.errors?.length > 0 && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-sm font-medium">Show row errors</summary>
+                      <summary className="cursor-pointer text-sm font-medium text-amber-900">Show row errors</summary>
                       <div className="mt-2 max-h-48 overflow-y-auto text-xs space-y-1">
                         {validation.errors.slice(0, 50).map((err, i) => (
-                          <div key={i} className="p-1 bg-white rounded">
+                          <div key={i} className="p-1 bg-white rounded text-red-800">
                             Row {err.row}: {(err.errors || []).join("; ")}
                           </div>
                         ))}
@@ -451,15 +529,15 @@ export default function AdminBulkImport() {
               )}
 
               {commitResult && (
-                <div className="p-4 rounded-lg border border-emerald-300 bg-emerald-50 text-sm">
+                <div className="p-4 rounded-lg border border-emerald-300 bg-emerald-50 text-sm text-emerald-900">
                   <p className="font-semibold">{commitResult.message}</p>
                   <p>Created: {commitResult.created} • Updated: {commitResult.updated || 0} • Errors: {commitResult.errors?.length || 0}</p>
                   {commitResult.errors?.length > 0 && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer">Show errors</summary>
+                      <summary className="cursor-pointer text-red-800 font-medium">Show errors</summary>
                       <div className="mt-2 max-h-48 overflow-y-auto text-xs space-y-1">
                         {commitResult.errors.slice(0, 50).map((err, i) => (
-                          <div key={i} className="p-1 bg-white rounded">Row {err.row}: {err.error}</div>
+                          <div key={i} className="p-1 bg-white rounded text-red-800">Row {err.row}: {err.error}</div>
                         ))}
                       </div>
                     </details>

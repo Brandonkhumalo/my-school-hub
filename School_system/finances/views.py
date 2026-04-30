@@ -2545,7 +2545,7 @@ def bulk_import_fees(request):
     import csv
     import io
 
-    if request.user.role not in ('admin', 'accountant'):
+    if request.user.role not in ('admin', 'accountant', 'hr', 'superadmin'):
         return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
     csv_file = request.FILES.get('file')
@@ -2556,7 +2556,7 @@ def bulk_import_fees(request):
     from .models import StudentFee, FeeType
     from academics.models import Student
 
-    decoded = csv_file.read().decode('utf-8')
+    decoded = csv_file.read().decode('utf-8-sig')
     reader = csv.DictReader(io.StringIO(decoded))
 
     created_count = 0
@@ -2564,15 +2564,20 @@ def bulk_import_fees(request):
 
     for i, row in enumerate(reader, start=2):
         try:
-            student_number = row.get('student_number', '').strip()
-            fee_type_name = row.get('fee_type_name', '').strip()
+            student_number = (row.get('student_number') or row.get('student_admission_no') or '').strip()
+            fee_type_name = (row.get('fee_type_name') or row.get('fee_type') or '').strip()
             amount = float(row.get('amount', 0))
             academic_year = row.get('academic_year', '').strip()
-            academic_term = row.get('academic_term', '').strip()
+            academic_term = (row.get('academic_term') or row.get('term') or '').strip()
+            if not academic_year:
+                academic_year = str(timezone.now().year)
+            if not academic_term:
+                academic_term = 'Term 1'
 
             student = Student.objects.get(user__student_number=student_number, user__school=school)
             fee_type, _ = FeeType.objects.get_or_create(
                 name=fee_type_name,
+                school=school,
                 defaults={'amount': amount, 'academic_year': academic_year}
             )
 
