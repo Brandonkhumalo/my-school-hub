@@ -21,6 +21,15 @@ from users.models import AuditLog
 
 # ─── Helpers ────────────────────────────────────────────────
 
+def _go_services_base_url():
+    return (
+        os.environ.get('GO_SERVICES_INTERNAL_URL')
+        or os.environ.get('GO_SERVICES_UPSTREAM')
+        or os.environ.get('GO_SERVICES_URL')
+        or 'http://localhost:8082'
+    )
+
+
 def _level_kind_from_school_type(school_type):
     """primary → grade, secondary/high → form, combined → None (caller must specify)."""
     if school_type == 'primary':
@@ -236,7 +245,7 @@ def _delete_file_from_go_services(file_key, school_id, user):
     """Internal helper — call go-services to remove the file from disk.
     Failure is non-fatal: the metadata row is already gone.
     """
-    base = os.environ.get('GO_SERVICES_INTERNAL_URL') or os.environ.get('GO_SERVICES_UPSTREAM') or 'http://localhost:8082'
+    base = _go_services_base_url()
     url = f'{base}/api/v1/services/papers/file?key={urllib.request.quote(file_key, safe="")}'
     req = urllib.request.Request(url, method='DELETE')
     req.add_header('X-Gateway-Auth', 'true')
@@ -267,7 +276,7 @@ def past_paper_extract(request, pk):
     except PastExamPaper.DoesNotExist:
         return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    base = os.environ.get('GO_SERVICES_INTERNAL_URL') or os.environ.get('GO_SERVICES_UPSTREAM') or 'http://localhost:8082'
+    base = _go_services_base_url()
     url = f'{base}/api/v1/services/papers/extract'
     body = _json.dumps({'file_key': paper.file_key}).encode('utf-8')
     req = urllib.request.Request(url, data=body, method='POST')

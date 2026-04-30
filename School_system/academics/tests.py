@@ -15,6 +15,8 @@ Covers:
 import datetime
 import csv
 import io
+import json
+import urllib.error
 from unittest.mock import patch
 
 from django.core.signing import TimestampSigner
@@ -678,6 +680,188 @@ class GeneratedTestAttemptGradingAPITest(APITestCase):
         self.assertEqual(self.attempt.manual_score, 8.0)
         self.assertEqual(self.attempt.final_score, 13.0)
         self.assertEqual(self.attempt.status, "finalized")
+
+
+class GoServicesUrlResolutionTests(TestCase):
+    def test_teacher_views_go_services_url_precedence(self):
+        from academics import teacher_views
+
+        cases = [
+            (
+                {'GO_SERVICES_INTERNAL_URL': 'http://internal:8082', 'GO_SERVICES_UPSTREAM': 'http://upstream:8082', 'GO_SERVICES_URL': 'http://url:8082'},
+                'http://internal:8082',
+            ),
+            (
+                {'GO_SERVICES_UPSTREAM': 'http://upstream:8082', 'GO_SERVICES_URL': 'http://url:8082'},
+                'http://upstream:8082',
+            ),
+            (
+                {'GO_SERVICES_URL': 'http://url:8082'},
+                'http://url:8082',
+            ),
+            ({}, 'http://localhost:8082'),
+        ]
+
+        for env_map, expected in cases:
+            with self.subTest(expected=expected):
+                with patch.dict('os.environ', env_map, clear=True):
+                    self.assertEqual(teacher_views._go_services_base_url(), expected)
+
+    def test_papers_views_go_services_url_precedence(self):
+        from academics import papers_views
+
+        cases = [
+            (
+                {'GO_SERVICES_INTERNAL_URL': 'http://internal:8082', 'GO_SERVICES_UPSTREAM': 'http://upstream:8082', 'GO_SERVICES_URL': 'http://url:8082'},
+                'http://internal:8082',
+            ),
+            (
+                {'GO_SERVICES_UPSTREAM': 'http://upstream:8082', 'GO_SERVICES_URL': 'http://url:8082'},
+                'http://upstream:8082',
+            ),
+            (
+                {'GO_SERVICES_URL': 'http://url:8082'},
+                'http://url:8082',
+            ),
+            ({}, 'http://localhost:8082'),
+        ]
+
+        for env_map, expected in cases:
+            with self.subTest(expected=expected):
+                with patch.dict('os.environ', env_map, clear=True):
+                    self.assertEqual(papers_views._go_services_base_url(), expected)
+
+
+class GenerateTestFromPaperUpstreamAPITest(APITestCase):
+    def setUp(self):
+        self.school = make_school("Paper Extract School")
+        self.teacher = make_teacher(self.school, username="extract_teacher")
+        self.subject = make_subject(self.school, name="Science", code="SCI01")
+        self.subject_alt = make_subject(self.school, name="History", code="HIS77")
+        self.client.force_authenticate(self.teacher.user)
+
+        from academics.models import PastExamPaper
+        self.paper = PastExamPaper.objects.create(
+            school=self.school,
+            subject=self.subject,
+            level_kind='form',
+            level_number=2,
+            year=2025,
+            exam_session='June',
+            paper_number=1,
+            title='Form 2 Science June 2025',
+            uploaded_by=self.teacher,
+            file_key=f"{self.school.id}/science-paper.pdf",
+            original_filename='science-paper.pdf',
+            mime_type='application/pdf',
+            size_bytes=1024,
+            page_count=3,
+        )
+        self.paper_2 = PastExamPaper.objects.create(
+            school=self.school,
+            subject=self.subject,
+            level_kind='form',
+            level_number=2,
+            year=2024,
+            exam_session='November',
+            paper_number=2,
+            title='Form 2 Science Nov 2024',
+            uploaded_by=self.teacher,
+            file_key=f"{self.school.id}/science-paper-2.pdf",
+            original_filename='science-paper-2.pdf',
+            mime_type='application/pdf',
+            size_bytes=1024,
+            page_count=2,
+        )
+        self.paper_other_subject = PastExamPaper.objects.create(
+            school=self.school,
+            subject=self.subject_alt,
+            level_kind='form',
+            level_number=2,
+            year=2025,
+            exam_session='June',
+            paper_number=1,
+            title='Form 2 History June 2025',
+            uploaded_by=self.teacher,
+            file_key=f"{self.school.id}/history-paper.pdf",
+            original_filename='history-paper.pdf',
+            mime_type='application/pdf',
+            size_bytes=1024,
+            page_count=3,
+        )
+
+    @patch('academics.teacher_views.urllib.request.urlopen')
+    def test_generate_from_paper_returns_201_when_extraction_succeeds(self, mock_urlopen):
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    'questions': [
+                        {'prompt_text': 'What is photosynthesis?', 'marks': 5, 'question_type': 'short', 'source_page': 1}
+                    ]
+                }).encode('utf-8')
+
+        mock_urlopen.return_value = _Resp()
+
+        response = self.client.post(
+            "/api/v1/teachers/tests/generate-from-paper/",
+            {'source_paper_ids': [self.paper.id], 'title': 'Generated Science Test', 'duration_minutes': 60},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('test', response.data)
+        self.assertEqual(response.data['test']['title'], 'Generated Science Test')
+
+    @patch('academics.teacher_views.urllib.request.urlopen')
+    def test_generate_from_multiple_papers_returns_201(self, mock_urlopen):
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    'questions': [
+                        {'prompt_text': 'What is photosynthesis?', 'marks': 5, 'question_type': 'short', 'source_page': 1}
+                    ]
+                }).encode('utf-8')
+
+        mock_urlopen.return_value = _Resp()
+
+        response = self.client.post(
+            "/api/v1/teachers/tests/generate-from-paper/",
+            {'source_paper_ids': [self.paper.id, self.paper_2.id], 'title': 'Generated Science Test', 'duration_minutes': 60},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        questions = response.data.get('test', {}).get('questions', [])
+        self.assertEqual(len(questions), 2)
+
+    @patch('academics.teacher_views.urllib.request.urlopen', side_effect=urllib.error.URLError("connection refused"))
+    def test_generate_from_paper_returns_503_when_extraction_unreachable(self, _mock_urlopen):
+        response = self.client.post(
+            "/api/v1/teachers/tests/generate-from-paper/",
+            {'source_paper_ids': [self.paper.id], 'title': 'Generated Science Test', 'duration_minutes': 60},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn('go-services unreachable', str(response.data.get('error', '')))
+
+    def test_generate_from_multiple_papers_rejects_mixed_subjects(self):
+        response = self.client.post(
+            "/api/v1/teachers/tests/generate-from-paper/",
+            {'source_paper_ids': [self.paper.id, self.paper_other_subject.id], 'title': 'Generated Mixed Test', 'duration_minutes': 60},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('same subject and form/grade', str(response.data.get('error', '')))
 
 
 class TeacherTestsListAPITest(APITestCase):

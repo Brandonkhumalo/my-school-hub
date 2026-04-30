@@ -138,8 +138,17 @@ def _as_bool(value, default=False):
     return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+def _go_services_base_url():
+    return (
+        os.environ.get('GO_SERVICES_INTERNAL_URL')
+        or os.environ.get('GO_SERVICES_UPSTREAM')
+        or os.environ.get('GO_SERVICES_URL')
+        or 'http://localhost:8082'
+    )
+
+
 def _extract_questions_from_file_key(*, file_key, user):
-    base = os.environ.get('GO_SERVICES_INTERNAL_URL') or os.environ.get('GO_SERVICES_UPSTREAM') or 'http://localhost:8082'
+    base = _go_services_base_url()
     url = f'{base}/api/v1/services/papers/extract'
     body = _json.dumps({'file_key': file_key}).encode('utf-8')
     req = urllib.request.Request(url, data=body, method='POST')
@@ -234,11 +243,25 @@ def generate_test_from_paper(request):
     except Teacher.DoesNotExist:
         return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    source_paper_id = request.data.get('source_paper_id')
+    source_paper_ids = request.data.get('source_paper_ids')
+    legacy_source_paper_id = request.data.get('source_paper_id')
     title = (request.data.get('title') or '').strip()
     duration_minutes = request.data.get('duration_minutes') or 60
-    if not source_paper_id or not title:
-        return Response({'error': 'source_paper_id and title are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not source_paper_ids and legacy_source_paper_id:
+        source_paper_ids = [legacy_source_paper_id]
+    if not isinstance(source_paper_ids, list):
+        return Response({'error': 'source_paper_ids must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+    if not source_paper_ids or not title:
+        return Response({'error': 'source_paper_ids and title are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_ids = []
+    try:
+        for paper_id in source_paper_ids:
+            normalized_ids.append(int(paper_id))
+    except (TypeError, ValueError):
+        return Response({'error': 'source_paper_ids must contain numeric ids'}, status=status.HTTP_400_BAD_REQUEST)
+    normalized_ids = list(dict.fromkeys(normalized_ids))
+
     try:
         duration_minutes = int(duration_minutes)
     except (TypeError, ValueError):
@@ -246,26 +269,45 @@ def generate_test_from_paper(request):
     if duration_minutes <= 0:
         return Response({'error': 'duration_minutes must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        paper = PastExamPaper.objects.get(id=source_paper_id, school=request.user.school)
-    except PastExamPaper.DoesNotExist:
+    papers = list(PastExamPaper.objects.filter(id__in=normalized_ids, school=request.user.school).select_related('subject'))
+    if len(papers) != len(normalized_ids):
         return Response({'error': 'Past paper not found'}, status=status.HTTP_404_NOT_FOUND)
+    papers_by_id = {p.id: p for p in papers}
+    ordered_papers = [papers_by_id[paper_id] for paper_id in normalized_ids]
+    first_paper = ordered_papers[0]
 
-    try:
-        payload = _extract_questions_from_file_key(file_key=paper.file_key, user=request.user)
-    except urllib.error.HTTPError as e:
-        return Response({'error': f'Extraction failed: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
-    except (urllib.error.URLError, TimeoutError) as e:
-        return Response({'error': f'go-services unreachable: {e}'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    mismatched = [
+        p.id
+        for p in ordered_papers
+        if p.subject_id != first_paper.subject_id
+        or p.level_kind != first_paper.level_kind
+        or p.level_number != first_paper.level_number
+    ]
+    if mismatched:
+        return Response(
+            {'error': 'All selected papers must have the same subject and form/grade.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    candidates = _normalize_candidate_questions(payload.get('questions', []))
+    candidates = []
+    for paper in ordered_papers:
+        try:
+            payload = _extract_questions_from_file_key(file_key=paper.file_key, user=request.user)
+        except urllib.error.HTTPError as e:
+            return Response({'error': f'Extraction failed for paper {paper.id}: {e}'}, status=status.HTTP_502_BAD_GATEWAY)
+        except (urllib.error.URLError, TimeoutError) as e:
+            return Response({'error': f'go-services unreachable: {e}'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        candidates.extend(_normalize_candidate_questions(payload.get('questions', [])))
+
+    for idx, item in enumerate(candidates, start=1):
+        item['order'] = idx
     total_marks = sum(float(q['marks']) for q in candidates) if candidates else 0
     test = GeneratedTest.objects.create(
         school=request.user.school,
-        subject=paper.subject,
-        level_kind=paper.level_kind,
-        level_number=paper.level_number,
-        source_paper=paper,
+        subject=first_paper.subject,
+        level_kind=first_paper.level_kind,
+        level_number=first_paper.level_number,
+        source_paper=first_paper,
         title=title,
         duration_minutes=duration_minutes,
         total_marks=total_marks if total_marks > 0 else 100,
@@ -284,7 +326,7 @@ def generate_test_from_paper(request):
         model_name='GeneratedTest',
         object_id=test.id,
         object_repr=test.title,
-        changes={'source_paper_id': paper.id, 'question_count': len(candidates)},
+        changes={'source_paper_ids': normalized_ids, 'question_count': len(candidates)},
         status_code=201,
         ip_address=request.META.get('REMOTE_ADDR'),
     )

@@ -58,6 +58,7 @@ services:
     environment:
       PORT: "8000"
       USE_GO_GATEWAY: "true"
+      GO_SERVICES_UPSTREAM: "http://services:8082"
       GO_SERVICES_URL: "http://services:8082"
     volumes:
       - /var/www/schoolhub/media:/app/media
