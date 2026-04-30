@@ -45,7 +45,10 @@ Internet → Nginx (SSL) → Go Gateway (:8080)
 1. [Phase 1 — Launch (single EC2)](#phase-1--launch-0-to-2000-users)
 2. [Phase 2 — Growth (ECS + ALB)](#phase-2--growth-2000-to-5000-users)
 3. [Phase 3 — Scale (auto-scaling)](#phase-3--scale-5000-users)
-4. [Change Summary](#change-summary-across-phases)
+4. [Phase 4 — Enterprise Growth (12,000 to 50,000 users)](#phase-4--enterprise-growth-12000-to-50000-users)
+5. [Phase 5 — National Scale (51,000 to 100,000 users)](#phase-5--national-scale-51000-to-100000-users)
+6. [Monthly Cost by Phase (USD)](#monthly-cost-by-phase-usd)
+7. [Change Summary](#change-summary-across-phases)
 
 ---
 
@@ -913,18 +916,152 @@ This keeps uploads fast while reducing long-tail storage cost.
 
 ---
 
+## Phase 4 — Enterprise Growth (12,000 to 50,000 users)
+
+**When to move:** You exceed ~12,000 registered users, or regular term traffic pushes web tasks above 70% CPU for sustained periods, or report/result release windows degrade API latency.
+
+Goal: Scale capacity with **minimum downtime**, **minimum architecture change**, and **zero data loss**.
+
+### Core strategy (keep what already works)
+
+1. Keep the same app code, Docker images, API routes, and DB schema.
+2. Keep ECS + ALB + CloudFront + S3 model from Phase 3.
+3. Scale vertically and horizontally in-place (no platform rewrite).
+
+### Target architecture
+
+| Component | Phase 4 target |
+|-----------|----------------|
+| ECS node group | 4-12 instances (`m6i.large` / `m7i.large` class) |
+| Web (Django) tasks | Min 8, Max 30 |
+| Gateway tasks | Min 4, Max 12 |
+| Celery workers | Min 4, Max 16 |
+| Celery beat | 1 fixed |
+| RDS primary | Multi-AZ `db.r6g.xlarge` |
+| Read replicas | 1-2 replicas (`db.r6g.large` or `xlarge`) |
+| Redis | `cache.r6g.large` (or larger if evictions appear) |
+
+### Step 1: Scale ECS capacity with rolling updates
+
+1. Add a second ECS capacity provider ASG using `m6i.large` (or ARM equivalent).
+2. Keep existing `t3.medium` ASG during migration.
+3. Increase service desired counts first, then gradually shift capacity weights to new ASG.
+4. Use ECS rolling deployment (`minimumHealthyPercent=100`, `maximumPercent=200`) for no downtime.
+
+### Step 2: Upgrade database with zero data loss controls
+
+1. Upgrade RDS class during a low-traffic window to `db.r6g.xlarge` (Multi-AZ stays enabled).
+2. Create 1-2 read replicas for heavy read paths (dashboards, reports, result views).
+3. Keep writes strictly on primary.
+4. Enable automated backups + PITR and take manual snapshot before each major change.
+
+### Step 3: Queue isolation for predictable peak behavior
+
+Split Celery queues:
+1. `high`: critical user-facing tasks
+2. `default`: normal async tasks
+3. `bulk`: imports/report generation
+
+Run dedicated worker pools so bulk jobs never starve login, billing, or core school operations.
+
+### Step 4: Safer deploy and rollback posture
+
+1. Use blue/green for API services in ECS (CodeDeploy or parallel ECS services + weighted target groups).
+2. Keep schema changes backward compatible before traffic cutover.
+3. Rollback plan: switch ALB weights back; no DB restore required for app rollback.
+
+### Phase 4 expected smooth range
+
+- Registered users: **12,000 to 50,000**
+- Typical active users (school hours): **8-15%**
+- Short release spikes: **up to ~6,000 concurrent** when autoscaling headroom is pre-warmed
+
+---
+
+## Phase 5 — National Scale (51,000 to 100,000 users)
+
+**When to move:** You exceed ~50,000 registered users or approach regular 10k+ concurrent sessions and need reliable performance at national/regional scale.
+
+Goal: Keep architecture familiar while adding stronger scaling primitives and resilience.
+
+### Target architecture
+
+| Component | Phase 5 target |
+|-----------|----------------|
+| ECS node group | 8-24 instances (`m6i.xlarge` / `m7i.xlarge` class) |
+| Web (Django) tasks | Min 20, Max 80 |
+| Gateway tasks | Min 8, Max 30 |
+| Celery workers | Min 12, Max 40 |
+| Celery beat | 1 fixed |
+| RDS primary | Multi-AZ `db.r6g.2xlarge` |
+| Read replicas | 2-4 replicas |
+| Connection management | RDS Proxy or PgBouncer required |
+| Redis | `cache.r6g.xlarge` (scale up based on memory + ops/sec) |
+
+### Step 1: Traffic and failure-domain hardening
+
+1. Spread ECS instances across at least 3 AZs.
+2. Keep ALB cross-zone load balancing enabled.
+3. Keep CloudFront + S3 for frontend/static offload.
+
+### Step 2: Database pressure control
+
+1. Route all heavy read endpoints to replicas.
+2. Keep transaction-heavy writes on primary.
+3. Add RDS Proxy/PgBouncer to smooth connection spikes from autoscaling tasks.
+4. Add query performance alarms (p95 query time, lock waits, replica lag).
+
+### Step 3: 15,000+ concurrent readiness
+
+Before going live for this traffic level:
+1. Run full load tests with exam-day traffic shape.
+2. Pre-warm ECS desired counts before known peaks (results release windows).
+3. Enable strict rate limits for non-critical endpoints.
+4. Keep an emergency read-only mode toggle for non-essential write features.
+
+### Step 4: Zero data loss operating policy
+
+1. Multi-AZ primary remains mandatory.
+2. PITR backups mandatory; validate restore quarterly.
+3. Snapshot before every major infra/database change.
+4. Use migration gating: schema migration success + replica lag health + API health checks before cutover.
+
+### Phase 5 expected smooth range
+
+- Registered users: **51,000 to 100,000**
+- Typical active users (school hours): **8-15%**
+- Concurrent users: supports **15,000+** with pre-warming, queue isolation, and DB read scaling enabled
+
+---
+
+## Monthly Cost by Phase (USD)
+
+Estimates for `af-south-1`, excluding VAT/tax and unusual data-egress spikes.
+
+| Phase | User range | Monthly USD |
+|------|------------|-------------|
+| Phase 1 | 0 to ~2,000 | **$108-$115** |
+| Phase 2 | ~2,000 to ~5,000 | **~$187** |
+| Phase 3 | ~5,000+ | **~$320-$620** |
+| Phase 4 | 12,000 to 50,000 | **~$1,150-$2,850** |
+| Phase 5 | 51,000 to 100,000 | **~$3,200-$7,900** |
+
+**Important pricing drivers in Phases 4-5:** ECS instance count and class, RDS class + replicas, ALB LCUs, CloudFront/egress, and background processing volume.
+
+---
+
 ## Change Summary Across Phases
 
-| | Phase 1 → Phase 2 | Phase 2 → Phase 3 |
-|---|---|---|
-| **Docker images** | No change | No change |
-| **Application code** | No change | No change |
-| **Database schema** | No change | No change |
-| **Connection strings** | No change | Add `DATABASE_READ_URL` (optional) |
-| **CI/CD** | Replace SSH step with `ecs update-service` + `s3 sync` | No change |
-| **Infrastructure** | Create ECS + ALB + CloudFront | Add auto-scaling policies |
+| | Phase 1 → 2 | Phase 2 → 3 | Phase 3 → 4 | Phase 4 → 5 |
+|---|---|---|---|---|
+| **Docker images** | No change | No change | No change | No change |
+| **Application code** | No change | No change | No change | No change |
+| **Database schema** | No change | No change | No change | No change |
+| **Connection strings** | No change | Add `DATABASE_READ_URL` (optional) | Same (+ replicas) | Same (+ proxy endpoint) |
+| **CI/CD** | Replace SSH with `ecs update-service` + `s3 sync` | No change | Add blue/green controls | No change |
+| **Infrastructure** | ECS + ALB + CloudFront | Auto-scaling policies | Larger ECS/RDS/Redis + replicas | Higher-capacity ECS/RDS/Redis + proxy |
 
-**Zero application code changes across all three phases.**
+**Zero application code changes across all five phases.**
 
 ---
 

@@ -55,7 +55,7 @@ export default function TeacherPastPapers() {
         apiService.listPastPapers(),
         apiService.getTeacherSubjects().catch(() => apiService.getSubjects()),
       ]);
-      setPapers(papersRes?.results || []);
+      setPapers(Array.isArray(papersRes) ? papersRes : (papersRes?.results || []));
       setSubjects(Array.isArray(subjectsRes) ? subjectsRes : (subjectsRes?.results || subjectsRes || []));
     } catch (e) {
       toast.error(e.message || "Failed to load past papers.");

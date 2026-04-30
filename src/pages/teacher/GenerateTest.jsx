@@ -45,7 +45,7 @@ export default function GenerateTest() {
           apiService.listPastPapers(),
           apiService.listAssessmentPlans().catch(() => []),
         ]);
-        setPapers(paperRes?.results || []);
+        setPapers(Array.isArray(paperRes) ? paperRes : (paperRes?.results || []));
         setAssessmentPlans(Array.isArray(plans) ? plans : (plans?.results || []));
       } catch (err) {
         toast.error(err.message || "Failed to load setup data.");
