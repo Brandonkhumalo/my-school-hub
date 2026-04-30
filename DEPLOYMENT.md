@@ -42,8 +42,8 @@ Internet → Nginx (SSL) → Go Gateway (:8080)
 
 ## Table of Contents
 
-1. [Phase 1 — Launch (single EC2)](#phase-1--launch-0-to-500-users)
-2. [Phase 2 — Growth (ECS + ALB)](#phase-2--growth-500-to-5000-users)
+1. [Phase 1 — Launch (single EC2)](#phase-1--launch-0-to-2000-users)
+2. [Phase 2 — Growth (ECS + ALB)](#phase-2--growth-2000-to-5000-users)
 3. [Phase 3 — Scale (auto-scaling)](#phase-3--scale-5000-users)
 4. [Change Summary](#change-summary-across-phases)
 
@@ -59,9 +59,9 @@ Internet → Nginx (SSL) → Go Gateway (:8080)
 
 ---
 
-## Phase 1 — Launch (0 to ~500 users)
+## Phase 1 — Launch (0 to ~2,000 users)
 
-Single EC2 instance hosting the React frontend and Go + Django microservices, with Nginx + Let's Encrypt SSL. Managed RDS + ElastiCache. ~$30-43/month.
+Single EC2 instance hosting the React frontend and Go + Django microservices, with Nginx + Let's Encrypt SSL. Managed RDS + ElastiCache. ~$108-115/month.
 
 ```
         Internet
@@ -72,7 +72,7 @@ Single EC2 instance hosting the React frontend and Go + Django microservices, wi
      └─────┬─────┘
            │
   ┌────────▼────────────────────────────────────┐
-  │  EC2 t3.small  (2 vCPU, 2GB RAM)           │
+  │  EC2 t3.medium  (2 vCPU, 4GB RAM)          │
   │                                              │
   │  Nginx (host)                                │
   │    ├── :443 → SSL (Let's Encrypt)           │
@@ -94,7 +94,7 @@ Single EC2 instance hosting the React frontend and Go + Django microservices, wi
          │              │
   ┌──────▼──────┐ ┌─────▼──────┐
   │RDS Postgres │ │ElastiCache │
-  │db.t3.micro  │ │t3.micro    │
+  │db.t3.small  │ │t3.medium   │
   │             │ │ Redis 7    │
   └─────────────┘ └────────────┘
 ```
@@ -108,7 +108,7 @@ Single EC2 instance hosting the React frontend and Go + Django microservices, wi
 |---------|-------|
 | Name | `schoolhub-backend` |
 | AMI | Ubuntu 22.04 LTS (or 24.04 LTS) |
-| Instance type | t3.small (2 vCPU, 2GB RAM) |
+| Instance type | t3.medium (2 vCPU, 4GB RAM) |
 | Key pair | **Create new key pair** → name it `schoolhub-key` → download the `.pem` file. You need this for SSH and CI/CD. |
 | Storage | 20 GB gp3 |
 
@@ -183,12 +183,12 @@ You must create the security group **before** creating the database.
 |---------|-------|-------------------|
 | Engine type | **PostgreSQL** | |
 | Engine version | **15** (any 15.x) | |
-| Templates | **Free tier** | This auto-selects db.t3.micro |
+| Templates | **Dev/Test** | Select this to allow db.t3.small |
 | DB instance identifier | `schoolhub-db` | This is just a label |
 | Master username | `postgres` | |
 | Master password | Choose a password (e.g., `My-school-hub`) | **Write this down — you need it for `.env`** |
 | Confirm password | Same as above | |
-| DB instance class | db.t3.micro (pre-selected by Free tier) | |
+| DB instance class | db.t3.small | |
 | Storage type | gp3 | |
 | Allocated storage | 20 GB | |
 
@@ -251,7 +251,7 @@ You must create the security group **before** creating the database.
 |---------|-------|
 | Cluster mode | Disabled |
 | Name | `schoolhub-redis` |
-| Node type | cache.t3.micro |
+| Node type | cache.t3.medium |
 | Number of replicas | 0 |
 
 3. **Connectivity** section:
@@ -268,6 +268,45 @@ You must create the security group **before** creating the database.
 > ```
 > REDIS_URL=redis://schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com:6379/0
 > CELERY_BROKER_URL=redis://schoolhub-redis.xxxxx.af-south-1.cache.amazonaws.com:6379/0
+> ```
+
+**Step 4c — Create S3 bucket for media uploads (recommended in Phase 1):**
+
+1. Go to **S3 → Create bucket**
+2. Configure:
+
+| Setting | Value |
+|---------|-------|
+| Bucket name | `schoolhub-media-af-south-1` (or another globally unique name) |
+| Region | `af-south-1` |
+| Block all public access | Enabled |
+| Versioning | Disabled (cheapest in Phase 1) |
+| Default encryption | SSE-S3 |
+
+3. Create an IAM policy with least privilege and attach it to the **EC2 instance role**:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::schoolhub-media-af-south-1"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::schoolhub-media-af-south-1/*"
+    }
+  ]
+}
+```
+
+> **Save for `.env`:**
+> ```
+> AWS_STORAGE_BUCKET_NAME=schoolhub-media-af-south-1
+> AWS_S3_REGION_NAME=af-south-1
 > ```
 
 ### Step 5: Create ECR Repositories
@@ -367,6 +406,10 @@ DATABASE_URL=postgresql://postgres:<RDS_PASSWORD from Step 3>@<RDS_ENDPOINT from
 REDIS_URL=redis://<ELASTICACHE_ENDPOINT from Step 4>:6379/0
 CELERY_BROKER_URL=redis://<ELASTICACHE_ENDPOINT from Step 4>:6379/0
 
+# ── S3 Media Uploads (from Step 4c) ────────────────────────────
+AWS_STORAGE_BUCKET_NAME=<S3_BUCKET_NAME from Step 4c>
+AWS_S3_REGION_NAME=af-south-1
+
 # ── ECR (from Step 5 — ECR Registry URI) ──────────────────────
 ECR_REGISTRY=<ECR_REGISTRY from Step 5>
 
@@ -397,6 +440,8 @@ WEB_CONCURRENCY=4
 > | `DATABASE_URL` | `postgresql://postgres:PASSWORD@ENDPOINT:5432/schoolhub` — from Step 3 |
 > | `REDIS_URL` | `redis://ENDPOINT:6379/0` — from Step 4 |
 > | `CELERY_BROKER_URL` | Same value as `REDIS_URL` |
+> | `AWS_STORAGE_BUCKET_NAME` | Your media S3 bucket from Step 4c |
+> | `AWS_S3_REGION_NAME` | `af-south-1` |
 > | `ECR_REGISTRY` | Registry host only from Step 5 — do NOT include `/schoolhub-web` |
 > | `ResendEmailApiKey` | Your Resend dashboard |
 > | `CORS_ALLOWED_ORIGINS` | Your domain (pre-filled) |
@@ -486,6 +531,9 @@ sudo certbot certificates
 
 # Nginx status
 sudo systemctl status nginx
+
+# S3 media upload test (prints the uploaded S3 URL)
+docker compose -f docker-compose.prod.yml exec web python manage.py shell -c "from django.core.files.base import ContentFile; from django.core.files.storage import default_storage; p=default_storage.save('healthchecks/s3-test.txt', ContentFile(b's3 ok')); print(default_storage.url(p))"
 ```
 
 Expected output from `docker compose ps`:
@@ -535,23 +583,16 @@ Now every push to `main` automatically:
 2. **Test stage:** runs Django tests against a fresh PostgreSQL service and runs `go test` for all Go services
 3. **Deploy stage:** builds + pushes tagged Docker images to ECR, then SSHs into EC2 to pull/restart services and rebuild frontend assets
 
-### Step 15: Set Up S3 for Media Files (optional)
+### Step 15: Confirm Uploads Work End-to-End (required)
 
-Uploaded files (homework, etc.) are lost if the EC2 disk fails. To persist them in S3:
+1. Upload a small file in the app (assignment, attachment, or profile image).
+2. Open **S3 → `schoolhub-media-af-south-1`** and verify the file appears.
+3. Open the uploaded file from the app UI and confirm it loads.
+4. Restart services and confirm the same file still loads:
 
-1. **S3 → Create bucket**: `schoolhub-media-af-south-1`
-2. Block all public access
-3. Create IAM role for EC2 with S3 access, attach to EC2 instance
-4. **Add the bucket name to your `.env`** (`nano ~/my-school-hub/School_system/.env`):
-
-```env
-AWS_STORAGE_BUCKET_NAME=schoolhub-media-af-south-1
-AWS_S3_REGION_NAME=af-south-1
+```bash
+docker compose -f docker-compose.prod.yml restart
 ```
-
-5. Restart to pick up the new `.env` values: `docker compose -f docker-compose.prod.yml up -d`
-
-No code changes — the app auto-detects the bucket name.
 
 ### Phase 1 Common Commands
 
@@ -589,12 +630,12 @@ bash infrastructure/fix-ssl.sh      # Full SSL recovery
 
 | Service | Cost |
 |---------|------|
-| EC2 t3.small | ~$15 |
-| RDS db.t3.micro (free tier yr 1) | $0 → $13 |
-| ElastiCache cache.t3.micro | ~$13 |
+| EC2 t3.medium | ~$30 |
+| RDS db.t3.small | ~$26 |
+| ElastiCache cache.t3.medium | ~$50 |
 | Elastic IP | $0 (while attached) |
 | ECR + Route 53 | ~$2 |
-| **Total** | **~$30-43/mo** |
+| **Total** | **~$108-115/mo** |
 
 ### Phase 1 Troubleshooting
 
@@ -642,9 +683,9 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
-## Phase 2 — Growth (~500 to ~5,000 users)
+## Phase 2 — Growth (~2,000 to ~5,000 users)
 
-**When to move:** EC2 CPU consistently above 70%, or response times increasing.
+**When to move:** Registered users exceed 2,000, or EC2 CPU consistently above 70%, or response times increasing.
 
 Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB**.
 
@@ -663,7 +704,7 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
                                    │
                 ┌──────────────────┼──────────────────┐
                 │   ECS Cluster (EC2 launch type)      │
-                │   2x t3.small instances              │
+                │   2x t3.medium instances             │
                 │                                       │
                 │   Web (Django):    2 tasks            │
                 │   Celery Worker:   1 task             │
@@ -672,7 +713,7 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
                        │              │
                 ┌──────▼──────┐ ┌─────▼──────┐
                 │RDS Postgres │ │ElastiCache │
-                │db.t3.small  │ │t3.small    │
+                │db.t3.medium │ │t3.medium   │
                 │(Multi-AZ)   │ │            │
                 └─────────────┘ └────────────┘
 ```
@@ -700,6 +741,20 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
 4. **CloudFront → Create distribution** → origin: the S3 bucket
 5. Update DNS: `myschoolhub.co.zw` → CloudFront, `api.myschoolhub.co.zw` → ALB
 
+### Step 2b: Keep the same media bucket in Phase 2
+
+For media uploads, keep the same S3 bucket from Phase 1 (`schoolhub-media-af-south-1`) so you avoid migration risk and downtime.
+
+1. Add/confirm S3 permissions on the **ECS task role** (same policy as Phase 1 Step 4c).
+2. In ECS task definitions, set:
+
+```env
+AWS_STORAGE_BUCKET_NAME=schoolhub-media-af-south-1
+AWS_S3_REGION_NAME=af-south-1
+```
+
+3. Force new deployment for `web` and worker services.
+
 ### Step 3: Create ECS Cluster + Task Definitions
 
 | Service | Image | Memory | CPU | Port | Load balanced |
@@ -716,8 +771,8 @@ Move from docker-compose on EC2 → **ECS with EC2 launch type** behind an **ALB
 ### Step 4: Upgrade RDS and ElastiCache
 
 ```bash
-aws rds modify-db-instance --db-instance-identifier schoolhub-db --db-instance-class db.t3.small --multi-az --apply-immediately
-aws elasticache modify-cache-cluster --cache-cluster-id schoolhub-redis --cache-node-type cache.t3.small --apply-immediately
+aws rds modify-db-instance --db-instance-identifier schoolhub-db --db-instance-class db.t3.medium --multi-az --apply-immediately
+aws elasticache modify-cache-cluster --cache-cluster-id schoolhub-redis --cache-node-type cache.t3.medium --apply-immediately
 ```
 
 ### Step 5: Update CI/CD
@@ -755,19 +810,20 @@ In `.github/workflows/deploy.yml`, replace the SSH deploy step with:
 | Backend | Docker on EC2 | ECS cluster + ALB | **No** — same Docker image |
 | SSL | Let's Encrypt + Nginx | AWS Certificate Manager + ALB | **No** |
 | DB | RDS micro | RDS small, Multi-AZ | **No** |
+| Media uploads | S3 via EC2 role | Same S3 via ECS task role | **No** |
 | CI/CD | SSH to EC2 | `ecs update-service` + `s3 sync` | **1 step replaced** |
 
 ### Phase 2 Monthly Cost
 
 | Service | Cost |
 |---------|------|
-| EC2 2x t3.small (ECS) | ~$30 |
+| EC2 2x t3.medium (ECS) | ~$60 |
 | ALB | ~$18 |
-| RDS db.t3.small (Multi-AZ) | ~$26 |
-| ElastiCache t3.small | ~$25 |
+| RDS db.t3.medium (Multi-AZ) | ~$52 |
+| ElastiCache t3.medium | ~$50 |
 | CloudFront + S3 | ~$2 |
 | ECR + data transfer | ~$5 |
-| **Total** | **~$106/mo** |
+| **Total** | **~$187/mo** |
 
 ---
 
@@ -802,7 +858,7 @@ aws application-autoscaling put-scaling-policy \
 
 ### Step 2: EC2 Auto Scaling Group
 
-1. Create Launch Template (ECS-optimized AMI, t3.small)
+1. Create Launch Template (ECS-optimized AMI, t3.medium)
 2. Create ASG: min 2, max 6, target CPU 70%
 3. Link ASG as ECS capacity provider
 
@@ -814,8 +870,18 @@ When report generation slows down writes:
 aws rds create-db-instance-read-replica \
   --db-instance-identifier schoolhub-db-read \
   --source-db-instance-identifier schoolhub-db \
-  --db-instance-class db.t3.small
+  --db-instance-class db.t3.medium
 ```
+
+### Step 4: S3 cost optimization for Phase 3 volume
+
+Keep one shared media bucket, then add lifecycle rules:
+1. Keep objects in **S3 Standard** for 30 days (best for frequent access).
+2. Transition to **S3 Standard-IA** after 30 days.
+3. Optionally transition to **S3 Glacier Instant Retrieval** after 180 days for old archives.
+4. Abort incomplete multipart uploads after 7 days.
+
+This keeps uploads fast while reducing long-tail storage cost.
 
 ### Phase 3 Architecture
 
@@ -840,7 +906,7 @@ aws rds create-db-instance-read-replica \
           │                  │
    ┌──────▼───────┐   ┌─────▼──────┐
    │RDS Postgres  │   │ElastiCache │
-   │db.t3.medium  │   │t3.small    │
+   │db.t3.large   │   │t3.medium   │
    │+ read replica│   └────────────┘
    └──────────────┘
 ```
@@ -889,6 +955,8 @@ aws rds create-db-instance-read-replica \
 |--------|-------|-------|
 | `AWS_ACCESS_KEY_ID` | IAM access key | All |
 | `AWS_SECRET_ACCESS_KEY` | IAM secret key | All |
+| `AWS_STORAGE_BUCKET_NAME` | Media bucket name | All |
+| `AWS_S3_REGION_NAME` | `af-south-1` | All |
 | `EC2_HOST` | Elastic IP | Phase 1 only |
 | `EC2_USER` | SSH user (optional, defaults to `ubuntu`) | Phase 1 only |
 | `EC2_SSH_KEY` | Contents of `.pem` file | Phase 1 only |
