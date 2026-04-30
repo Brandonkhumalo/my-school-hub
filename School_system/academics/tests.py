@@ -1377,10 +1377,11 @@ class BulkImportWizardAPITest(APITestCase):
 
     def test_validate_missing_required_fields_reports_errors(self):
         self.client.force_authenticate(user=self.admin)
-        file_obj = self._csv_file([{"first_name": "John", "last_name": "", "grade": "1", "class": ""}])
+        file_obj = self._csv_file([{"first_name": "John", "last_name": "", "grade": "1"}])
         res = self.client.post(self.validate_url, {
             "import_type": "students",
-            "selected_parameters": '["first_name","last_name","grade","class"]',
+            "class_id": str(self.class_a.id),
+            "selected_parameters": '["first_name","last_name","grade"]',
             "file": file_obj,
         }, format="multipart")
         self.assertEqual(res.status_code, status.HTTP_200_OK, msg=getattr(res, "data", None))
@@ -1399,6 +1400,7 @@ class BulkImportWizardAPITest(APITestCase):
         }])
         res = self.client.post(self.commit_url, {
             "import_type": "students",
+            "class_id": str(self.class_a.id),
             "file": file_obj,
         }, format="multipart")
         self.assertEqual(res.status_code, status.HTTP_200_OK, msg=str(getattr(res, "data", None)))
