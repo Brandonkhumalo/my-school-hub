@@ -16,6 +16,7 @@ from decimal import Decimal
 from unittest.mock import patch, MagicMock
 
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
@@ -613,7 +614,18 @@ class BulkFeeImportAPITest(APITestCase):
             self.school, self.cls,
             username="bulk_student", student_number="BLK001",
         )
-        self.url = "/api/v1/finances/fees/bulk-import/"
+        self.url = "/api/v1/academics/bulk-import/commit/"
+
+    def _mock_worker_ok(self, created=1, errors=None):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "created": created,
+            "updated": 0,
+            "errors": errors or [],
+            "message": "ok",
+        }
+        return mock_resp
 
     def _make_csv(self, rows):
         """Build an in-memory CSV file from a list of row dicts."""
@@ -623,7 +635,7 @@ class BulkFeeImportAPITest(APITestCase):
             writer.writeheader()
             writer.writerows(rows)
         buf.seek(0)
-        return io.BytesIO(buf.read().encode("utf-8"))
+        return SimpleUploadedFile("fees.csv", buf.read().encode("utf-8"), content_type="text/csv")
 
     def test_bulk_import_valid_csv_returns_200(self):
         """Test that bulk import valid csv returns 200."""
@@ -635,11 +647,12 @@ class BulkFeeImportAPITest(APITestCase):
             "academic_term": "Term 1",
         }])
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.url,
-            {"file": csv_file},
-            format="multipart",
-        )
+        with patch("academics.views.requests.post", return_value=self._mock_worker_ok(created=1)):
+            response = self.client.post(
+                self.url,
+                {"import_type": "fees", "file": csv_file},
+                format="multipart",
+            )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(response.data["created"], 0)
         self.assertEqual(len(response.data["errors"]), 0)
@@ -654,11 +667,12 @@ class BulkFeeImportAPITest(APITestCase):
             "academic_term": "Term 1",
         }])
         self.client.force_authenticate(user=self.accountant)
-        response = self.client.post(
-            self.url,
-            {"file": csv_file},
-            format="multipart",
-        )
+        with patch("academics.views.requests.post", return_value=self._mock_worker_ok(created=1)):
+            response = self.client.post(
+                self.url,
+                {"import_type": "fees", "file": csv_file},
+                format="multipart",
+            )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_bulk_import_with_unknown_student_number_reports_error(self):
@@ -671,11 +685,12 @@ class BulkFeeImportAPITest(APITestCase):
             "academic_term": "Term 1",
         }])
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(
-            self.url,
-            {"file": csv_file},
-            format="multipart",
-        )
+        with patch("academics.views.requests.post", return_value=self._mock_worker_ok(created=0, errors=[{"row": 2, "error": "Student not found"}])):
+            response = self.client.post(
+                self.url,
+                {"import_type": "fees", "file": csv_file},
+                format="multipart",
+            )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["created"], 0)
         self.assertGreater(len(response.data["errors"]), 0)
@@ -683,7 +698,7 @@ class BulkFeeImportAPITest(APITestCase):
     def test_bulk_import_without_file_returns_400(self):
         """Test that bulk import without file returns 400."""
         self.client.force_authenticate(user=self.admin)
-        response = self.client.post(self.url, {}, format="multipart")
+        response = self.client.post(self.url, {"import_type": "fees"}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_bulk_import_forbidden_for_teacher(self):
@@ -693,14 +708,14 @@ class BulkFeeImportAPITest(APITestCase):
         csv_file = self._make_csv([])
         response = self.client.post(
             self.url,
-            {"file": csv_file},
+            {"import_type": "fees", "file": csv_file},
             format="multipart",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_bulk_import_requires_authentication(self):
         """Test that bulk import requires authentication."""
-        response = self.client.post(self.url, {}, format="multipart")
+        response = self.client.post(self.url, {"import_type": "fees"}, format="multipart")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
@@ -964,7 +979,7 @@ class PaymentTransactionRecordingAPITest(APITestCase):
         self.assertEqual(txn.transaction_reference, "LOCAL-TXN-001")
         self.assertEqual(txn.processed_by_id, self.admin.id)
 
-    def test_paynow_callback_creates_single_transaction_and_is_idempotent(self):
+    def test_paynow_callback_endpoint_removed_from_django(self):
         intent = PaymentIntent.objects.create(
             school=self.school,
             student=self.student,
@@ -979,7 +994,7 @@ class PaymentTransactionRecordingAPITest(APITestCase):
             created_by=self.admin,
         )
 
-        first = self.client.post(
+        response = self.client.post(
             self.paynow_callback_url,
             {
                 "reference": intent.provider_reference,
@@ -989,30 +1004,7 @@ class PaymentTransactionRecordingAPITest(APITestCase):
             },
             format="json",
         )
-        self.assertEqual(first.status_code, status.HTTP_200_OK)
-
-        second = self.client.post(
-            self.paynow_callback_url,
-            {
-                "reference": intent.provider_reference,
-                "paynowreference": "PAYNOW-TXN-001",
-                "status": "Paid",
-                "amount": "200.00",
-            },
-            format="json",
-        )
-        self.assertEqual(second.status_code, status.HTTP_200_OK)
-
-        self.record.refresh_from_db()
-        self.assertEqual(self.record.amount_paid, Decimal("200.00"))
-        self.assertEqual(self.record.payment_status, "partial")
-
-        txns = PaymentTransaction.objects.filter(payment_record=self.record)
-        self.assertEqual(txns.count(), 1)
-        txn = txns.first()
-        self.assertEqual(txn.amount, Decimal("200.00"))
-        self.assertEqual(txn.payment_method, "card")
-        self.assertEqual(txn.transaction_reference, "PAYNOW-TXN-001")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class SchoolFeeInvoiceBootstrapTest(APITestCase):

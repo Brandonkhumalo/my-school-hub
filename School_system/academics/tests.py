@@ -17,7 +17,7 @@ import csv
 import io
 import json
 import urllib.error
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from django.core.signing import TimestampSigner
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -1582,11 +1582,20 @@ class BulkImportWizardAPITest(APITestCase):
             "date_of_birth": "2012-05-01",
             "gender": "M",
         }])
-        res = self.client.post(self.commit_url, {
-            "import_type": "students",
-            "class_id": str(self.class_a.id),
-            "file": file_obj,
-        }, format="multipart")
+        mocked_resp = MagicMock()
+        mocked_resp.status_code = 200
+        mocked_resp.json.return_value = {
+            "created": 1,
+            "updated": 0,
+            "errors": [],
+            "message": "Imported 1 students with 0 errors.",
+        }
+        with patch("academics.views.requests.post", return_value=mocked_resp):
+            res = self.client.post(self.commit_url, {
+                "import_type": "students",
+                "class_id": str(self.class_a.id),
+                "file": file_obj,
+            }, format="multipart")
         self.assertEqual(res.status_code, status.HTTP_200_OK, msg=str(getattr(res, "data", None)))
         self.assertIn("created", res.data)
 
