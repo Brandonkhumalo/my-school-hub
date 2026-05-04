@@ -21,6 +21,8 @@ from email_service import (
     send_announcement_email,
     send_parent_link_approved_email,
     get_parents_of_student,
+    send_bulk_welcome_teacher,
+    send_bulk_welcome_parent,
 )
 from .models import (
     Subject, Class, Student, Teacher, Parent, Result, 
@@ -85,7 +87,7 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
         {"key": "phone", "label": "Phone", "required": True, "type": "text", "help": "Zimbabwe number"},
         {"key": "email", "label": "Email", "required": False, "type": "email", "help": "Auto-generated if blank"},
         {"key": "occupation", "label": "Occupation", "required": False, "type": "text"},
-        {"key": "child_admission_nos", "label": "Child Admission Numbers", "required": False, "type": "text", "help": "Comma-separated student admission numbers to link as children"},
+        {"key": "child_admission_nos", "label": "Child Student Numbers", "required": False, "type": "text", "help": "Comma-separated student numbers (e.g. STU001234,STU005678). Add multiple to link more than one child."},
     ],
     "fees": [
         {"key": "student_admission_no", "label": "Student Admission Number", "required": True, "type": "text"},
@@ -2844,6 +2846,7 @@ def bulk_import_commit(request):
                         raise ValueError(f"Class '{assigned_class_name}' not found")
                     assigned_class_id = assigned_class.id
 
+                raw_password = _password_for_row()
                 payload = {
                     "first_name": first_name,
                     "last_name": last_name,
@@ -2852,7 +2855,7 @@ def bulk_import_commit(request):
                     "gender": gender,
                     "hire_date": str(hire_date),
                     "qualification": (row.get("qualification") or "").strip(),
-                    "password": _password_for_row(),
+                    "password": raw_password,
                     "is_secondary_teacher": bool(subject_ids),
                     "subject_ids": subject_ids,
                 }
@@ -2865,6 +2868,13 @@ def bulk_import_commit(request):
                     created += 1
                     if isinstance(out, dict) and out.get("id"):
                         changes.append({"action": "create", "model": "academics.Teacher", "pk": out["id"]})
+                    send_bulk_welcome_teacher(
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        school_name=school.name,
+                        password=None if account_strategy == "inactive" else raw_password,
+                    )
                 else:
                     raise ValueError(serializer.errors)
             except Exception as exc:
@@ -2946,24 +2956,31 @@ def bulk_import_commit(request):
                 # Accept either child_admission_nos (preferred) or child_admission_no (legacy single)
                 child_tokens = _split_csv_field(row.get("child_admission_nos") or row.get("child_admission_no"))
                 student_ids = []
+                children_info = []
                 missing_children = []
                 for token in child_tokens:
                     student = Student.objects.filter(
                         user__school=school, user__student_number=token,
-                    ).first()
+                    ).select_related("user").first()
                     if student:
                         student_ids.append(student.id)
+                        children_info.append({
+                            "name": f"{student.user.first_name} {student.user.last_name}".strip(),
+                            "student_number": student.user.student_number or token,
+                            "email": student.user.email,
+                        })
                     else:
                         missing_children.append(token)
                 if missing_children:
                     raise ValueError(f"Child admission number(s) not found: {', '.join(missing_children)}")
 
+                raw_password = _password_for_row()
                 payload = {
                     "full_name": f"{first_name} {last_name}".strip(),
                     "contact_number": phone,
                     "email": email,
                     "occupation": (row.get("occupation") or "").strip(),
-                    "password": _password_for_row(),
+                    "password": raw_password,
                     "student_ids": student_ids,
                 }
                 serializer = CreateParentSerializer(data=payload, context={"request": request})
@@ -2972,6 +2989,14 @@ def bulk_import_commit(request):
                     created += 1
                     if hasattr(out, "id"):
                         changes.append({"action": "create", "model": "academics.Parent", "pk": out.id})
+                    send_bulk_welcome_parent(
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        school_name=school.name,
+                        password=None if account_strategy == "inactive" else raw_password,
+                        children=children_info,
+                    )
                 else:
                     raise ValueError(serializer.errors)
             except Exception as exc:

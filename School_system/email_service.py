@@ -688,6 +688,149 @@ def send_announcement_email(*, parent_email: str, parent_name: str,
     )
 
 
+def send_bulk_welcome_teacher(
+    *,
+    email: str,
+    first_name: str,
+    last_name: str,
+    school_name: str,
+    password: str | None,
+) -> bool:
+    """Bulk-import welcome email for a newly created teacher account."""
+    if password:
+        creds_html = f"""
+          {_alert_badge("&#128274; Reset your password immediately after first login", "#dc2626")}
+          {_section("Your Login Credentials", [
+              ("Login Email", email),
+              ("Temporary Password", f"<code style='font-size:15px;font-weight:700;letter-spacing:1px;'>{password}</code>"),
+          ])}"""
+        action = "Log in and change your password immediately."
+    else:
+        creds_html = f"""
+          {_alert_badge("&#128274; You must set a password before you can log in", "#dc2626")}
+          {_section("Your Login Details", [
+              ("Login Email", email),
+              ("Password", "Not set — use <strong>Forgot Password</strong> to create one"),
+          ])}"""
+        action = 'Use the <strong>Forgot Password</strong> link on the login page to set your password.'
+
+    body = f"""
+      <h2 style="margin:0 0 6px;font-size:22px;font-weight:900;color:{DARK};">
+        Welcome to {school_name}
+      </h2>
+      <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.7;">
+        Dear <strong>{first_name} {last_name}</strong>, your staff account on
+        <strong>MySchoolHub</strong> has been created by your school administrator.
+        {action}
+      </p>
+      {creds_html}
+      {_cta_button("Log In to MySchoolHub")}
+      <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
+        Keep your credentials private. If you did not expect this email, contact your school administrator.
+      </p>"""
+
+    html = _base_html(
+        title=f"Welcome to {school_name} — MySchoolHub",
+        preview=f"Your MySchoolHub teacher account at {school_name} is ready.",
+        body=body,
+        school_name=school_name,
+    )
+    return _send(
+        to=[email],
+        subject=f"Welcome to MySchoolHub — {school_name}",
+        html=html,
+    )
+
+
+def send_bulk_welcome_parent(
+    *,
+    email: str,
+    first_name: str,
+    last_name: str,
+    school_name: str,
+    password: str | None,
+    children: list[dict],
+) -> bool:
+    """
+    Bulk-import welcome email for a newly created parent account.
+    children: list of {name, student_number, email} dicts for linked students.
+    """
+    if password:
+        creds_html = f"""
+          {_alert_badge("&#128274; Reset your password immediately after first login", "#dc2626")}
+          {_section("Your Login Credentials", [
+              ("Login Email", email),
+              ("Temporary Password", f"<code style='font-size:15px;font-weight:700;letter-spacing:1px;'>{password}</code>"),
+          ])}"""
+        action = "Log in and change your password immediately."
+    else:
+        creds_html = f"""
+          {_alert_badge("&#128274; You must set a password before you can log in", "#dc2626")}
+          {_section("Your Login Details", [
+              ("Login Email", email),
+              ("Password", "Not set — use <strong>Forgot Password</strong> to create one"),
+          ])}"""
+        action = 'Use the <strong>Forgot Password</strong> link on the login page to set your password.'
+
+    children_html = ""
+    if children:
+        child_rows = "".join(
+            f"""<tr>
+                  <td style="padding:10px 14px;font-size:13px;border:1px solid #e2e8f0;
+                             background:#f8fafc;font-weight:600;color:#64748b;width:38%;vertical-align:top;">
+                    {c['name']}
+                  </td>
+                  <td style="padding:10px 14px;font-size:13px;border:1px solid #e2e8f0;vertical-align:top;color:{DARK};">
+                    <strong>Student #:</strong> {c['student_number']}<br/>
+                    <strong>Login Email:</strong> {c['email']}<br/>
+                    <span style="font-size:11px;color:#94a3b8;">
+                      Student must use <strong>Forgot Password</strong> to set their password on first login.
+                    </span>
+                  </td>
+                </tr>"""
+            for c in children
+        )
+        children_html = f"""
+          <h3 style="margin:28px 0 10px;font-size:13px;font-weight:700;color:#64748b;
+                     text-transform:uppercase;letter-spacing:0.8px;">Your Children's Student Accounts</h3>
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="border-collapse:collapse;border-radius:8px;overflow:hidden;">
+            {child_rows}
+          </table>
+          <p style="margin:10px 0 0;font-size:12px;color:#94a3b8;">
+            Students do not receive a login email. Please share their login details with them directly.
+          </p>"""
+
+    body = f"""
+      <h2 style="margin:0 0 6px;font-size:22px;font-weight:900;color:{DARK};">
+        Welcome to {school_name}
+      </h2>
+      <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.7;">
+        Dear <strong>{first_name} {last_name}</strong>, your parent account on
+        <strong>MySchoolHub</strong> has been created by your school. Use it to
+        track fees, results, attendance, and communicate with teachers.
+        {action}
+      </p>
+      {creds_html}
+      {children_html}
+      {_cta_button("Log In to MySchoolHub")}
+      <p style="margin:20px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
+        Keep your credentials private. If you did not expect this email, contact your school administrator.
+      </p>"""
+
+    html = _base_html(
+        title=f"Welcome to {school_name} — MySchoolHub",
+        preview=f"Your MySchoolHub parent account at {school_name} is ready.",
+        body=body,
+        school_name=school_name,
+    )
+    return _send(
+        to=[email],
+        subject=f"Welcome to MySchoolHub — {school_name}",
+        html=html,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Utility: get all confirmed parents of a student
 # ─────────────────────────────────────────────────────────────────────────────
