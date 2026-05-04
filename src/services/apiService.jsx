@@ -655,9 +655,6 @@ const apiService = {
   commitBulkImport: (formData) => requestMultipart("/academics/bulk-import/commit/", "POST", formData),
   getBulkImportHistory: () => request("/academics/bulk-import/history/", "GET"),
   rollbackBulkImport: (jobId) => request(`/academics/bulk-import/history/${jobId}/rollback/`, "POST", {}),
-  bulkImportStudents: (formData) => requestMultipart("/academics/students/bulk-import/", "POST", formData),
-  bulkImportResults: (formData) => requestMultipart("/academics/results/bulk-import/", "POST", formData),
-  bulkImportFees: (formData) => requestMultipart("/finances/fees/bulk-import/", "POST", formData),
 
   // Student attendance (student's own)
   getStudentAttendance: (params = {}) => {

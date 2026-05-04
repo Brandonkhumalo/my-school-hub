@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	mrand "math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // BulkImportStudentsHandler streams a CSV and batch-inserts students.
@@ -37,6 +41,19 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		// Parse multipart form (max 10MB)
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid form data."})
+			return
+		}
+		accountStrategy := strings.ToLower(strings.TrimSpace(r.FormValue("account_strategy")))
+		if accountStrategy == "" {
+			accountStrategy = "random"
+		}
+		if accountStrategy != "random" && accountStrategy != "shared" && accountStrategy != "inactive" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid account_strategy. Use random, shared, or inactive."})
+			return
+		}
+		sharedPassword := r.FormValue("shared_password")
+		if accountStrategy == "shared" && len(sharedPassword) < 8 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "shared_password must be at least 8 characters."})
 			return
 		}
 
@@ -101,18 +118,23 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			for _, s := range batch {
 				// Generate unique student number
 				studentNum := generateStudentNumber()
+				passwordHash, err := passwordHashForStrategy(accountStrategy, sharedPassword)
+				if err != nil {
+					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Password strategy failed: %v", err)})
+					continue
+				}
 
 				// Create user
 				var newUserID int64
-				err := tx.QueryRow(ctx,
+				err = tx.QueryRow(ctx,
 					`INSERT INTO users_customuser
 						(password, last_login, is_superuser, username, first_name, last_name,
 						 email, is_staff, is_active, date_joined,
 						 role, school_id, student_number, phone_number, created_by_id)
-					 VALUES ('!unusable_password', NULL, false, $1, $2, $3, $4, false, true, NOW(),
-					         'student', $5, $6, $7, $8)
+					 VALUES ($1, NULL, false, $2, $3, $4, $5, false, true, NOW(),
+					         'student', $6, $7, $8, $9)
 					 RETURNING id`,
-					s.email, s.firstName, s.lastName, s.email,
+					passwordHash, s.email, s.firstName, s.lastName, s.email,
 					schoolID, studentNum, s.phone, userID,
 				).Scan(&newUserID)
 				if err != nil {
@@ -244,8 +266,48 @@ func getCol(record []string, colIdx map[string]int, name string) string {
 
 // generateStudentNumber creates a pseudo-random student number like STU123456.
 func generateStudentNumber() string {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
 	return fmt.Sprintf("STU%06d", r.Intn(999999))
+}
+
+func passwordHashForStrategy(strategy, sharedPassword string) (string, error) {
+	switch strategy {
+	case "inactive":
+		return "!" + generateSecureToken(40), nil
+	case "shared":
+		return djangoPBKDF2Hash(sharedPassword)
+	default:
+		return djangoPBKDF2Hash("Tmp!" + generateSecureToken(10))
+	}
+}
+
+func djangoPBKDF2Hash(password string) (string, error) {
+	const iterations = 600000
+	salt := generateSecureToken(16)
+	key := pbkdf2.Key([]byte(password), []byte(salt), iterations, 32, sha256.New)
+	encoded := base64.StdEncoding.EncodeToString(key)
+	return fmt.Sprintf("pbkdf2_sha256$%d$%s$%s", iterations, salt, encoded), nil
+}
+
+func generateSecureToken(length int) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	if length <= 0 {
+		return ""
+	}
+	out := make([]byte, length)
+	rb := make([]byte, length)
+	if _, err := crand.Read(rb); err != nil {
+		// Fallback keeps service available; quality still acceptable for temp passwords.
+		r := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+		for i := range out {
+			out[i] = alphabet[r.Intn(len(alphabet))]
+		}
+		return string(out)
+	}
+	for i := range out {
+		out[i] = alphabet[int(rb[i])%len(alphabet)]
+	}
+	return string(out)
 }
 
 // ─── Helpers ────────────────────────────────────────────────

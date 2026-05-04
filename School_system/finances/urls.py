@@ -55,12 +55,4 @@ urlpatterns = [
     # Additional Fees endpoints
     path('additional-fees/', views.AdditionalFeeListCreateView.as_view(), name='additional-fees-list-create'),
     path('additional-fees/<int:pk>/', views.AdditionalFeeDetailView.as_view(), name='additional-fee-detail'),
-
-    # PayNow Zimbabwe payments
-    path('payments/paynow/initiate/', views.paynow_initiate_payment, name='paynow-initiate'),
-    path('payments/paynow/result/', views.paynow_result_callback, name='paynow-result'),
-    path('payments/paynow/status/', views.paynow_check_status, name='paynow-status'),
-
-    # Bulk CSV Import
-    path('fees/bulk-import/', views.bulk_import_fees, name='bulk-import-fees'),
 ]

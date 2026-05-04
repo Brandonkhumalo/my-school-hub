@@ -69,6 +69,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       USE_GO_GATEWAY: "true"
       GO_SERVICES_URL: "http://services:8082"
+      GO_WORKERS_URL: "http://workers:8081"
     volumes:
       - ./School_system/db.sqlite3:/app/db.sqlite3
       - media_files:/app/media

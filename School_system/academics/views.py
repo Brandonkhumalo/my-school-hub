@@ -5,6 +5,7 @@ import json
 import re
 import secrets
 import string
+import os
 from decimal import Decimal
 
 from django.db.models import Avg, Count, Q, Prefetch
@@ -13,6 +14,7 @@ from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,91 @@ def _allowed_import_types_for_role(role):
 
 def _can_access_import_type(role, import_type):
     return (role or "").strip().lower() in _BULK_IMPORT_ROLE_MATRIX.get(import_type, set())
+
+
+def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected_class=None, account_strategy="random", shared_password=""):
+    """Run students/results/fees imports via Go workers using CSV payloads."""
+    workers_base = os.environ.get("GO_WORKERS_URL", "http://workers:8081").rstrip("/")
+    endpoint_map = {
+        "students": "/api/v1/bulk/students",
+        "results": "/api/v1/bulk/results",
+        "fees": "/api/v1/bulk/fees",
+    }
+    if import_type not in endpoint_map:
+        raise ValueError(f"Unsupported Go worker import type: {import_type}")
+
+    if import_type == "students":
+        headers = ["full_name", "email", "phone", "class_name", "date_of_birth", "gender"]
+    elif import_type == "results":
+        headers = ["student_number", "subject_code", "exam_type", "score", "max_score", "term", "year"]
+    else:
+        headers = ["student_number", "fee_type_name", "amount", "academic_year", "academic_term"]
+
+    csv_buf = io.StringIO()
+    writer = csv.DictWriter(csv_buf, fieldnames=headers)
+    writer.writeheader()
+
+    for row in mapped_rows:
+        if import_type == "students":
+            first_name = (row.get("first_name") or "").strip()
+            last_name = (row.get("last_name") or "").strip()
+            full_name = (f"{first_name} {last_name}".strip() or (row.get("full_name") or "").strip())
+            class_name = (row.get("class") or row.get("class_name") or "").strip()
+            if not class_name and selected_class is not None:
+                class_name = selected_class.name
+            writer.writerow({
+                "full_name": full_name,
+                "email": (row.get("email") or "").strip(),
+                "phone": (row.get("phone") or "").strip(),
+                "class_name": class_name,
+                "date_of_birth": (row.get("date_of_birth") or "").strip(),
+                "gender": (row.get("gender") or "").strip(),
+            })
+        elif import_type == "results":
+            writer.writerow({
+                "student_number": (row.get("student_admission_no") or row.get("student_number") or "").strip(),
+                "subject_code": (row.get("subject_code") or "").strip(),
+                "exam_type": (row.get("exam_type") or "").strip(),
+                "score": str(row.get("score") or ""),
+                "max_score": str(row.get("max_score") or ""),
+                "term": (row.get("term") or "").strip(),
+                "year": (row.get("year") or row.get("academic_year") or "").strip(),
+            })
+        else:
+            writer.writerow({
+                "student_number": (row.get("student_admission_no") or row.get("student_number") or "").strip(),
+                "fee_type_name": (row.get("fee_type") or row.get("fee_type_name") or "").strip(),
+                "amount": str(row.get("amount") or ""),
+                "academic_year": (row.get("academic_year") or "").strip(),
+                "academic_term": (row.get("term") or row.get("academic_term") or "").strip(),
+            })
+
+    files = {"file": ("bulk_import.csv", csv_buf.getvalue().encode("utf-8"), "text/csv")}
+    form_data = {}
+    if import_type == "students":
+        form_data["account_strategy"] = (account_strategy or "random").strip().lower()
+        if form_data["account_strategy"] == "shared":
+            form_data["shared_password"] = shared_password or ""
+    headers = {
+        "X-Gateway-Auth": "true",
+        "X-User-ID": str(user.id),
+        "X-User-Role": str(user.role or ""),
+        "X-User-School-ID": str(user.school_id or ""),
+    }
+    resp = requests.post(
+        f"{workers_base}{endpoint_map[import_type]}",
+        files=files,
+        data=form_data,
+        headers=headers,
+        timeout=120,
+    )
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"error": resp.text or "Worker returned non-JSON response."}
+    if resp.status_code >= 400:
+        raise ValueError(payload.get("error") or payload.get("detail") or "Bulk worker request failed.")
+    return payload
 
 
 def _parse_bulk_rows_from_upload(upload):
@@ -2637,6 +2724,70 @@ def bulk_import_commit(request):
         total_rows=len(mapped_rows),
     )
 
+    if import_type in ("students", "results", "fees"):
+        try:
+            account_strategy = (request.data.get("account_strategy") or "random").strip().lower()
+            shared_password = (request.data.get("shared_password") or "").strip()
+            if import_type == "students":
+                if account_strategy not in ("random", "shared", "inactive"):
+                    account_strategy = "random"
+                if account_strategy == "shared" and len(shared_password) < 8:
+                    raise ValueError("shared_password must be at least 8 characters when using the shared strategy.")
+            worker_result = _delegate_bulk_import_to_go_workers(
+                import_type=import_type,
+                mapped_rows=mapped_rows,
+                user=request.user,
+                selected_class=selected_class,
+                account_strategy=account_strategy,
+                shared_password=shared_password,
+            )
+            created = int(worker_result.get("created", 0) or 0)
+            updated = int(worker_result.get("updated", 0) or 0)
+            errors = worker_result.get("errors") or []
+            status_value = 'completed' if not errors else ('failed' if created == 0 and updated == 0 else 'completed')
+            job.status = status_value
+            job.created_count = created
+            job.updated_count = updated
+            job.error_count = len(errors)
+            job.errors = errors[:500] if isinstance(errors, list) else []
+            job.changes = []
+            job.completed_at = timezone.now()
+            job.save(update_fields=[
+                'status', 'created_count', 'updated_count', 'error_count', 'errors', 'changes', 'completed_at'
+            ])
+            AuditLog.objects.create(
+                user=request.user,
+                school=school,
+                action='CREATE',
+                model_name='BulkImportJob',
+                object_id=str(job.id),
+                object_repr=f'{import_type} import',
+                changes={
+                    'import_type': import_type,
+                    'created': created,
+                    'updated': updated,
+                    'errors': len(errors),
+                    'executor': 'go-workers',
+                },
+                ip_address=ip_address,
+                response_status=200,
+            )
+            return Response({
+                "job_id": job.id,
+                "import_type": import_type,
+                "created": created,
+                "updated": updated,
+                "errors": errors,
+                "message": worker_result.get("message") or f"Imported {created} records with {len(errors)} errors.",
+            })
+        except Exception as exc:
+            job.status = 'failed'
+            job.error_count = 1
+            job.errors = [{"row": 0, "error": str(exc)}]
+            job.completed_at = timezone.now()
+            job.save(update_fields=['status', 'error_count', 'errors', 'completed_at'])
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
     # Account-creation strategy for student/teacher/parent imports.
     # 'random' (default) — generate a random temp password the admin must distribute manually.
     # 'shared'           — every imported user gets the same admin-supplied password.
@@ -3263,140 +3414,6 @@ def bulk_import_rollback(request, job_id):
         "rolled_back": rolled_back,
         "errors": rollback_errors,
         "message": f"Rollback finished. Rolled back {rolled_back} change(s).",
-    })
-
-
-def _process_bulk_import_students(request):
-    import csv, io
-    from .serializers import CreateStudentSerializer
-
-    if request.user.role != 'admin':
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    csv_file = request.FILES.get('file')
-    if not csv_file:
-        return Response({'error': 'No CSV file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    school = request.user.school
-    decoded = csv_file.read().decode('utf-8')
-    reader = csv.DictReader(io.StringIO(decoded))
-
-    created, errors = 0, []
-
-    for i, row in enumerate(reader, start=2):
-        try:
-            full_name = row.get('full_name', '').strip()
-            name_parts = full_name.split(' ', 1)
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else ''
-            email = row.get('email', '').strip()
-            phone = row.get('phone', '').strip() or None
-            class_name = row.get('class_name', '').strip()
-            dob = row.get('date_of_birth', '').strip() or None
-            gender = row.get('gender', '').strip()
-
-            student_class = Class.objects.filter(name__iexact=class_name, school=school).first()
-            if not student_class:
-                errors.append({'row': i, 'error': f"Class '{class_name}' not found."})
-                continue
-
-            serializer = CreateStudentSerializer(
-                data={
-                    'first_name': first_name, 'last_name': last_name, 'email': email,
-                    'phone_number': phone, 'student_class': student_class.id,
-                    'admission_date': str(timezone.now().date()),
-                    'date_of_birth': dob, 'gender': gender,
-                },
-                context={'request': request}
-            )
-            if serializer.is_valid():
-                serializer.save()
-                created += 1
-            else:
-                errors.append({'row': i, 'error': str(serializer.errors)})
-        except Exception as exc:
-            errors.append({'row': i, 'error': str(exc)})
-
-    return Response({
-        'created': created, 'errors': errors,
-        'message': f'Imported {created} students with {len(errors)} errors.'
-    })
-
-
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def bulk_import_students(request):
-    """
-    Import students from a CSV file.
-    Columns: full_name, email, phone, class_name, date_of_birth, gender
-    """
-    return _process_bulk_import_students(request)
-
-
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def bulk_import_results(request):
-    """
-    Import results from a CSV file.
-    Columns: student_number, subject_code, exam_type, score, max_score, term, year
-    """
-    import csv, io
-
-    if request.user.role not in ('admin', 'teacher'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    csv_file = request.FILES.get('file')
-    if not csv_file:
-        return Response({'error': 'No CSV file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    school = request.user.school
-    decoded = csv_file.read().decode('utf-8')
-    reader = csv.DictReader(io.StringIO(decoded))
-
-    created, errors = 0, []
-
-    for i, row in enumerate(reader, start=2):
-        try:
-            student_number = row.get('student_number', '').strip()
-            subject_code = row.get('subject_code', '').strip()
-            exam_type = row.get('exam_type', '').strip()
-            score = round(float(row.get('score', 0)), 2)
-            max_score = round(float(row.get('max_score', 100)), 2)
-            term = row.get('term', '').strip()
-            year = row.get('year', '').strip()
-
-            student = Student.objects.get(user__student_number=student_number, user__school=school)
-            subject = Subject.objects.get(code=subject_code, school=school)
-
-            teacher = None
-            if request.user.role == 'teacher':
-                try:
-                    teacher = request.user.teacher
-                except Exception:
-                    pass
-            if not teacher:
-                teacher = subject.teachers.filter(user__school=school).first()
-
-            if not teacher:
-                errors.append({'row': i, 'error': 'No teacher found for subject.'})
-                continue
-
-            Result.objects.update_or_create(
-                student=student, subject=subject, exam_type=exam_type,
-                academic_term=term, academic_year=year,
-                defaults={'score': score, 'max_score': max_score, 'teacher': teacher}
-            )
-            created += 1
-        except Student.DoesNotExist:
-            errors.append({'row': i, 'error': f"Student '{row.get('student_number')}' not found."})
-        except Subject.DoesNotExist:
-            errors.append({'row': i, 'error': f"Subject '{row.get('subject_code')}' not found."})
-        except Exception as exc:
-            errors.append({'row': i, 'error': str(exc)})
-
-    return Response({
-        'created': created, 'errors': errors,
-        'message': f'Imported {created} results with {len(errors)} errors.'
     })
 
 

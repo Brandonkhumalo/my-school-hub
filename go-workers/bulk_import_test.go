@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -326,5 +326,35 @@ func TestGetCol_ExtraWhitespace(t *testing.T) {
 	colIdx := map[string]int{"name": 0}
 	if got := getCol(record, colIdx, "name"); got != "John Doe" {
 		t.Errorf("getCol should trim whitespace, got %q", got)
+	}
+}
+
+func TestPasswordHashForStrategy_Shared(t *testing.T) {
+	hash, err := passwordHashForStrategy("shared", "Secret123")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !strings.HasPrefix(hash, "pbkdf2_sha256$") {
+		t.Fatalf("expected Django pbkdf2 hash, got %q", hash)
+	}
+}
+
+func TestPasswordHashForStrategy_Inactive(t *testing.T) {
+	hash, err := passwordHashForStrategy("inactive", "")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !strings.HasPrefix(hash, "!") {
+		t.Fatalf("expected unusable password with ! prefix, got %q", hash)
+	}
+}
+
+func TestPasswordHashForStrategy_Random(t *testing.T) {
+	hash, err := passwordHashForStrategy("random", "")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !strings.HasPrefix(hash, "pbkdf2_sha256$") {
+		t.Fatalf("expected Django pbkdf2 hash, got %q", hash)
 	}
 }
