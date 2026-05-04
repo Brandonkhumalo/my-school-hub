@@ -405,7 +405,7 @@ class ClassListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(grade_level__lte=7)
         elif level_type == 'secondary':
             queryset = queryset.filter(grade_level__gt=7)
-        return queryset
+        return queryset.order_by('grade_level', 'name', 'id')
 
     def perform_create(self, serializer):
         serializer.save(school=self.request.user.school)
@@ -419,8 +419,12 @@ class ClassDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.school:
-            return Class.objects.filter(school=user.school).select_related('class_teacher').annotate(
-                _student_count=Count('students', distinct=True)
+            return (
+                Class.objects
+                .filter(school=user.school)
+                .select_related('class_teacher')
+                .annotate(_student_count=Count('students', distinct=True))
+                .order_by('grade_level', 'name', 'id')
             )
         return Class.objects.none()
 
