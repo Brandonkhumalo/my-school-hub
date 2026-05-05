@@ -72,6 +72,11 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		schoolCode, err := loadSchoolCode(ctx, pool, schoolID)
+		if err != nil {
+			schoolCode = fmt.Sprintf("school%d", schoolID)
+		}
+
 		// Stream CSV row by row
 		reader := csv.NewReader(file)
 		reader.TrimLeadingSpace = true
@@ -160,8 +165,8 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				}
 				_, err = tx.Exec(ctx,
 					`INSERT INTO academics_student
-						(user_id, student_class_id, residence_type, admission_date, parent_contact, address, date_of_birth, gender, emergency_contact, pending_activation_due_to_limit)
-					 VALUES ($1, $2, 'day', CURRENT_DATE, $3, '', $4, $5, '', false)`,
+						(user_id, student_class_id, residence_type, admission_date, parent_contact, address, date_of_birth, gender, emergency_contact, pending_activation_due_to_limit, is_transferred, transfer_note)
+					 VALUES ($1, $2, 'day', CURRENT_DATE, $3, '', $4, $5, '', false, false, '')`,
 					newUserID, s.classID, parentContact, s.dob, s.gender,
 				)
 				if err != nil {
@@ -202,14 +207,8 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			gender := getCol(record, colIdx, "gender")
 
 			// Validate
-			if fullName == "" || email == "" {
-				errors = append(errors, map[string]interface{}{"row": rowNum, "error": "full_name and email are required"})
-				continue
-			}
-
-			classID, ok := classMap[strings.ToLower(className)]
-			if !ok {
-				errors = append(errors, map[string]interface{}{"row": rowNum, "error": fmt.Sprintf("Class '%s' not found.", className)})
+			if fullName == "" {
+				errors = append(errors, map[string]interface{}{"row": rowNum, "error": "full_name is required"})
 				continue
 			}
 
@@ -218,6 +217,16 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			lastName := ""
 			if len(nameParts) > 1 {
 				lastName = nameParts[1]
+			}
+
+			if email == "" {
+				email = generateImportEmail(firstName, lastName, rowNum, schoolCode)
+			}
+
+			classID, ok := classMap[strings.ToLower(className)]
+			if !ok {
+				errors = append(errors, map[string]interface{}{"row": rowNum, "error": fmt.Sprintf("Class '%s' not found.", className)})
+				continue
 			}
 
 			var phonePtr *string
@@ -247,6 +256,30 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			"message": fmt.Sprintf("Imported %d students with %d errors.", created, len(errors)),
 		})
 	}
+}
+
+// loadSchoolCode returns the short code for a school (e.g. "abc").
+func loadSchoolCode(ctx context.Context, pool *pgxpool.Pool, schoolID int64) (string, error) {
+	var code string
+	err := pool.QueryRow(ctx, "SELECT LOWER(code) FROM users_school WHERE id = $1", schoolID).Scan(&code)
+	return code, err
+}
+
+// generateImportEmail builds a deterministic placeholder email for students
+// who have no email address, matching Django's _generate_import_email format.
+func generateImportEmail(firstName, lastName string, rowNum int, schoolCode string) string {
+	clean := func(s string) string {
+		return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", ""))
+	}
+	first := clean(firstName)
+	if first == "" {
+		first = "user"
+	}
+	last := clean(lastName)
+	if last == "" {
+		last = "import"
+	}
+	return fmt.Sprintf("%s.%s.import.%d.%s@import.local", first, last, rowNum, schoolCode)
 }
 
 // loadClassMap returns map[lowercase_class_name] → class_id for a school
