@@ -398,6 +398,39 @@ class UnlockUserLoginViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class StudentForgotPasswordViewTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.school = make_school()
+        self.student = make_user(
+            self.school,
+            "forgot_student",
+            role="student",
+            password="oldpass123",
+        )
+        self.student.student_number = "STU999001"
+        self.student.save(update_fields=["student_number"])
+        self.url = "/api/v1/auth/forgot-password/student/"
+
+    def test_student_forgot_password_resets_password(self):
+        response = self.client.post(self.url, {
+            "student_number": "STU999001",
+            "new_password": "newpass123",
+            "confirm_password": "newpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password("newpass123"))
+
+    def test_student_forgot_password_rejects_unknown_student_number(self):
+        response = self.client.post(self.url, {
+            "student_number": "STU404",
+            "new_password": "newpass123",
+            "confirm_password": "newpass123",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 # ---------------------------------------------------------------------------
 # API tests — Superadmin
 # ---------------------------------------------------------------------------

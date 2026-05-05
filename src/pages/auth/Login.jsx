@@ -24,8 +24,6 @@ function Login() {
   const [forgotError, setForgotError] = useState("");
   const [forgotSuccess, setForgotSuccess] = useState("");
   const [forgotForm, setForgotForm] = useState({
-    identifier: "",
-    phone_number: "",
     student_number: "",
     new_password: "",
     confirm_password: "",
@@ -203,9 +201,9 @@ function Login() {
       {showForgotModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="rounded-2xl shadow-2xl max-w-lg w-full p-7 bg-white">
-            <h3 className="text-xl font-bold text-gray-800 mb-2">Parent Forgot Password</h3>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Student Password Reset</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Verify your details and your child&apos;s student number to reset your password.
+              Reset the student password using the student number.
             </p>
 
             {forgotError && (
@@ -227,11 +225,9 @@ function Login() {
                 setForgotSuccess("");
                 try {
                   setForgotLoading(true);
-                  const response = await apiService.parentForgotPassword(forgotForm);
-                  setForgotSuccess(response?.message || "Password reset successful.");
+                  const response = await apiService.studentForgotPassword(forgotForm);
+                  setForgotSuccess(response?.message || "Student password reset successful.");
                   setForgotForm({
-                    identifier: "",
-                    phone_number: "",
                     student_number: "",
                     new_password: "",
                     confirm_password: "",
@@ -246,23 +242,7 @@ function Login() {
               <input
                 required
                 type="text"
-                placeholder="Username or email"
-                value={forgotForm.identifier}
-                onChange={(e) => setForgotForm({ ...forgotForm, identifier: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-              <input
-                required
-                type="text"
-                placeholder="Phone number"
-                value={forgotForm.phone_number}
-                onChange={(e) => setForgotForm({ ...forgotForm, phone_number: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-              <input
-                required
-                type="text"
-                placeholder="Child's student number"
+                placeholder="Student number"
                 value={forgotForm.student_number}
                 onChange={(e) => setForgotForm({ ...forgotForm, student_number: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -530,7 +510,7 @@ function Login() {
                       onClick={() => setShowForgotModal(true)}
                       className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                     >
-                      Parent forgot password?
+                      Student forgot password?
                     </button>
                   </div>
                 </div>

@@ -14,6 +14,7 @@ urlpatterns = [
     path('profile/update/', views.update_profile_view, name='update-profile'),
     path('profile/change-password/', views.change_password_view, name='change-password'),
     path('forgot-password/parent/', views.parent_forgot_password_view, name='parent-forgot-password'),
+    path('forgot-password/student/', views.student_forgot_password_view, name='student-forgot-password'),
     path('profile/set-whatsapp-pin/', views.set_whatsapp_pin_view, name='set-whatsapp-pin'),
 
     # User management

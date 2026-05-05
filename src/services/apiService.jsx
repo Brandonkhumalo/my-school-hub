@@ -278,6 +278,7 @@ const apiService = {
     return request("/auth/login/", "POST", loginData, false);
   },
   parentForgotPassword: (data) => request("/auth/forgot-password/parent/", "POST", data, false),
+  studentForgotPassword: (data) => request("/auth/forgot-password/student/", "POST", data, false),
   register: (userData) => request("/auth/register/", "POST", userData, false),
   registerUser: (userData) => request("/auth/register/", "POST", userData, false),
   logout: () => request("/auth/logout/", "POST"),

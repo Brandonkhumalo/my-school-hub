@@ -475,6 +475,41 @@ def parent_forgot_password_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def student_forgot_password_view(request):
+    """
+    Reset password for a student account using student number.
+    """
+    if _check_rate_limit(request, group='student_forgot_password', rate='5/m'):
+        return Response(
+            {'error': 'Too many attempts. Please wait a minute and try again.'},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+
+    student_number = (request.data.get('student_number') or '').strip()
+    new_password = request.data.get('new_password') or ''
+    confirm_password = request.data.get('confirm_password') or ''
+
+    if not all([student_number, new_password, confirm_password]):
+        return Response({'error': 'All fields are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if new_password != confirm_password:
+        return Response({'error': "Passwords don't match."}, status=status.HTTP_400_BAD_REQUEST)
+    if len(new_password) < 8:
+        return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    student_user = CustomUser.objects.filter(
+        role='student',
+        student_number__iexact=student_number
+    ).first()
+    if not student_user:
+        return Response({'error': 'Student not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    student_user.set_password(new_password)
+    student_user.save(update_fields=['password'])
+    return Response({'message': 'Student password reset successful. You can now log in.'})
+
+
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def set_whatsapp_pin_view(request):
     serializer = SetWhatsAppPinSerializer(data=request.data)

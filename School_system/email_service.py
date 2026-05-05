@@ -468,6 +468,12 @@ def send_parent_link_approved_email(*, parent_email: str, parent_name: str,
         Student sign-in can use any of the identifiers above. If they do not know their password,
         use the <strong>Forgot Password</strong> option on the login page.
       </p>
+      <p style="margin:0 0 6px;font-size:13px;color:#64748b;line-height:1.7;">
+        Direct reset link:
+        <a href="https://myschoolhub.co.zw/login" style="color:#1d4ed8;text-decoration:underline;font-weight:700;">
+          Reset Student Password
+        </a>
+      </p>
       {_cta_button("Log In to Parent Portal")}"""
 
     html = _base_html(
