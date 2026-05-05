@@ -154,11 +154,15 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				}
 
 				// Create student record
+				parentContact := ""
+				if s.phone != nil {
+					parentContact = strings.TrimSpace(*s.phone)
+				}
 				_, err = tx.Exec(ctx,
 					`INSERT INTO academics_student
-						(user_id, student_class_id, admission_date, date_of_birth, gender)
-					 VALUES ($1, $2, CURRENT_DATE, $3, $4)`,
-					newUserID, s.classID, s.dob, s.gender,
+						(user_id, student_class_id, residence_type, admission_date, parent_contact, address, date_of_birth, gender, emergency_contact, pending_activation_due_to_limit)
+					 VALUES ($1, $2, 'day', CURRENT_DATE, $3, '', $4, $5, '', false)`,
+					newUserID, s.classID, parentContact, s.dob, s.gender,
 				)
 				if err != nil {
 					_, _ = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_row")

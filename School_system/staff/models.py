@@ -7,7 +7,10 @@ class Department(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     head = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='headed_departments')
-    
+
+    class Meta:
+        ordering = ['name']
+
     def __str__(self):
         """Return a human-readable string representation."""
         return self.name

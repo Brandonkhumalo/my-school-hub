@@ -3025,13 +3025,14 @@ def bulk_import_commit(request):
                     created += 1
                     if isinstance(out, dict) and out.get("id"):
                         changes.append({"action": "create", "model": "academics.Teacher", "pk": out["id"]})
-                    send_bulk_welcome_teacher(
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        school_name=school.name,
-                        password=None if account_strategy == "inactive" else raw_password,
-                    )
+                    if "@import.local" not in email:
+                        send_bulk_welcome_teacher(
+                            email=email,
+                            first_name=first_name,
+                            last_name=last_name,
+                            school_name=school.name,
+                            password=None if account_strategy == "inactive" else raw_password,
+                        )
                 else:
                     raise ValueError(serializer.errors)
             except Exception as exc:
@@ -3146,14 +3147,15 @@ def bulk_import_commit(request):
                     created += 1
                     if hasattr(out, "id"):
                         changes.append({"action": "create", "model": "academics.Parent", "pk": out.id})
-                    send_bulk_welcome_parent(
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        school_name=school.name,
-                        password=None if account_strategy == "inactive" else raw_password,
-                        children=children_info,
-                    )
+                    if "@import.local" not in email:
+                        send_bulk_welcome_parent(
+                            email=email,
+                            first_name=first_name,
+                            last_name=last_name,
+                            school_name=school.name,
+                            password=None if account_strategy == "inactive" else raw_password,
+                            children=children_info,
+                        )
                 else:
                     raise ValueError(serializer.errors)
             except Exception as exc:
