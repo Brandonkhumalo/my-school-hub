@@ -2714,6 +2714,9 @@ def bulk_import_commit(request):
     errors = []
     changes = []
     ip_address = _get_request_ip(request)
+    duplicate_strategy = (request.data.get("duplicate_strategy") or "skip").strip().lower()
+    if duplicate_strategy not in ("skip", "update", "error"):
+        duplicate_strategy = "skip"
 
     job = BulkImportJob.objects.create(
         school=school,
@@ -2822,9 +2825,6 @@ def bulk_import_commit(request):
         return "Tmp!" + "".join(secrets.choice(alphabet) for _ in range(8))
 
     date_format = (request.data.get("date_format") or "YYYY-MM-DD").strip()
-    duplicate_strategy = (request.data.get("duplicate_strategy") or "skip").strip().lower()
-    if duplicate_strategy not in ("skip", "update", "error"):
-        duplicate_strategy = "skip"
     current_year = str(timezone.now().year)
     today = timezone.now().date()
 
