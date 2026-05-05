@@ -131,7 +131,7 @@ def _can_access_import_type(role, import_type):
     return (role or "").strip().lower() in _BULK_IMPORT_ROLE_MATRIX.get(import_type, set())
 
 
-def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected_class=None, account_strategy="random", shared_password=""):
+def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected_class=None, account_strategy="random", shared_password="", duplicate_strategy="skip"):
     """Run students/results/fees imports via Go workers using CSV payloads."""
     workers_base = os.environ.get("GO_WORKERS_URL", "http://workers:8081").rstrip("/")
     endpoint_map = {
@@ -190,7 +190,7 @@ def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected
             })
 
     files = {"file": ("bulk_import.csv", csv_buf.getvalue().encode("utf-8"), "text/csv")}
-    form_data = {}
+    form_data = {"duplicate_strategy": (duplicate_strategy or "skip").strip().lower()}
     if import_type == "students":
         form_data["account_strategy"] = (account_strategy or "random").strip().lower()
         if form_data["account_strategy"] == "shared":
@@ -2748,6 +2748,7 @@ def bulk_import_commit(request):
                 selected_class=selected_class,
                 account_strategy=account_strategy,
                 shared_password=shared_password,
+                duplicate_strategy=duplicate_strategy,
             )
             created = int(worker_result.get("created", 0) or 0)
             updated = int(worker_result.get("updated", 0) or 0)
@@ -2973,6 +2974,7 @@ def bulk_import_commit(request):
 
     elif import_type == "teachers":
         from .serializers import CreateTeacherSerializer
+        from users.models import CustomUser as _TeacherCU
         for i, row in enumerate(mapped_rows, start=2):
             try:
                 first_name = (row.get("first_name") or "").strip()
@@ -2995,15 +2997,14 @@ def bulk_import_commit(request):
                         raise ValueError(f"Subject '{token}' not found in this school")
                     subject_ids.append(subj.id)
 
-                assigned_class_id = None
                 assigned_class_name = (row.get("assigned_class") or "").strip()
+                assigned_class_obj = None
                 if assigned_class_name:
-                    assigned_class = Class.objects.filter(
+                    assigned_class_obj = Class.objects.filter(
                         school=school, name__iexact=assigned_class_name,
                     ).order_by('-academic_year').first()
-                    if not assigned_class:
+                    if not assigned_class_obj:
                         raise ValueError(f"Class '{assigned_class_name}' not found")
-                    assigned_class_id = assigned_class.id
 
                 teaching_class_ids = []
                 for token in _split_csv_field(row.get("forms_grades")):
@@ -3037,6 +3038,44 @@ def bulk_import_commit(request):
                     )
                 teaching_class_ids = list(dict.fromkeys(teaching_class_ids))
 
+                existing_user = _TeacherCU.objects.filter(school=school, email__iexact=email, role='teacher').first()
+
+                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing_user), i, f"Teacher email '{email}'", errors):
+                    continue
+
+                if existing_user and duplicate_strategy == "update":
+                    # Update the existing teacher's user record
+                    existing_user.first_name = first_name
+                    existing_user.last_name = last_name
+                    if gender:
+                        existing_user.gender = gender
+                    phone = _normalize_phone(row.get("phone"))
+                    if phone:
+                        existing_user.phone_number = phone
+                    existing_user.save(update_fields=['first_name', 'last_name', 'gender', 'phone_number'])
+
+                    # Update the Teacher profile
+                    teacher_profile = Teacher.objects.filter(user=existing_user).first()
+                    if teacher_profile:
+                        teacher_profile.hire_date = hire_date
+                        qualification = (row.get("qualification") or "").strip()
+                        if qualification:
+                            teacher_profile.qualification = qualification
+                        teacher_profile.save(update_fields=['hire_date', 'qualification'])
+                        if subject_ids:
+                            teacher_profile.subjects_taught.set(subject_ids)
+                        if teaching_class_ids:
+                            teacher_profile.teaching_classes.set(teaching_class_ids)
+                        if assigned_class_obj and not assigned_class_obj.class_teacher_id:
+                            assigned_class_obj.class_teacher = existing_user
+                            assigned_class_obj.save(update_fields=['class_teacher'])
+                        updated += 1
+                        changes.append({"action": "update", "model": "academics.Teacher", "pk": teacher_profile.pk})
+                    else:
+                        updated += 1
+                        changes.append({"action": "update", "model": "users.CustomUser", "pk": existing_user.pk})
+                    continue
+
                 raw_password = _password_for_row()
                 payload = {
                     "first_name": first_name,
@@ -3052,8 +3091,8 @@ def bulk_import_commit(request):
                 }
                 if teaching_class_ids:
                     payload["teaching_class_ids"] = teaching_class_ids
-                if assigned_class_id:
-                    payload["assigned_class_id"] = assigned_class_id
+                if assigned_class_obj:
+                    payload["assigned_class_id"] = assigned_class_obj.id
 
                 serializer = CreateTeacherSerializer(data=payload, context={"request": request})
                 if serializer.is_valid():
@@ -3138,6 +3177,7 @@ def bulk_import_commit(request):
 
     elif import_type == "parents":
         from .serializers import CreateParentSerializer
+        from users.models import CustomUser as _ParentCU
         for i, row in enumerate(mapped_rows, start=2):
             try:
                 first_name = (row.get("first_name") or "").strip()
@@ -3167,6 +3207,32 @@ def bulk_import_commit(request):
                         missing_children.append(token)
                 if missing_children:
                     raise ValueError(f"Child admission number(s) not found: {', '.join(missing_children)}")
+
+                existing_user = _ParentCU.objects.filter(school=school, email__iexact=email, role='parent').first()
+
+                if not _should_apply_row_for_strategy(duplicate_strategy, bool(existing_user), i, f"Parent email '{email}'", errors):
+                    continue
+
+                if existing_user and duplicate_strategy == "update":
+                    existing_user.first_name = first_name
+                    existing_user.last_name = last_name
+                    if phone:
+                        existing_user.phone_number = phone
+                    existing_user.save(update_fields=['first_name', 'last_name', 'phone_number'])
+                    parent_profile = Parent.objects.filter(user=existing_user).first()
+                    if parent_profile:
+                        occupation = (row.get("occupation") or "").strip()
+                        if occupation:
+                            parent_profile.occupation = occupation
+                            parent_profile.save(update_fields=['occupation'])
+                        if student_ids:
+                            parent_profile.children.add(*student_ids)
+                        updated += 1
+                        changes.append({"action": "update", "model": "academics.Parent", "pk": parent_profile.pk})
+                    else:
+                        updated += 1
+                        changes.append({"action": "update", "model": "users.CustomUser", "pk": existing_user.pk})
+                    continue
 
                 raw_password = _password_for_row()
                 payload = {

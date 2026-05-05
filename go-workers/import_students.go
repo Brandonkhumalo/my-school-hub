@@ -56,6 +56,10 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "shared_password must be at least 8 characters."})
 			return
 		}
+		duplicateStrategy := strings.ToLower(strings.TrimSpace(r.FormValue("duplicate_strategy")))
+		if duplicateStrategy != "update" && duplicateStrategy != "error" {
+			duplicateStrategy = "skip"
+		}
 
 		file, _, err := r.FormFile("file")
 		if err != nil {
@@ -90,6 +94,7 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		colIdx := mapColumns(header)
 
 		created := 0
+		updated := 0
 		var errors []map[string]interface{}
 		rowNum := 1 // header is row 1
 
@@ -125,6 +130,41 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				// Isolate each row so one failure doesn't abort the whole batch tx.
 				if _, err = tx.Exec(ctx, "SAVEPOINT sp_row"); err != nil {
 					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Failed to create savepoint: %v", err)})
+					continue
+				}
+
+				// Check for existing student with same email in this school
+				var existingUserID int64
+				_ = tx.QueryRow(ctx,
+					`SELECT id FROM users_customuser WHERE LOWER(email) = LOWER($1) AND school_id = $2 AND role = 'student' LIMIT 1`,
+					s.email, schoolID,
+				).Scan(&existingUserID)
+
+				if existingUserID != 0 {
+					_, _ = tx.Exec(ctx, "RELEASE SAVEPOINT sp_row")
+					switch duplicateStrategy {
+					case "update":
+						phone := ""
+						if s.phone != nil {
+							phone = strings.TrimSpace(*s.phone)
+						}
+						_, err = pool.Exec(ctx,
+							`UPDATE users_customuser SET first_name=$1, last_name=$2, phone_number=NULLIF($3,'') WHERE id=$4`,
+							s.firstName, s.lastName, phone, existingUserID,
+						)
+						if err == nil {
+							_, _ = pool.Exec(ctx,
+								`UPDATE academics_student SET student_class_id=$1, residence_type=$2, date_of_birth=$3, gender=$4 WHERE user_id=$5`,
+								s.classID, s.residenceType, s.dob, s.gender, existingUserID,
+							)
+							updated++
+						} else {
+							errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Update failed: %v", err)})
+						}
+					case "error":
+						errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Duplicate student email '%s'.", s.email)})
+					// skip: do nothing
+					}
 					continue
 				}
 
@@ -257,8 +297,9 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"created": created,
+			"updated": updated,
 			"errors":  errors,
-			"message": fmt.Sprintf("Imported %d students with %d errors.", created, len(errors)),
+			"message": fmt.Sprintf("Imported %d students (updated %d) with %d errors.", created, updated, len(errors)),
 		})
 	}
 }

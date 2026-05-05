@@ -66,7 +66,13 @@ func BulkImportFeesHandler(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		colIdx := mapColumns(header)
 
+		duplicateStrategy := strings.ToLower(strings.TrimSpace(r.FormValue("duplicate_strategy")))
+		if duplicateStrategy != "update" && duplicateStrategy != "error" {
+			duplicateStrategy = "skip"
+		}
+
 		created := 0
+		updated := 0
 		var errors []map[string]interface{}
 		rowNum := 1
 
@@ -95,22 +101,44 @@ func BulkImportFeesHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			defer tx.Rollback(ctx)
 
 			for _, fr := range batch {
-				// Use ON CONFLICT to skip duplicates
-				tag, err := tx.Exec(ctx,
+				// Check for an existing fee record for this student/type/year/term
+				var existingID int64
+				_ = tx.QueryRow(ctx,
+					`SELECT id FROM finances_studentfee WHERE student_id=$1 AND fee_type_id=$2 AND academic_year=$3 AND academic_term=$4 LIMIT 1`,
+					fr.studentID, fr.feeTypeID, fr.academicYear, fr.academicTerm,
+				).Scan(&existingID)
+
+				if existingID != 0 {
+					switch duplicateStrategy {
+					case "update":
+						_, err := tx.Exec(ctx,
+							`UPDATE finances_studentfee SET amount_due=$1 WHERE id=$2`,
+							fr.amount, existingID,
+						)
+						if err != nil {
+							errors = append(errors, map[string]interface{}{"row": fr.rowNum, "error": fmt.Sprintf("Update failed: %v", err)})
+						} else {
+							updated++
+						}
+					case "error":
+						errors = append(errors, map[string]interface{}{"row": fr.rowNum, "error": "Duplicate fee record."})
+					// skip: do nothing
+					}
+					continue
+				}
+
+				_, err := tx.Exec(ctx,
 					`INSERT INTO finances_studentfee
 						(student_id, fee_type_id, amount_due, amount_paid, due_date,
 						 academic_term, academic_year, is_paid)
-					 VALUES ($1, $2, $3, 0, CURRENT_DATE, $4, $5, false)
-					 ON CONFLICT DO NOTHING`,
+					 VALUES ($1, $2, $3, 0, CURRENT_DATE, $4, $5, false)`,
 					fr.studentID, fr.feeTypeID, fr.amount, fr.academicTerm, fr.academicYear,
 				)
 				if err != nil {
 					errors = append(errors, map[string]interface{}{"row": fr.rowNum, "error": fmt.Sprintf("Insert failed: %v", err)})
 					continue
 				}
-				if tag.RowsAffected() > 0 {
-					created++
-				}
+				created++
 			}
 
 			if err := tx.Commit(ctx); err != nil {
@@ -189,8 +217,9 @@ func BulkImportFeesHandler(pool *pgxpool.Pool) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"created": created,
+			"updated": updated,
 			"errors":  errors,
-			"message": fmt.Sprintf("Imported %d fee records with %d errors.", created, len(errors)),
+			"message": fmt.Sprintf("Imported %d fee records (updated %d) with %d errors.", created, updated, len(errors)),
 		})
 	}
 }
