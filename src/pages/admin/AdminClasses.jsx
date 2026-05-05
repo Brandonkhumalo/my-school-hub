@@ -10,6 +10,7 @@ export default function AdminClasses() {
   const { currentAcademicYear } = useSchoolSettings();
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
@@ -21,6 +22,7 @@ export default function AdminClasses() {
     section: '',
     academic_year: currentAcademicYear,
     class_teacher: '',
+    subject_ids: [],
     first_period_start: '07:30',
     last_period_end: '16:00',
     period_duration_minutes: 45,
@@ -41,10 +43,11 @@ export default function AdminClasses() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [classesResult, teachersResult, statsResult] = await Promise.allSettled([
+      const [classesResult, teachersResult, statsResult, subjectsResult] = await Promise.allSettled([
         apiService.fetchClasses(),
         apiService.fetchTeachers(),
-        apiService.getDashboardStats()
+        apiService.getDashboardStats(),
+        apiService.fetchSubjects(),
       ]);
 
       if (classesResult.status === "fulfilled") {
@@ -59,6 +62,12 @@ export default function AdminClasses() {
       } else {
         console.error("Error fetching teachers:", teachersResult.reason);
         setTeachers([]);
+      }
+
+      if (subjectsResult?.status === "fulfilled") {
+        setSubjects(Array.isArray(subjectsResult.value) ? subjectsResult.value : []);
+      } else {
+        setSubjects([]);
       }
 
       if (statsResult.status === "fulfilled" && statsResult.value?.school_type) {
@@ -88,6 +97,13 @@ export default function AdminClasses() {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
+  };
+
+  const handleSubjectSelectionChange = (e) => {
+    const selectedIds = Array.from(e.target.selectedOptions)
+      .map((opt) => parseInt(opt.value, 10))
+      .filter((n) => !Number.isNaN(n));
+    setFormData((prev) => ({ ...prev, subject_ids: selectedIds }));
   };
 
   const formatTimeForInput = (timeStr) => {
@@ -149,7 +165,8 @@ export default function AdminClasses() {
           ...submitData,
           name: className,
           grade_level: parseInt(formData.grade_level),
-          academic_year: formData.academic_year
+          academic_year: formData.academic_year,
+          subject_ids: formData.subject_ids || [],
         });
       }
       setShowForm(false);
@@ -278,6 +295,22 @@ export default function AdminClasses() {
                       placeholder="e.g., 2026"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Assign Subjects *</label>
+                    <select
+                      multiple
+                      value={formData.subject_ids || []}
+                      onChange={handleSubjectSelectionChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-36"
+                    >
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.code} - {subject.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple subjects.</p>
                   </div>
                 </>
               )}

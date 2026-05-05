@@ -27,20 +27,10 @@ export default function AdminSubjects() {
   const [subjectTeachers, setSubjectTeachers] = useState([]);
   const [assignTeacherId, setAssignTeacherId] = useState('');
   const [loadingTeachers, setLoadingTeachers] = useState(false);
-  const [classes, setClasses] = useState([]);
-  const [subjectClassAssignments, setSubjectClassAssignments] = useState([]);
-  const [classSearch, setClassSearch] = useState("");
-  const [selectedClassIds, setSelectedClassIds] = useState([]);
-  const [assignClassTeacherId, setAssignClassTeacherId] = useState("");
-  const [assignAcademicYear, setAssignAcademicYear] = useState("");
-  const [assignIsCore, setAssignIsCore] = useState(true);
-  const [assignDuplicateStrategy, setAssignDuplicateStrategy] = useState("skip");
-  const [loadingClassAssignments, setLoadingClassAssignments] = useState(false);
 
   useEffect(() => {
     fetchSubjects();
     fetchTeachers();
-    fetchClasses();
   }, []);
 
   const fetchSubjects = async () => {
@@ -61,15 +51,6 @@ export default function AdminSubjects() {
       setTeachers(data);
     } catch (error) {
       console.error("Error fetching teachers:", error);
-    }
-  };
-
-  const fetchClasses = async () => {
-    try {
-      const data = await apiService.getClasses();
-      setClasses(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Error fetching classes:", error);
     }
   };
 
@@ -96,7 +77,7 @@ export default function AdminSubjects() {
       await apiService.deleteSubject(subjectId);
       if (selectedSubject?.id === subjectId) setSelectedSubject(null);
       fetchSubjects();
-    } catch (error) {
+    } catch {
       alert("Failed to delete subject");
     }
   };
@@ -108,21 +89,11 @@ export default function AdminSubjects() {
     try {
       const data = await apiService.getSubjectTeachers(subject.id);
       setSubjectTeachers(data);
-      const classData = await apiService.getSubjectClassAssignments(subject.id);
-      setSubjectClassAssignments(Array.isArray(classData) ? classData : []);
-      setSelectedClassIds([]);
-      setClassSearch("");
-      setAssignClassTeacherId("");
-      setAssignAcademicYear("");
-      setAssignIsCore(true);
-      setAssignDuplicateStrategy("skip");
     } catch (error) {
       console.error("Error loading subject teachers:", error);
       setSubjectTeachers([]);
-      setSubjectClassAssignments([]);
     } finally {
       setLoadingTeachers(false);
-      setLoadingClassAssignments(false);
     }
   };
 
@@ -144,58 +115,8 @@ export default function AdminSubjects() {
       await apiService.removeTeacherFromSubject(selectedSubject.id, teacherId);
       openTeacherPanel(selectedSubject);
       fetchSubjects();
-    } catch (error) {
+    } catch {
       alert("Failed to remove teacher");
-    }
-  };
-
-  const toggleClassSelection = (classId) => {
-    setSelectedClassIds((prev) =>
-      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
-    );
-  };
-
-  const filteredClasses = classes.filter((cls) => {
-    const q = classSearch.trim().toLowerCase();
-    if (!q) return true;
-    return `${cls.name} ${cls.grade_level} ${cls.academic_year}`.toLowerCase().includes(q);
-  });
-
-  const handleAssignToClasses = async () => {
-    if (!selectedSubject || selectedClassIds.length === 0) return;
-    try {
-      setLoadingClassAssignments(true);
-      const payload = {
-        class_ids: selectedClassIds,
-        teacher_id: assignClassTeacherId || null,
-        academic_year: assignAcademicYear || "",
-        is_core: assignIsCore,
-        duplicate_strategy: assignDuplicateStrategy,
-      };
-      const res = await apiService.assignSubjectToClasses(selectedSubject.id, payload);
-      if (res?.errors?.length) {
-        alert(`Assigned with ${res.errors.length} error(s). Check your selections.`);
-      }
-      const classData = await apiService.getSubjectClassAssignments(selectedSubject.id);
-      setSubjectClassAssignments(Array.isArray(classData) ? classData : []);
-      setSelectedClassIds([]);
-      fetchSubjects();
-    } catch (error) {
-      alert(error.message || "Failed to assign subject to classes");
-    } finally {
-      setLoadingClassAssignments(false);
-    }
-  };
-
-  const handleRemoveClassAssignment = async (assignmentId) => {
-    if (!selectedSubject) return;
-    if (!confirm("Remove this class assignment?")) return;
-    try {
-      await apiService.removeSubjectClassAssignment(selectedSubject.id, assignmentId);
-      const classData = await apiService.getSubjectClassAssignments(selectedSubject.id);
-      setSubjectClassAssignments(Array.isArray(classData) ? classData : []);
-    } catch (error) {
-      alert(error.message || "Failed to remove class assignment");
     }
   };
 
@@ -392,107 +313,6 @@ export default function AdminSubjects() {
                   <p className="text-sm text-gray-500 text-center py-4">No teachers assigned yet</p>
                 )}
 
-                <hr className="my-6" />
-
-                <h3 className="text-lg font-bold text-gray-800 mb-2">
-                  <i className="fas fa-layer-group mr-2 text-purple-600"></i>
-                  Assign To Classes
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">Select one or many classes for this subject.</p>
-
-                <input
-                  type="text"
-                  value={classSearch}
-                  onChange={(e) => setClassSearch(e.target.value)}
-                  placeholder="Search classes (Form 1A, Grade 2 Red)"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm mb-2"
-                />
-
-                <div className="max-h-32 overflow-y-auto border rounded-md p-2 mb-3">
-                  {filteredClasses.length ? filteredClasses.map((cls) => (
-                    <label key={cls.id} className="flex items-center gap-2 text-sm py-1">
-                      <input
-                        type="checkbox"
-                        checked={selectedClassIds.includes(cls.id)}
-                        onChange={() => toggleClassSelection(cls.id)}
-                      />
-                      <span>{cls.name} • Grade {cls.grade_level} • {cls.academic_year}</span>
-                    </label>
-                  )) : <p className="text-xs text-gray-500">No classes found</p>}
-                </div>
-
-                <div className="space-y-2 mb-3">
-                  <select
-                    value={assignClassTeacherId}
-                    onChange={(e) => setAssignClassTeacherId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value="">No teacher (optional)</option>
-                    {teachers.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.first_name || t.user?.first_name} {t.last_name || t.user?.last_name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={assignAcademicYear}
-                    onChange={(e) => setAssignAcademicYear(e.target.value)}
-                    placeholder="Academic year (optional)"
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  />
-                  <select
-                    value={assignDuplicateStrategy}
-                    onChange={(e) => setAssignDuplicateStrategy(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value="skip">Duplicate: skip</option>
-                    <option value="update">Duplicate: update</option>
-                    <option value="error">Duplicate: error</option>
-                  </select>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={assignIsCore}
-                      onChange={(e) => setAssignIsCore(e.target.checked)}
-                    />
-                    <span>Core subject</span>
-                  </label>
-                </div>
-
-                <button
-                  onClick={handleAssignToClasses}
-                  disabled={!selectedClassIds.length || loadingClassAssignments}
-                  className="w-full bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 disabled:opacity-50 text-sm"
-                >
-                  {loadingClassAssignments ? "Assigning..." : `Assign to ${selectedClassIds.length} class(es)`}
-                </button>
-
-                <div className="mt-4">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Current Class Assignments</p>
-                  {subjectClassAssignments.length ? (
-                    <ul className="space-y-2 max-h-44 overflow-y-auto">
-                      {subjectClassAssignments.map((a) => (
-                        <li key={a.id} className="flex items-start justify-between bg-gray-50 px-3 py-2 rounded">
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{a.class_name}</p>
-                            <p className="text-xs text-gray-500">
-                              {a.academic_year} • {a.is_core ? "Core" : "Optional"}{a.teacher_name ? ` • ${a.teacher_name}` : ""}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveClassAssignment(a.id)}
-                            className="text-red-500 hover:text-red-700 text-sm"
-                          >
-                            <i className="fas fa-times"></i>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-gray-500">No class assignments yet.</p>
-                  )}
-                </div>
               </div>
             ) : (
               <div className="bg-white rounded-lg shadow-sm p-6 text-center text-gray-500">

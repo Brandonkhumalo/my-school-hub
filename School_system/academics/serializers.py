@@ -8,7 +8,7 @@ from .models import (
     Homework, AssignmentSubmission, DietaryFlag, Dormitory, DormAssignment, MealMenu, MealAttendance,
     DormRollCall, LightsOutRecord, ExeatRequest, ExeatMovementLog, MedicationSchedule, TuckWallet,
     TuckTransaction, LaundrySchedule, LostItemReport, PrepAttendance, DormInspectionScore, StudentWellnessCheckIn,
-    AssessmentPlan, Activity, ActivityEnrollment, ActivityEvent,
+    AssessmentPlan, Activity, ActivityEnrollment, ActivityEvent, ClassSubjectAssignment,
     SportsHouse, MatchSquadEntry, TrainingAttendance, HousePointEntry,
 )
 from users.serializers import UserSerializer
@@ -40,11 +40,19 @@ class SubjectSerializer(serializers.ModelSerializer):
 class ClassSerializer(serializers.ModelSerializer):
     class_teacher_name = serializers.CharField(source='class_teacher.full_name', read_only=True)
     student_count = serializers.SerializerMethodField()
+    subject_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+        allow_empty=True,
+    )
+    subjects_detail = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Class
         fields = [
             'id', 'name', 'grade_level', 'academic_year', 'class_teacher', 'class_teacher_name', 'student_count',
+            'subject_ids', 'subjects_detail',
             'first_period_start', 'last_period_end', 'period_duration_minutes',
             'break_start', 'break_end', 'lunch_start', 'lunch_end',
             'friday_last_period_end', 'include_transition_time'
@@ -56,6 +64,105 @@ class ClassSerializer(serializers.ModelSerializer):
         if hasattr(obj, '_student_count'):
             return obj._student_count
         return obj.students.count()
+
+    def get_subjects_detail(self, obj):
+        assignments = (
+            ClassSubjectAssignment.objects
+            .filter(
+                class_obj=obj,
+                school=obj.school,
+                academic_year=obj.academic_year,
+            )
+            .select_related('subject')
+            .order_by('subject__name')
+        )
+        return [
+            {'id': a.subject_id, 'name': a.subject.name, 'code': a.subject.code}
+            for a in assignments
+        ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if 'subject_ids' not in attrs:
+            return attrs
+
+        subject_ids = list(dict.fromkeys(attrs.get('subject_ids', [])))
+        if not subject_ids:
+            attrs['subject_ids'] = []
+            return attrs
+
+        school = getattr(self.instance, 'school', None)
+        if not school:
+            request = self.context.get('request')
+            school = getattr(request.user, 'school', None) if request else None
+
+        subjects_qs = Subject.objects.filter(id__in=subject_ids)
+        if school:
+            subjects_qs = subjects_qs.filter(school=school)
+        found_ids = set(subjects_qs.values_list('id', flat=True))
+        missing_ids = [sid for sid in subject_ids if sid not in found_ids]
+        if missing_ids:
+            raise serializers.ValidationError({
+                'subject_ids': f"Invalid subject IDs for your school: {missing_ids}"
+            })
+
+        attrs['subject_ids'] = subject_ids
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        subject_ids = validated_data.pop('subject_ids', [])
+        class_obj = super().create(validated_data)
+        self._sync_subject_assignments(class_obj, subject_ids)
+        return class_obj
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        subject_ids = validated_data.pop('subject_ids', None)
+        class_obj = super().update(instance, validated_data)
+        if subject_ids is not None:
+            self._sync_subject_assignments(class_obj, subject_ids)
+        return class_obj
+
+    def _sync_subject_assignments(self, class_obj, subject_ids):
+        academic_year = class_obj.academic_year
+        school = class_obj.school
+        keep_ids = set(subject_ids or [])
+
+        existing = ClassSubjectAssignment.objects.filter(
+            school=school,
+            class_obj=class_obj,
+            academic_year=academic_year,
+        )
+        if keep_ids:
+            existing.exclude(subject_id__in=keep_ids).delete()
+        else:
+            existing.delete()
+
+        if not keep_ids:
+            return
+
+        existing_subject_ids = set(
+            ClassSubjectAssignment.objects.filter(
+                school=school,
+                class_obj=class_obj,
+                academic_year=academic_year,
+                subject_id__in=list(keep_ids),
+            ).values_list('subject_id', flat=True)
+        )
+        new_rows = [
+            ClassSubjectAssignment(
+                school=school,
+                class_obj=class_obj,
+                subject_id=sid,
+                academic_year=academic_year,
+                created_by=self.context.get('request').user if self.context.get('request') else None,
+            )
+            for sid in keep_ids
+            if sid not in existing_subject_ids
+        ]
+        if new_rows:
+            ClassSubjectAssignment.objects.bulk_create(new_rows)
 
 
 class StudentSerializer(serializers.ModelSerializer):
