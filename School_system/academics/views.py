@@ -1675,9 +1675,17 @@ def generate_report_card(request, student_id):
         is_class_teacher = Class.objects.filter(
             id=student.student_class_id, class_teacher=user
         ).exists() if student.student_class_id else False
-        teaches_class = Timetable.objects.filter(
+        teaches_via_timetable = Timetable.objects.filter(
             teacher=teacher, class_assigned_id=student.student_class_id
         ).exists() if student.student_class_id else False
+        teaches_via_scope = teacher.teaching_classes.filter(
+            id=student.student_class_id
+        ).exists() if student.student_class_id else False
+        teaches_via_assignment = ClassSubjectAssignment.objects.filter(
+            class_obj_id=student.student_class_id,
+            teacher=teacher,
+        ).exists() if student.student_class_id else False
+        teaches_class = teaches_via_timetable or teaches_via_scope or teaches_via_assignment
         if not is_class_teacher and not teaches_class:
             return Response({'error': 'You can only view report cards for students in your classes.'}, status=status.HTTP_403_FORBIDDEN)
 

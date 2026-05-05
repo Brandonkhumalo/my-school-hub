@@ -16,7 +16,7 @@ import random
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
-from .models import Class, Subject, Teacher, Timetable
+from .models import Class, Subject, Teacher, Timetable, ClassSubjectAssignment
 
 DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
@@ -203,20 +203,51 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
 
     MAX_PER_DAY = 2  # Hard cap: no subject gets more than 2 periods on any day
 
+    # Canonical class-subject mapping:
+    # use explicit class assignments first; fallback to legacy subject pool only when missing.
+    assignment_qs = ClassSubjectAssignment.objects.filter(
+        school=school,
+        class_obj_id__in=[c.id for c in classes],
+    ).select_related('subject', 'teacher')
+    if academic_year:
+        assignment_qs = assignment_qs.filter(academic_year=academic_year)
+
+    class_subject_assignments = defaultdict(list)
+    for assignment in assignment_qs:
+        if assignment.subject_id in subject_map:
+            class_subject_assignments[assignment.class_obj_id].append(assignment)
+
     for cls in class_order:
         day_periods_map = class_periods.get(cls.id, {})
         total_slots = sum(len(slots) for slots in day_periods_map.values())
         if total_slots == 0:
             continue
 
+        assignment_rows = class_subject_assignments.get(cls.id, [])
+        assignment_teacher_map = {}
         class_teachable_subjects = []
-        for subj in teachable:
-            teacher_ids = subject_teachers.get(subj.id, [])
-            if any(
-                not teacher_scoped_classes.get(tid) or cls.id in teacher_scoped_classes[tid]
-                for tid in teacher_ids
-            ):
+
+        if assignment_rows:
+            for row in assignment_rows:
+                subj = row.subject
+                teacher_ids = subject_teachers.get(subj.id, [])
+                scoped_teacher_ids = [
+                    tid for tid in teacher_ids
+                    if not teacher_scoped_classes.get(tid) or cls.id in teacher_scoped_classes[tid]
+                ]
+                if not scoped_teacher_ids:
+                    continue
                 class_teachable_subjects.append(subj)
+                if row.teacher_id and row.teacher_id in scoped_teacher_ids:
+                    assignment_teacher_map[subj.id] = row.teacher_id
+        else:
+            for subj in teachable:
+                teacher_ids = subject_teachers.get(subj.id, [])
+                if any(
+                    not teacher_scoped_classes.get(tid) or cls.id in teacher_scoped_classes[tid]
+                    for tid in teacher_ids
+                ):
+                    class_teachable_subjects.append(subj)
 
         if not class_teachable_subjects:
             logger.warning(
@@ -315,14 +346,32 @@ def generate_timetable(school=None, academic_year=None, clear_existing=True):
                         continue
 
                     # Find available teacher
-                    tid = _find_teacher(
-                        subject_teachers,
-                        sid,
-                        cls.id,
-                        time_key,
-                        teacher_busy,
-                        teacher_scoped_classes,
-                    )
+                    preferred_tid = assignment_teacher_map.get(sid)
+                    if preferred_tid:
+                        in_scope = (
+                            not teacher_scoped_classes.get(preferred_tid)
+                            or cls.id in teacher_scoped_classes[preferred_tid]
+                        )
+                        if in_scope and time_key not in teacher_busy[preferred_tid]:
+                            tid = preferred_tid
+                        else:
+                            tid = _find_teacher(
+                                subject_teachers,
+                                sid,
+                                cls.id,
+                                time_key,
+                                teacher_busy,
+                                teacher_scoped_classes,
+                            )
+                    else:
+                        tid = _find_teacher(
+                            subject_teachers,
+                            sid,
+                            cls.id,
+                            time_key,
+                            teacher_busy,
+                            teacher_scoped_classes,
+                        )
                     if tid is None:
                         # Teacher busy — carry this subject over to next day
                         if sid not in carryover:

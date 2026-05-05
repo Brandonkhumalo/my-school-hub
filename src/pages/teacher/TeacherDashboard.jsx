@@ -128,12 +128,12 @@ export default function TeacherDashboard() {
 
         {/* Information Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-blue-800 mb-3">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/40 dark:to-blue-800/40 rounded-lg shadow-lg p-6">
+            <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-3">
               <i className="fas fa-lightbulb mr-2"></i>
               Quick Tips
             </h3>
-            <ul className="space-y-2 text-sm text-blue-700">
+            <ul className="space-y-2 text-sm text-blue-700 dark:text-blue-300">
               <li className="flex items-start">
                 <i className="fas fa-check-circle mr-2 mt-1"></i>
                 <span>Mark attendance daily to track student participation</span>
@@ -149,12 +149,12 @@ export default function TeacherDashboard() {
             </ul>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-green-800 mb-3">
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/40 dark:to-green-800/40 rounded-lg shadow-lg p-6">
+            <h3 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-3">
               <i className="fas fa-info-circle mr-2"></i>
               Your Responsibilities
             </h3>
-            <ul className="space-y-2 text-sm text-green-700">
+            <ul className="space-y-2 text-sm text-green-700 dark:text-green-300">
               <li className="flex items-start">
                 <i className="fas fa-graduation-cap mr-2 mt-1"></i>
                 <span>Teach assigned subjects and maintain class records</span>
