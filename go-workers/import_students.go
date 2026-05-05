@@ -116,10 +116,18 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			defer tx.Rollback(ctx)
 
 			for _, s := range batch {
+				// Isolate each row so one failure doesn't abort the whole batch tx.
+				if _, err = tx.Exec(ctx, "SAVEPOINT sp_row"); err != nil {
+					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Failed to create savepoint: %v", err)})
+					continue
+				}
+
 				// Generate unique student number
 				studentNum := generateStudentNumber()
 				passwordHash, err := passwordHashForStrategy(accountStrategy, sharedPassword)
 				if err != nil {
+					_, _ = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_row")
+					_, _ = tx.Exec(ctx, "RELEASE SAVEPOINT sp_row")
 					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Password strategy failed: %v", err)})
 					continue
 				}
@@ -130,14 +138,17 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 					`INSERT INTO users_customuser
 						(password, last_login, is_superuser, username, first_name, last_name,
 						 email, is_staff, is_active, date_joined,
-						 role, school_id, student_number, phone_number, created_by_id)
+						 role, school_id, student_number, phone_number, created_by_id,
+						 failed_login_attempts, last_failed_login_at, account_locked_until)
 					 VALUES ($1, NULL, false, $2, $3, $4, $5, false, true, NOW(),
-					         'student', $6, $7, $8, $9)
+					         'student', $6, $7, $8, $9, 0, NULL, NULL)
 					 RETURNING id`,
 					passwordHash, s.email, s.firstName, s.lastName, s.email,
 					schoolID, studentNum, s.phone, userID,
 				).Scan(&newUserID)
 				if err != nil {
+					_, _ = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_row")
+					_, _ = tx.Exec(ctx, "RELEASE SAVEPOINT sp_row")
 					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("User creation failed: %v", err)})
 					continue
 				}
@@ -150,7 +161,13 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 					newUserID, s.classID, s.dob, s.gender,
 				)
 				if err != nil {
+					_, _ = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_row")
+					_, _ = tx.Exec(ctx, "RELEASE SAVEPOINT sp_row")
 					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Student creation failed: %v", err)})
+					continue
+				}
+				if _, err = tx.Exec(ctx, "RELEASE SAVEPOINT sp_row"); err != nil {
+					errors = append(errors, map[string]interface{}{"row": s.rowNum, "error": fmt.Sprintf("Failed to finalize row transaction: %v", err)})
 					continue
 				}
 				created++

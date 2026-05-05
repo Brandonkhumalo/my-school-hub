@@ -496,19 +496,18 @@ export default function AdminBulkImport() {
 
               {validation && (
                 <div
-                  className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50" : "border-amber-300 bg-amber-50"}`}
-                  style={{ color: validation.valid ? "#14532d" : "#78350f" }}
+                  className={`p-4 rounded-lg border ${validation.valid ? "border-green-300 bg-green-50 dark:bg-green-950 dark:border-green-700 text-green-900 dark:text-green-300" : "border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-700 text-amber-900 dark:text-amber-300"}`}
                 >
-                  <p className="text-sm font-semibold" style={{ color: validation.valid ? "#14532d" : "#78350f" }}>
+                  <p className="text-sm font-semibold">
                     {validation.valid ? "✓ All rows valid" : `⚠ ${validation.errors?.length || 0} row(s) with errors`}
                   </p>
-                  <p className="text-sm" style={{ color: validation.valid ? "#14532d" : "#78350f" }}>Total rows: {validation.total_rows}</p>
+                  <p className="text-sm">Total rows: {validation.total_rows}</p>
                   {validation.errors?.length > 0 && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-sm font-medium text-amber-900">Show row errors</summary>
+                      <summary className="cursor-pointer text-sm font-medium text-amber-900 dark:text-amber-300">Show row errors</summary>
                       <div className="mt-2 max-h-48 overflow-y-auto text-xs space-y-1">
                         {validation.errors.slice(0, 50).map((err, i) => (
-                          <div key={i} className="p-1 bg-white rounded text-red-800">
+                          <div key={i} className="p-1 bg-white dark:bg-red-950 rounded text-red-800 dark:text-red-300">
                             Row {err.row}: {(err.errors || []).join("; ")}
                           </div>
                         ))}
