@@ -424,7 +424,9 @@ def send_grade_fee_notice_email(*, parent_email: str, parent_name: str,
 
 def send_parent_link_approved_email(*, parent_email: str, parent_name: str,
                                      school_name: str, student_name: str,
-                                     class_name: str) -> bool:
+                                     class_name: str, student_number: str = "",
+                                     student_username: str = "",
+                                     student_email: str = "") -> bool:
     """Admin approves parent-child link → notify parent."""
     body = f"""
       {_alert_badge("&#10003; Your Link Request Has Been Approved", "#22c55e")}
@@ -444,6 +446,13 @@ def send_parent_link_approved_email(*, parent_email: str, parent_name: str,
           ("Status",   '<span style="color:#16a34a;font-weight:700;">Linked &amp; Active</span>'),
       ])}
 
+      {_section("Student Login Credentials", [
+          ("Student Number", student_number or "Not available"),
+          ("Username", student_username or "Not available"),
+          ("Email", student_email or "Not available"),
+          ("Password", "Not included for security. Use <strong>Forgot Password</strong> to set/reset."),
+      ])}
+
       <p style="margin:20px 0 0;font-size:14px;color:{DARK};line-height:1.7;">
         You can now log in to the Parent Portal to view:
       </p>
@@ -455,6 +464,10 @@ def send_parent_link_approved_email(*, parent_email: str, parent_name: str,
         <li>School announcements</li>
         <li>Messages from teachers</li>
       </ul>
+      <p style="margin:0 0 10px;font-size:13px;color:#64748b;line-height:1.7;">
+        Student sign-in can use any of the identifiers above. If they do not know their password,
+        use the <strong>Forgot Password</strong> option on the login page.
+      </p>
       {_cta_button("Log In to Parent Portal")}"""
 
     html = _base_html(

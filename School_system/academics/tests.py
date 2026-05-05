@@ -1701,7 +1701,8 @@ class ParentLinkRequestApprovalFlowAPITest(APITestCase):
         self.cls = make_class(self.school, name="Form 2A", grade_level=9)
         self.student = make_student(self.school, self.cls, username="flow_student", student_number="FLOW001")
 
-    def test_parent_request_and_admin_approval_flow(self):
+    @patch("academics.views.send_parent_link_approved_email")
+    def test_parent_request_and_admin_approval_flow(self, mock_send_email):
         self.client.force_authenticate(user=self.parent_user)
         request_response = self.client.post("/api/v1/parents/children/request/", {
             "student_id": self.student.id,
@@ -1722,6 +1723,16 @@ class ParentLinkRequestApprovalFlowAPITest(APITestCase):
         link.refresh_from_db()
         self.assertTrue(link.is_confirmed)
         self.assertTrue(self.parent_profile.children.filter(id=self.student.id).exists())
+        mock_send_email.assert_called_once_with(
+            parent_email=self.parent_user.email,
+            parent_name=f"{self.parent_user.first_name} {self.parent_user.last_name}".strip(),
+            school_name=self.school.name,
+            student_name=f"{self.student.user.first_name} {self.student.user.last_name}".strip(),
+            class_name=self.cls.name,
+            student_number=self.student.user.student_number,
+            student_username=self.student.user.username,
+            student_email=self.student.user.email,
+        )
 
     def test_parent_cannot_access_admin_pending_requests_endpoint(self):
         self.client.force_authenticate(user=self.parent_user)

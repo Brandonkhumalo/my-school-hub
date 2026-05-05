@@ -1357,6 +1357,9 @@ def approve_parent_link_request(request, link_id):
         student_name = f"{link.student.user.first_name} {link.student.user.last_name}".strip()
         school_name = school.name
         class_name = link.student.student_class.name if link.student.student_class else "N/A"
+        student_number = (link.student.user.student_number or "").strip()
+        student_username = (link.student.user.username or "").strip()
+        student_email = (link.student.user.email or "").strip()
 
         # Notify parent their link was approved
         try:
@@ -1367,6 +1370,9 @@ def approve_parent_link_request(request, link_id):
                     school_name=school_name,
                     student_name=student_name,
                     class_name=class_name,
+                    student_number=student_number,
+                    student_username=student_username,
+                    student_email=student_email,
                 )
         except Exception as exc:
             logger.error("Parent link approval email failed: %s", exc)
