@@ -173,6 +173,7 @@ export default function AdminBulkImport() {
         student_admission_no: "STU001234",
         fee_type: "Tuition",
         subjects: importType === "classes" ? "MATH,ENG,SCI" : "MATH,ENG",
+        forms_grades: "Form 1,Form 2A",
         child_admission_nos: "STU001234,STU005678",
         assigned_class: "Form 1A",
         class_teacher_email: "teacher@example.com",

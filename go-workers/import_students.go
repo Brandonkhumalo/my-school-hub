@@ -95,14 +95,15 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 
 		// Process in batches of 100
 		type studentRow struct {
-			firstName string
-			lastName  string
-			email     string
-			phone     *string
-			classID   int64
-			dob       *string
-			gender    string
-			rowNum    int
+			firstName     string
+			lastName      string
+			email         string
+			phone         *string
+			classID       int64
+			dob           *string
+			gender        string
+			residenceType string
+			rowNum        int
 		}
 		var batch []studentRow
 
@@ -166,8 +167,8 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 				_, err = tx.Exec(ctx,
 					`INSERT INTO academics_student
 						(user_id, student_class_id, residence_type, admission_date, parent_contact, address, date_of_birth, gender, emergency_contact, pending_activation_due_to_limit, is_transferred, transfer_note)
-					 VALUES ($1, $2, 'day', CURRENT_DATE, $3, '', $4, $5, '', false, false, '')`,
-					newUserID, s.classID, parentContact, s.dob, s.gender,
+					 VALUES ($1, $2, $3, CURRENT_DATE, $4, '', $5, $6, '', false, false, '')`,
+					newUserID, s.classID, s.residenceType, parentContact, s.dob, s.gender,
 				)
 				if err != nil {
 					_, _ = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT sp_row")
@@ -205,6 +206,10 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			className := getCol(record, colIdx, "class_name")
 			dob := getCol(record, colIdx, "date_of_birth")
 			gender := getCol(record, colIdx, "gender")
+			residenceType := getCol(record, colIdx, "residence_type")
+			if residenceType != "boarding" {
+				residenceType = "day"
+			}
 
 			// Validate
 			if fullName == "" {
@@ -241,7 +246,7 @@ func BulkImportStudentsHandler(pool *pgxpool.Pool) http.HandlerFunc {
 			batch = append(batch, studentRow{
 				firstName: firstName, lastName: lastName, email: email,
 				phone: phonePtr, classID: classID, dob: dobPtr,
-				gender: gender, rowNum: rowNum,
+				gender: gender, residenceType: residenceType, rowNum: rowNum,
 			})
 
 			if len(batch) >= 100 {

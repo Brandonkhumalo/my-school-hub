@@ -68,6 +68,7 @@ BULK_IMPORT_PARAMETER_LIBRARY = {
         {"key": "hire_date", "label": "Hire Date", "required": False, "type": "date", "help": "Defaults to today if blank"},
         {"key": "qualification", "label": "Qualification", "required": False, "type": "text", "help": "e.g. BSc Mathematics, PGCE"},
         {"key": "subjects", "label": "Subjects Taught", "required": False, "type": "text", "help": "Comma-separated subject codes or names (must already exist)"},
+        {"key": "forms_grades", "label": "Forms/Grades This Teacher Can Teach", "required": False, "type": "text", "help": "Comma-separated values. Accepts class names (e.g. Form 1A) and/or grade/form labels (e.g. Form 1, Grade 7)."},
         {"key": "assigned_class", "label": "Assigned Class", "required": False, "type": "text", "help": "Class name to assign as class teacher (must already exist & be unassigned)"},
     ],
     "students": [
@@ -142,7 +143,7 @@ def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected
         raise ValueError(f"Unsupported Go worker import type: {import_type}")
 
     if import_type == "students":
-        headers = ["full_name", "email", "phone", "class_name", "date_of_birth", "gender"]
+        headers = ["full_name", "email", "phone", "class_name", "date_of_birth", "gender", "residence_type"]
     elif import_type == "results":
         headers = ["student_number", "subject_code", "exam_type", "score", "max_score", "term", "year"]
     else:
@@ -167,6 +168,7 @@ def _delegate_bulk_import_to_go_workers(import_type, mapped_rows, user, selected
                 "class_name": class_name,
                 "date_of_birth": (row.get("date_of_birth") or "").strip(),
                 "gender": (row.get("gender") or "").strip(),
+                "residence_type": (row.get("residence_type") or "").strip().lower(),
             })
         elif import_type == "results":
             writer.writerow({
@@ -3003,6 +3005,38 @@ def bulk_import_commit(request):
                         raise ValueError(f"Class '{assigned_class_name}' not found")
                     assigned_class_id = assigned_class.id
 
+                teaching_class_ids = []
+                for token in _split_csv_field(row.get("forms_grades")):
+                    cls = Class.objects.filter(
+                        school=school, name__iexact=token,
+                    ).order_by('-academic_year').first()
+                    if cls:
+                        teaching_class_ids.append(cls.id)
+                        continue
+
+                    grade_match = re.search(r"\d+", token or "")
+                    if grade_match:
+                        grade_level = int(grade_match.group(0))
+                        grade_classes = list(
+                            Class.objects.filter(
+                                school=school, grade_level=grade_level, academic_year=current_year
+                            ).values_list("id", flat=True)
+                        )
+                        if not grade_classes:
+                            grade_classes = list(
+                                Class.objects.filter(
+                                    school=school, grade_level=grade_level,
+                                ).values_list("id", flat=True)
+                            )
+                        if grade_classes:
+                            teaching_class_ids.extend(grade_classes)
+                            continue
+
+                    raise ValueError(
+                        f"Form/Grade '{token}' not found. Use an existing class name (e.g. Form 1A) or grade/form value (e.g. Form 1, Grade 7)."
+                    )
+                teaching_class_ids = list(dict.fromkeys(teaching_class_ids))
+
                 raw_password = _password_for_row()
                 payload = {
                     "first_name": first_name,
@@ -3016,6 +3050,8 @@ def bulk_import_commit(request):
                     "is_secondary_teacher": bool(subject_ids),
                     "subject_ids": subject_ids,
                 }
+                if teaching_class_ids:
+                    payload["teaching_class_ids"] = teaching_class_ids
                 if assigned_class_id:
                     payload["assigned_class_id"] = assigned_class_id
 

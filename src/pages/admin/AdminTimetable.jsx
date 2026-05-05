@@ -178,7 +178,7 @@ export default function AdminTimetable() {
                   <h2 className="text-2xl font-bold text-gray-800">{selectedClass.name} Timetable</h2>
                   <p className="text-gray-600 mt-1">
                     <i className="fas fa-user-tie mr-2"></i>
-                    Teacher: {selectedClass.teacher_name || 'Not assigned'}
+                    Teacher: {selectedClass.class_teacher_name || 'Not assigned'}
                   </p>
                   <p className="text-gray-600 mt-1">
                     <i className="fas fa-users mr-2"></i>
@@ -291,7 +291,7 @@ export default function AdminTimetable() {
                           </span>
                         </div>
                         <div className="text-sm text-gray-600">
-                          <p><i className="fas fa-user-tie mr-2"></i>{cls.teacher_name || 'No teacher assigned'}</p>
+                          <p><i className="fas fa-user-tie mr-2"></i>{cls.class_teacher_name || 'No teacher assigned'}</p>
                           <p className="mt-1">
                             {timetableCount > 0 ? (
                               <span className="text-green-600">
@@ -340,7 +340,7 @@ export default function AdminTimetable() {
                           </span>
                         </div>
                         <div className="text-sm text-gray-600">
-                          <p><i className="fas fa-user-tie mr-2"></i>{cls.teacher_name || 'No teacher assigned'}</p>
+                          <p><i className="fas fa-user-tie mr-2"></i>{cls.class_teacher_name || 'No teacher assigned'}</p>
                           <p className="mt-1">
                             {timetableCount > 0 ? (
                               <span className="text-green-600">
